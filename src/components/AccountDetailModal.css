@@ -1,0 +1,130 @@
+.account-detail-modal {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    font-family: 'Inter', system-ui, sans-serif;
+    padding: 4px;
+}
+
+.adm-header-cards {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.adm-card {
+    flex: 1;
+    background: #F8FAFC;
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.adm-card-balance, .adm-card-debit {
+    background: #EFF6FF;
+}
+
+.adm-card-credit {
+    background: #FEF2F2;
+}
+
+.adm-label {
+    font-size: 13px;
+    color: #64748b;
+    font-weight: 500;
+}
+
+.adm-value {
+    font-size: 15px;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.adm-value-blue {
+    font-size: 15px;
+    font-weight: 700;
+    color: #2563eb;
+}
+
+.adm-value-red {
+    font-size: 15px;
+    font-weight: 700;
+    color: #dc2626;
+}
+
+.adm-table-container {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    background: white;
+}
+
+.adm-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+    font-size: 13px;
+}
+
+.adm-table th {
+    padding: 12px 16px;
+    font-weight: 600;
+    color: #64748b;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+}
+
+.adm-table td {
+    padding: 12px 16px;
+    color: #334155;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.adm-opening-content {
+    display: flex;
+    justify-content: space-between;
+}
+
+.adm-opening-row {
+    background: #FFFBEB;
+    font-weight: 600;
+    color: #475569;
+}
+
+.adm-empty-row {
+    text-align: center;
+    color: #94A3B8;
+    padding: 40px 16px !important;
+}
+
+.adm-closing-row {
+    background: #ffffff;
+}
+
+.adm-closing-row td {
+    border-top: 1px solid #CBD5E1 !important;
+    padding-top: 16px !important;
+    padding-bottom: 16px !important;
+}
+
+.adm-closing-label {
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.adm-col-blue {
+    color: #2563eb;
+    font-weight: 600;
+}
+
+.adm-col-red {
+    color: #dc2626;
+    font-weight: 600;
+}
+
+.adm-closing-val {
+    font-weight: 800;
+    color: #0f172a;
+}
