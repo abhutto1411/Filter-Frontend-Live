@@ -3,10 +3,10 @@
 
 
 // production url
-// export const BASE_URL = 'https://api.filtercarservices.com';
+export const BASE_URL = 'https://api.filtercarservices.com';
 
 // development url
-export const BASE_URL = 'http://localhost:3000';
+//export const BASE_URL = 'http://localhost:3000';
 const API_LOADING_EVENT = 'filter-api-loading';
 
 /** Device UTC offset in minutes (e.g. 300 Pakistan, 240 UAE) for cashier order timestamps. */
