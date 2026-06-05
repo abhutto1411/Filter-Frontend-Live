@@ -7,7 +7,8 @@ import {
     Bell, Search, ChevronDown, ChevronRight,
     Shield, Map, Truck, Building, UserCheck, Receipt, ArrowLeftRight, FileSpreadsheet,
     Landmark, FileText, Car, Warehouse, Box, ShoppingCart, UserPlus, Globe, Megaphone, Trophy,
-    Menu, X, Percent, Wrench, GitBranch, Radio, BarChart2, ClipboardList, CreditCard
+    Menu, X, Percent, Wrench, GitBranch, Radio, BarChart2, ClipboardList, CreditCard,
+    FlaskConical,
 } from 'lucide-react';
 import '../styles/AdminLayout.css';
 
@@ -27,7 +28,8 @@ const TRANSLATIONS = {
             'chart-of-accounts': 'Chart of Accounts',
             'cash-bank': 'Cash & Bank',
             'sales-reports': 'Sales Reports', 'sales-orders': 'Sales Orders',
-            'corporate-transactions': 'Corporate Transactions',
+            'corporate-transactions': 'Corporate Transactions', 'sales-returns': 'Sales Returns',
+            'demo-invoices': 'Demo Invoices',
             transactions: 'Transactions', 'journal-entries': 'Journal Entries', purchases: 'Purchases', expenses: 'Expenses', payments: 'Payments', advances: 'Advances', ledger: 'Ledger',
             'softpos-settlement': 'SoftPOS Settlement',
             marketing: 'Marketing',
@@ -55,7 +57,8 @@ const TRANSLATIONS = {
             'chart-of-accounts': 'دليل الحسابات',
             'cash-bank': 'النقد والبنك',
             'sales-reports': 'تقارير المبيعات', 'sales-orders': 'طلبات المبيعات',
-            'corporate-transactions': 'معاملات الشركات',
+            'corporate-transactions': 'معاملات الشركات', 'sales-returns': 'مرتجعات المبيعات',
+            'demo-invoices': 'فواتير تجريبية',
             transactions: 'المعاملات', 'journal-entries': 'قيد اليومية', purchases: 'المشتريات', expenses: 'المصروفات', payments: 'المدفوعات', advances: 'السلف', ledger: 'دفتر الأستاذ',
             'softpos-settlement': 'تسوية SoftPOS',
             marketing: 'التسويق',
@@ -81,6 +84,7 @@ const NAV_CONFIG = [
             { label: 'Tax Codes', path: 'tax-codes', icon: Percent },
             { label: 'Marketing', path: 'marketing', icon: Megaphone },
             { label: 'Permissions', path: 'permissions', icon: Shield },
+            { label: 'Demo Invoices', path: 'demo-invoices', icon: FlaskConical },
         ],
     },
     {
@@ -102,7 +106,8 @@ const NAV_CONFIG = [
                 icon: Users,
                 subItems: [
                     { label: 'All Customers', path: 'all-customers' },
-                    { label: 'Corporate Billing', path: 'corporate-billing' },
+                    // TODO: Re-enable when Corporate Billing flow is ready.
+                    // { label: 'Corporate Billing', path: 'corporate-billing' },
                 ],
             },
             { label: 'Suppliers', path: 'suppliers', icon: Truck },
@@ -124,6 +129,7 @@ const NAV_CONFIG = [
                     { label: 'Workshop Sales', path: 'workshop-sales' },
                     { label: 'Suppliers & Warehouse Sales', path: 'suppliers-warehouse-sales' },
                     { label: 'Corporate Transactions', path: 'corporate-transactions' },
+                    { label: 'Sales Returns', path: 'sales-returns' },
                     { label: 'Receipts', path: 'receipts' },
                 ],
             },

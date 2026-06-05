@@ -25,6 +25,7 @@ import SupplierNonAffiliatedCustomers from './supplier/SupplierNonAffiliatedCust
 import SupplierCashBank from './supplier/SupplierCashBank';
 import SupplierExpenses from './supplier/SupplierExpenses';
 import SupplierAccountingPage from './supplier/SupplierAccountingPage';
+import SupplierStorageFacility from './supplier/storage-facility/SupplierStorageFacility';
 import Modal from '../components/Modal';
 import { useAuth } from '../context/AuthContext';
 import { getSupplierProfile, getSupplierReceivables } from '../services/supplierApi';
@@ -55,10 +56,30 @@ export default function SupplierLayout() {
     const [profileRole, setProfileRole] = useState('Supplier Portal Manager');
     const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
 
+    const storageBrandPortal = useMemo(() => {
+        if (user?.supplier?.portalScope === 'storage_brand') {
+            return user.supplier.storageBrandId ?? null;
+        }
+        try {
+            const u = JSON.parse(localStorage.getItem('filter_auth_user') || '{}');
+            if (u?.supplier?.portalScope === 'storage_brand') {
+                return u?.supplier?.storageBrandId ?? null;
+            }
+        } catch {
+            /* ignore */
+        }
+        return null;
+    }, [user?.supplier?.portalScope, user?.supplier?.storageBrandId]);
+
     const setActiveTab = (tab) => {
+        if (storageBrandPortal && tab !== 'storage_facility') return;
         if (tab.startsWith('accounting_')) {
             const sub = tab.replace('accounting_', '');
             navigate(`/supplier/accounting/${sub}`);
+        } else if (tab === 'storage_facility' && storageBrandPortal) {
+            navigate(
+                `/supplier/storage_facility?brand=${encodeURIComponent(storageBrandPortal)}`,
+            );
         } else {
             navigate(`/supplier/${tab}`);
         }
@@ -84,6 +105,7 @@ export default function SupplierLayout() {
         userType === 'platform_admin';
 
     useEffect(() => {
+        if (storageBrandPortal) return undefined;
         let cancelled = false;
         const bootstrapSupplierData = async () => {
             try {
@@ -120,7 +142,29 @@ export default function SupplierLayout() {
         };
         bootstrapSupplierData();
         return () => { cancelled = true; };
-    }, [user?.name]);
+    }, [user?.name, storageBrandPortal]);
+
+    useEffect(() => {
+        if (!storageBrandPortal) return;
+        const hubPath = `/supplier/storage_facility?brand=${encodeURIComponent(storageBrandPortal)}`;
+        if (activeTab !== 'storage_facility') {
+            navigate(hubPath, { replace: true });
+            return;
+        }
+        const params = new URLSearchParams(location.search);
+        if (params.get('brand') !== String(storageBrandPortal)) {
+            navigate(hubPath, { replace: true });
+        }
+    }, [storageBrandPortal, activeTab, location.search, navigate]);
+
+    const navGroupsForUser = storageBrandPortal
+        ? [
+              {
+                  label: 'STORAGE',
+                  items: [{ id: 'storage_facility', label: 'My storage', icon: Warehouse }],
+              },
+          ]
+        : NAV_GROUPS;
 
     const renderContent = () => {
         if (activeTab.startsWith('accounting_')) {
@@ -139,6 +183,7 @@ export default function SupplierLayout() {
             case 'nonaffiliated_customers': return <SupplierNonAffiliatedCustomers/>;
             case 'workshop_purchase_invoices': return <SupplierWorkshopPurchaseInvoices/>;
             case 'purchase_invoices': return <SupplierPurchaseInvoices/>;
+            case 'storage_facility': return <SupplierStorageFacility />;
             case 'cash_bank': return <SupplierCashBank/>;
             case 'expenses': return <SupplierExpenses/>;
             case 'accounting': return <SupplierAccountingPage activeSubTab="accounting_coa" />;
@@ -146,7 +191,7 @@ export default function SupplierLayout() {
         }
     };
 
-    const currentLabel = NAV_GROUPS.flatMap(g => [g, ...(g.items || [])])
+    const currentLabel = navGroupsForUser.flatMap(g => [g, ...(g.items || [])])
         .flatMap(i => [i, ...(i.subItems || [])])
         .find(i => i.id === activeTab)?.label || 'Dashboard';
 
@@ -157,41 +202,43 @@ export default function SupplierLayout() {
                     <div className="ws-logo-icon"><Warehouse size={20}/></div>
                     <div><p className="ws-logo-title">Filter Supplier</p><p className="ws-logo-sub">Portal</p></div>
                 </div>
-                <div
-                    style={{
-                        padding: '10px 14px',
-                        margin: '10px 12px',
-                        background: 'rgba(0,0,0,0.06)',
-                        border: '1px solid rgba(0,0,0,0.1)',
-                        borderRadius: 10,
-                        fontSize: '0.75rem',
-                        fontWeight: 700,
-                        color: '#000000',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        minWidth: 0,
-                    }}
-                >
-                    <FileText size={14} style={{ flexShrink: 0 }} aria-hidden />
-                    <span style={{ flex: 1, minWidth: 0, lineHeight: 1.35 }}>
-                        {arSummaryError ? (
-                            <>AR: Error</>
-                        ) : arSummary === null ? (
-                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                                <span style={{ fontWeight: 700 }}>AR:</span>
-                                <ShimmerLine height={14} width={72} rounded className="sp-shimmer-inline-block" />
-                            </span>
-                        ) : (
-                            <>AR: SAR {Number(arSummary).toLocaleString()}</>
-                        )}
-                    </span>
-                </div>
+                {!storageBrandPortal ? (
+                    <div
+                        style={{
+                            padding: '10px 14px',
+                            margin: '10px 12px',
+                            background: 'rgba(0,0,0,0.06)',
+                            border: '1px solid rgba(0,0,0,0.1)',
+                            borderRadius: 10,
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            color: '#000000',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            minWidth: 0,
+                        }}
+                    >
+                        <FileText size={14} style={{ flexShrink: 0 }} aria-hidden />
+                        <span style={{ flex: 1, minWidth: 0, lineHeight: 1.35 }}>
+                            {arSummaryError ? (
+                                <>AR: Error</>
+                            ) : arSummary === null ? (
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                                    <span style={{ fontWeight: 700 }}>AR:</span>
+                                    <ShimmerLine height={14} width={72} rounded className="sp-shimmer-inline-block" />
+                                </span>
+                            ) : (
+                                <>AR: SAR {Number(arSummary).toLocaleString()}</>
+                            )}
+                        </span>
+                    </div>
+                ) : null}
                 {canGoBackToAdmin ? (
                     <a className="ws-back-link" onClick={() => navigate('/admin/dashboard')} style={{cursor:'pointer'}}><ArrowLeft size={14}/> Back to Super Admin</a>
                 ) : null}
                 <nav className="ws-nav">
-                    {NAV_GROUPS.map(grp => (
+                    {navGroupsForUser.map(grp => (
                         <div key={grp.label}>
                             <div style={{fontSize:'0.625rem',fontWeight:800,color:'#000000',opacity:0.4,padding:'14px 14px 6px',textTransform:'uppercase',letterSpacing:'0.14em'}}>{grp.label}</div>
                             {grp.items.map(item => {

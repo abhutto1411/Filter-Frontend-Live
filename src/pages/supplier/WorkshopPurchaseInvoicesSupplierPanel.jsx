@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { RefreshCw, CheckCircle, X, Eye, Pencil, Truck, PackageCheck } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { RefreshCw, CheckCircle, X, Eye, Pencil, FileText, FilePlus2 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import Modal from '../../components/Modal';
 import {
     approveSupplierWorkshopPurchaseInvoice,
     getSupplierWorkshopPurchaseInvoice,
+    getWorkshopPurchaseSalesInvoicePrefill,
     listSupplierWorkshopPurchaseInvoices,
-    patchSupplierWorkshopPurchaseInvoiceStatus,
     rejectSupplierWorkshopPurchaseInvoice,
 } from '../../services/supplierApi';
 import {
@@ -22,11 +23,15 @@ import WorkshopPurchaseInvoiceView from '../../components/supplier/WorkshopPurch
  * Used on the dedicated nav page and embedded on Sales Invoices (AR).
  * @param {string|undefined} pipelineStatusFilter When set (including ""), list filter is controlled by parent (Order Queue pills). Omit on Finance pages.
  */
+const FOCUS_SALES_INVOICE_ID_KEY = 'supplier_focus_sales_invoice_id';
+export const WORKSHOP_PURCHASE_SI_PREFILL_KEY = 'supplier_workshop_purchase_sales_prefill';
+
 export default function WorkshopPurchaseInvoicesSupplierPanel({
     variant = 'page',
     pipelineStatusFilter,
     onListMutated,
 }) {
+    const navigate = useNavigate();
     const embedded = variant === 'embedded';
     const parentControlsFilter = pipelineStatusFilter !== undefined;
     const [rows, setRows] = useState([]);
@@ -99,6 +104,17 @@ export default function WorkshopPurchaseInvoicesSupplierPanel({
         }
     };
 
+    const openLinkedSalesInvoice = (salesInvoiceId) => {
+        const sid = String(salesInvoiceId ?? '').trim();
+        if (!sid) return;
+        try {
+            sessionStorage.setItem(FOCUS_SALES_INVOICE_ID_KEY, sid);
+        } catch {
+            /* ignore */
+        }
+        navigate('/supplier/sales_invoices');
+    };
+
     const handleApprove = async (id) => {
         setActionId(`ap-${id}`);
         setError('');
@@ -113,33 +129,25 @@ export default function WorkshopPurchaseInvoicesSupplierPanel({
         }
     };
 
-    const nextFulfillmentStatus = (current) => {
-        const s = String(current || '').toLowerCase();
-        if (s === 'approved') return 'processing';
-        if (s === 'processing') return 'ready_to_dispatch';
-        if (s === 'ready_to_dispatch') return 'on_the_way';
-        if (s === 'on_the_way') return 'delivered';
-        return null;
-    };
-
-    const fulfillmentButtonLabel = (current) => {
-        const n = nextFulfillmentStatus(current);
-        if (n === 'processing') return 'Start processing';
-        if (n === 'ready_to_dispatch') return 'Ready to dispatch';
-        if (n === 'on_the_way') return 'Dispatched / On way';
-        if (n === 'delivered') return 'Mark delivered';
-        return null;
-    };
-
-    const handleAdvanceFulfillment = async (id, nextStatus) => {
-        setActionId(`adv-${id}`);
+    const handlePrepareSalesInvoice = async (row) => {
+        const id = row?.id;
+        if (!id) return;
+        setActionId(`psi-${id}`);
         setError('');
         try {
-            await patchSupplierWorkshopPurchaseInvoiceStatus(id, { status: nextStatus });
-            await load();
-            onListMutated?.();
+            const res = await getWorkshopPurchaseSalesInvoicePrefill(id);
+            if (res?.alreadyInvoiced && res?.salesInvoiceId) {
+                openLinkedSalesInvoice(res.salesInvoiceId);
+                return;
+            }
+            const prefill = res?.prefill;
+            if (!prefill || typeof prefill !== 'object') {
+                throw new Error('Could not build sales invoice prefill.');
+            }
+            sessionStorage.setItem(WORKSHOP_PURCHASE_SI_PREFILL_KEY, JSON.stringify(prefill));
+            navigate('/supplier/sales_invoices');
         } catch (e) {
-            setError(e.message || 'Status update failed.');
+            setError(e.message || 'Prepare sales invoice failed.');
         } finally {
             setActionId(null);
         }
@@ -204,8 +212,8 @@ export default function WorkshopPurchaseInvoicesSupplierPanel({
                         </h3>
                         {embedded ? (
                             <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                                Workshops send these to you. Approve applies stock; then advance processing → dispatch →
-                                delivered.
+                                Approve or reject the order, then use Prepare sales invoice (same AR/stock/GL as Sales
+                                Invoices).
                             </p>
                         ) : null}
                     </div>
@@ -223,12 +231,8 @@ export default function WorkshopPurchaseInvoicesSupplierPanel({
                             }}
                         >
                             <option value="">All statuses</option>
-                            <option value="pending">Pending</option>
-                            <option value="approved">Approved</option>
-                            <option value="processing">Processing</option>
-                            <option value="ready_to_dispatch">Ready to dispatch</option>
-                            <option value="on_the_way">On the way</option>
-                            <option value="delivered">Delivered</option>
+                            <option value="pending">Pending approval</option>
+                            <option value="approved">Approved — awaiting sales invoice</option>
                             <option value="rejected">Rejected</option>
                         </select>
                         ) : (
@@ -271,7 +275,8 @@ export default function WorkshopPurchaseInvoicesSupplierPanel({
                                 </tr>
                             ) : (
                                 rows.map((r) => {
-                                    const nextSt = nextFulfillmentStatus(r.status);
+                                    const approvedAwaitingSi =
+                                        r.status === 'approved' && !r.supplier_invoice_id;
                                     return (
                                     <tr key={r.id}>
                                         <td>
@@ -362,6 +367,23 @@ export default function WorkshopPurchaseInvoicesSupplierPanel({
                                                 >
                                                     <Eye size={14} />
                                                 </button>
+                                                {r.supplier_invoice_id ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openLinkedSalesInvoice(r.supplier_invoice_id)}
+                                                        style={{
+                                                            padding: 6,
+                                                            borderRadius: 6,
+                                                            border: 'none',
+                                                            background: '#DBEAFE',
+                                                            color: '#1D4ED8',
+                                                            cursor: 'pointer',
+                                                        }}
+                                                        title="Open sales invoice (AR)"
+                                                    >
+                                                        <FileText size={14} />
+                                                    </button>
+                                                ) : null}
                                                 {r.status === 'pending' && (
                                                     <>
                                                         <button
@@ -394,7 +416,7 @@ export default function WorkshopPurchaseInvoicesSupplierPanel({
                                                                 cursor: actionId ? 'not-allowed' : 'pointer',
                                                                 opacity: actionId ? 0.6 : 1,
                                                             }}
-                                                            title="Approve — applies branch stock, then you can run fulfillment steps"
+                                                            title="Approve workshop order (no stock/GL until sales invoice is issued)"
                                                         >
                                                             <CheckCircle size={14} />
                                                         </button>
@@ -420,39 +442,32 @@ export default function WorkshopPurchaseInvoicesSupplierPanel({
                                                         </button>
                                                     </>
                                                 )}
-                                                {nextSt && (
+                                                {approvedAwaitingSi ? (
                                                     <button
                                                         type="button"
-                                                        onClick={() => handleAdvanceFulfillment(r.id, nextSt)}
+                                                        onClick={() => handlePrepareSalesInvoice(r)}
                                                         disabled={actionId !== null}
                                                         style={{
-                                                            padding: '6px 8px',
+                                                            padding: '6px 10px',
                                                             borderRadius: 6,
                                                             border: 'none',
-                                                            background: '#0F172A',
+                                                            background: '#1D4ED8',
                                                             color: '#fff',
                                                             cursor: actionId ? 'not-allowed' : 'pointer',
                                                             opacity: actionId ? 0.6 : 1,
-                                                            fontSize: '0.65rem',
+                                                            fontSize: '0.6875rem',
                                                             fontWeight: 700,
                                                             display: 'flex',
                                                             alignItems: 'center',
                                                             gap: 4,
-                                                            maxWidth: 140,
-                                                            lineHeight: 1.1,
+                                                            whiteSpace: 'nowrap',
                                                         }}
-                                                        title={fulfillmentButtonLabel(r.status)}
+                                                        title="Open Sales Invoices with lines from this order"
                                                     >
-                                                        {nextSt === 'delivered' ? (
-                                                            <PackageCheck size={12} />
-                                                        ) : nextSt === 'on_the_way' ? (
-                                                            <Truck size={12} />
-                                                        ) : (
-                                                            <CheckCircle size={12} />
-                                                        )}
-                                                        {fulfillmentButtonLabel(r.status)}
+                                                        <FilePlus2 size={13} />
+                                                        Prepare sales invoice
                                                     </button>
-                                                )}
+                                                ) : null}
                                             </div>
                                         </td>
                                     </tr>
@@ -479,11 +494,42 @@ export default function WorkshopPurchaseInvoicesSupplierPanel({
                         {viewLoading ? (
                             <ShimmerTextBlock lines={8} />
                         ) : (
-                            <WorkshopPurchaseInvoiceView
-                                compact
-                                detail={viewDetail}
-                                listRow={viewRow}
-                            />
+                            <>
+                                {viewRow?.supplier_invoice_id ? (
+                                    <div
+                                        style={{
+                                            marginBottom: 12,
+                                            padding: '10px 14px',
+                                            borderRadius: 8,
+                                            background: '#EFF6FF',
+                                            border: '1px solid #BFDBFE',
+                                            fontSize: '0.875rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between',
+                                            gap: 12,
+                                            flexWrap: 'wrap',
+                                        }}
+                                    >
+                                        <span>
+                                            Linked <strong>sales invoice (AR)</strong> — same accounting as Sales
+                                            Invoices.
+                                        </span>
+                                        <button
+                                            type="button"
+                                            className="btn-portal-outline"
+                                            onClick={() => openLinkedSalesInvoice(viewRow.supplier_invoice_id)}
+                                        >
+                                            <FileText size={14} /> Open sales invoice
+                                        </button>
+                                    </div>
+                                ) : null}
+                                <WorkshopPurchaseInvoiceView
+                                    compact
+                                    detail={viewDetail}
+                                    listRow={viewRow}
+                                />
+                            </>
                         )}
                     </Modal>
                 )}

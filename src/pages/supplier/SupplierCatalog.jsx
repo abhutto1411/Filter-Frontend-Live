@@ -29,6 +29,9 @@ import { ShimmerCatalogGrid } from '../../components/supplier/Shimmer';
 
 const PAGE_SIZE = 24;
 
+const WAREHOUSE_UNIT_PRESETS = ['Box', 'Carton', 'Dozen', 'Pack', 'Drum', 'Bag'];
+const WORKSHOP_UNIT_PRESETS = ['pcs', 'Liter', 'kg', 'ml', 'Set', 'piece'];
+
 /** Same product list payload as Admin `InventoryPage` / `MasterCatalog` exposed via supplier API. */
 function unwrapProducts(res) {
     if (Array.isArray(res)) return res;
@@ -100,6 +103,10 @@ export default function SupplierCatalog() {
     const [requests, setRequests] = useState([]);
     /** `browse` = master catalog grid; `requests` = My Product Requests list */
     const [catalogTab, setCatalogTab] = useState('browse');
+    /** Master catalog sub-tabs: already in my stock inventory vs not yet added */
+    const [masterFilterTab, setMasterFilterTab] = useState('not_added');
+    const [syncing, setSyncing] = useState(false);
+    const [syncMsg, setSyncMsg] = useState('');
     const [requestSubmitting, setRequestSubmitting] = useState(false);
     const [requestError, setRequestError] = useState('');
     const [reqForm, setReqForm] = useState({
@@ -148,11 +155,25 @@ export default function SupplierCatalog() {
             });
     }, []);
 
+    const loadMyInventoryProducts = useCallback(async () => {
+        try {
+            const existingRes = await fetchAllSupplierProducts({ status: 'all', pageSize: 2000 });
+            const existing = Array.isArray(existingRes) ? existingRes : [];
+            setExistingSupplierProducts(existing);
+        } catch {
+            setExistingSupplierProducts([]);
+        }
+    }, []);
+
     useEffect(() => {
         const ctrl = new AbortController();
         loadMasterCatalog(ctrl.signal);
         return () => ctrl.abort();
     }, [loadMasterCatalog]);
+
+    useEffect(() => {
+        loadMyInventoryProducts();
+    }, [loadMyInventoryProducts]);
 
     useEffect(() => {
         let cancelled = false;
@@ -198,9 +219,37 @@ export default function SupplierCatalog() {
         return [...map.entries()].map(([id, name]) => ({ id, name }));
     }, [masterProducts]);
 
+    const myInventoryKeyset = useMemo(() => {
+        const bySku = new Set();
+        const byName = new Set();
+        (existingSupplierProducts || []).forEach((p) => {
+            // treat inactive items as "not added" so they appear in Not Added tab for re-add
+            if (p?.isActive === false) return;
+            if (p?.sku) bySku.add(String(p.sku).trim().toLowerCase());
+            const nm = String(p?.productName || p?.name || '').trim().toLowerCase();
+            if (nm) byName.add(nm);
+        });
+        return { bySku, byName };
+    }, [existingSupplierProducts]);
+
+    const isAlreadyAdded = useCallback(
+        (p) => {
+            const skuKey = String(p?.sku || '').trim().toLowerCase();
+            const nameKey = String(p?.name || '').trim().toLowerCase();
+            return (
+                (!!skuKey && myInventoryKeyset.bySku.has(skuKey)) ||
+                (!!nameKey && myInventoryKeyset.byName.has(nameKey))
+            );
+        },
+        [myInventoryKeyset],
+    );
+
     const filteredRaw = useMemo(() => {
         const q = debouncedSearch.toLowerCase().trim();
         return masterProducts.filter((p) => {
+            const added = isAlreadyAdded(p);
+            if (masterFilterTab === 'already_added' && !added) return false;
+            if (masterFilterTab === 'not_added' && added) return false;
             const matchesCategory =
                 selectedCategoryId === 'all' || String(p.categoryId) === String(selectedCategoryId);
             const matchesBrand =
@@ -218,7 +267,14 @@ export default function SupplierCatalog() {
             }
             return matchesSearch && matchesCategory && matchesBrand;
         });
-    }, [masterProducts, debouncedSearch, selectedCategoryId, selectedBrand]);
+    }, [
+        masterProducts,
+        debouncedSearch,
+        selectedCategoryId,
+        selectedBrand,
+        masterFilterTab,
+        isAlreadyAdded,
+    ]);
 
     const cardRows = useMemo(() => filteredRaw.map(mapMasterCatalogRow), [filteredRaw]);
 
@@ -374,10 +430,24 @@ export default function SupplierCatalog() {
         const defaults = {};
         selectedMasterProducts.forEach((p) => {
             const id = String(p.id);
+            const existingProduct =
+                existing.find(
+                    (ep) =>
+                        String(ep.sku || '').trim().toLowerCase() ===
+                            String(p.sku || '').trim().toLowerCase() ||
+                        String(ep.name || ep.productName || '')
+                            .trim()
+                            .toLowerCase() === String(p.name || '').trim().toLowerCase(),
+                ) ?? null;
             defaults[id] = {
                 openingQty: '0',
                 stockQty: '0',
                 criticalStockLevel: '',
+                warehouseUnit:
+                    existingProduct?.warehouseUnit ||
+                    (p.unit === 'piece' || p.unit === 'pcs' ? 'Box' : p.unit || 'Box'),
+                workshopUnit: existingProduct?.workshopUnit || p.unit || 'pcs',
+                conversionFactor: String(existingProduct?.conversionFactor ?? 1),
             };
         });
         setInventoryQtyForm(defaults);
@@ -392,6 +462,9 @@ export default function SupplierCatalog() {
                 openingQty: prev[id]?.openingQty ?? '0',
                 stockQty: prev[id]?.stockQty ?? '0',
                 criticalStockLevel: prev[id]?.criticalStockLevel ?? '',
+                warehouseUnit: prev[id]?.warehouseUnit ?? 'Box',
+                workshopUnit: prev[id]?.workshopUnit ?? 'pcs',
+                conversionFactor: prev[id]?.conversionFactor ?? '1',
                 [key]: value,
             },
         }));
@@ -418,9 +491,18 @@ export default function SupplierCatalog() {
                     openingQty: '0',
                     stockQty: '0',
                     criticalStockLevel: '',
+                    warehouseUnit: 'Box',
+                    workshopUnit: master.unit || 'pcs',
+                    conversionFactor: '1',
                 };
                 const openingQty = Math.max(0, Number(row.openingQty || 0));
                 const stockQty = Math.max(0, Number(row.stockQty || 0));
+                const warehouseUnit = String(row.warehouseUnit || 'Box').trim() || 'Box';
+                const workshopUnit = String(row.workshopUnit || 'pcs').trim() || 'pcs';
+                const conversionFactor = Math.max(
+                    0.0001,
+                    Number(row.conversionFactor || 1) || 1,
+                );
 
                 const critRaw = row.criticalStockLevel;
                 let criticalStockAlert;
@@ -447,8 +529,9 @@ export default function SupplierCatalog() {
                         productName: master.name,
                         sku: master.sku || `MC-${master.id}`,
                         categoryId: master.categoryId ? String(master.categoryId) : undefined,
-                        workshopUnit: master.unit || 'pcs',
-                        warehouseUnit: master.unit || 'pcs',
+                        warehouseUnit,
+                        workshopUnit,
+                        conversionFactor,
                         pricePerWarehouseUnit: Number(
                             master.purchasePrice ?? master.salePrice ?? 0,
                         ),
@@ -478,10 +561,18 @@ export default function SupplierCatalog() {
 
                 if (
                     wasExistingSupplierProduct &&
-                    criticalStockAlert !== undefined
+                    (criticalStockAlert !== undefined ||
+                        warehouseUnit ||
+                        workshopUnit ||
+                        conversionFactor)
                 ) {
                     await updateSupplierProduct(String(supplierProductId), {
-                        criticalStockAlert,
+                        ...(criticalStockAlert !== undefined
+                            ? { criticalStockAlert }
+                            : {}),
+                        warehouseUnit,
+                        workshopUnit,
+                        conversionFactor,
                     });
                 }
             }
@@ -521,6 +612,30 @@ export default function SupplierCatalog() {
                     <button
                         className="btn-portal-outline"
                         type="button"
+                        onClick={async () => {
+                            setSyncing(true);
+                            setSyncMsg('');
+                            try {
+                                const ctrl = new AbortController();
+                                loadMasterCatalog(ctrl.signal);
+                                await loadMyInventoryProducts();
+                                setSyncMsg('Synced master catalog.');
+                                setTimeout(() => setSyncMsg(''), 2500);
+                            } catch (e) {
+                                setSyncMsg(e?.message || 'Sync failed.');
+                                setTimeout(() => setSyncMsg(''), 3500);
+                            } finally {
+                                setSyncing(false);
+                            }
+                        }}
+                        disabled={syncing}
+                        title="Sync / refresh master catalog"
+                    >
+                        {syncing ? 'Syncing…' : 'Sync'}
+                    </button>
+                    <button
+                        className="btn-portal-outline"
+                        type="button"
                         onClick={openAddToInventoryModal}
                         disabled={selectedProductIds.size === 0}
                     >
@@ -532,6 +647,22 @@ export default function SupplierCatalog() {
                     </button>
                 </div>
             </div>
+            {syncMsg ? (
+                <div
+                    className="ws-section"
+                    style={{
+                        marginBottom: 12,
+                        padding: 12,
+                        background: '#EFF6FF',
+                        border: '1px solid #BFDBFE',
+                        borderRadius: 12,
+                        color: '#1D4ED8',
+                        fontSize: '0.875rem',
+                    }}
+                >
+                    {syncMsg}
+                </div>
+            ) : null}
 
             <div
                 role="tablist"
@@ -654,6 +785,30 @@ export default function SupplierCatalog() {
 
             {catalogTab === 'browse' ? (
                 <>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+                        <button
+                            type="button"
+                            className={
+                                masterFilterTab === 'not_added'
+                                    ? 'btn-portal'
+                                    : 'btn-portal-outline'
+                            }
+                            onClick={() => setMasterFilterTab('not_added')}
+                        >
+                            Not Added Products
+                        </button>
+                        <button
+                            type="button"
+                            className={
+                                masterFilterTab === 'already_added'
+                                    ? 'btn-portal'
+                                    : 'btn-portal-outline'
+                            }
+                            onClick={() => setMasterFilterTab('already_added')}
+                        >
+                            Already Added Products
+                        </button>
+                    </div>
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
                 <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
                     <Search
@@ -1439,7 +1594,7 @@ export default function SupplierCatalog() {
                 {addInventoryOpen && (
                     <Modal
                         title="Add Selected Products to Inventory"
-                        width="920px"
+                        width="1100px"
                         onClose={() => setAddInventoryOpen(false)}
                         footer={
                             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
@@ -1492,7 +1647,9 @@ export default function SupplierCatalog() {
                                 <thead>
                                     <tr>
                                         <th>Product</th>
-                                        <th>Unit</th>
+                                        <th>Warehouse UOM</th>
+                                        <th>Workshop UOM</th>
+                                        <th>CF (1 wh = ? ws)</th>
                                         <th>Opening Qty</th>
                                         <th>Stock Qty</th>
                                         <th>Critical stock level</th>
@@ -1504,11 +1661,85 @@ export default function SupplierCatalog() {
                                             openingQty: '0',
                                             stockQty: '0',
                                             criticalStockLevel: '',
+                                            warehouseUnit: 'Box',
+                                            workshopUnit: p.unit || 'pcs',
+                                            conversionFactor: '1',
                                         };
                                         return (
                                             <tr key={p.id}>
                                                 <td>{p.name}</td>
-                                                <td>{p.unit || 'pcs'}</td>
+                                                <td>
+                                                    <select
+                                                        value={row.warehouseUnit || 'Box'}
+                                                        onChange={(e) =>
+                                                            updateInventoryQty(
+                                                                p.id,
+                                                                'warehouseUnit',
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                        style={{
+                                                            width: 100,
+                                                            padding: '6px 8px',
+                                                            borderRadius: 6,
+                                                            border: '1px solid var(--color-border)',
+                                                        }}
+                                                    >
+                                                        {WAREHOUSE_UNIT_PRESETS.map((u) => (
+                                                            <option key={u} value={u}>
+                                                                {u}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </td>
+                                                <td>
+                                                    <select
+                                                        value={row.workshopUnit || 'pcs'}
+                                                        onChange={(e) =>
+                                                            updateInventoryQty(
+                                                                p.id,
+                                                                'workshopUnit',
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                        style={{
+                                                            width: 90,
+                                                            padding: '6px 8px',
+                                                            borderRadius: 6,
+                                                            border: '1px solid var(--color-border)',
+                                                        }}
+                                                    >
+                                                        {[...new Set([...(WORKSHOP_UNIT_PRESETS || []), p.unit || 'pcs'])].map(
+                                                            (u) => (
+                                                                <option key={u} value={u}>
+                                                                    {u}
+                                                                </option>
+                                                            ),
+                                                        )}
+                                                    </select>
+                                                </td>
+                                                <td>
+                                                    <input
+                                                        type="number"
+                                                        min="0.0001"
+                                                        step="any"
+                                                        value={row.conversionFactor ?? '1'}
+                                                        onChange={(e) =>
+                                                            updateInventoryQty(
+                                                                p.id,
+                                                                'conversionFactor',
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                        title="1 warehouse unit = this many workshop units (e.g. 1 Box = 20 Liter)"
+                                                        style={{
+                                                            width: 72,
+                                                            padding: '6px 8px',
+                                                            borderRadius: 6,
+                                                            border: '1px solid var(--color-border)',
+                                                        }}
+                                                    />
+                                                </td>
                                                 <td>
                                                     <input
                                                         type="number"

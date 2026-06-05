@@ -15,7 +15,7 @@ export const getWorkshopCommissionsPendingByEmployee = (params = {}, options = {
 
 /**
  * Paginated commission lines. Query: list scope + optional status, employeeId, startDate, endDate,
- * limit, offset (or page/pageSize — backend may accept either).
+ * page, pageSize (defaults: page 1, pageSize 25).
  */
 export const getWorkshopCommissionsList = (params = {}, options = {}) =>
     apiFetch(`/workshop-staff/commissions${qs(params)}`, options);

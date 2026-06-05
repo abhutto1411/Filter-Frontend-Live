@@ -38,6 +38,36 @@ const TAB_LABELS = {
 
 const PAGE_SIZE = 25;
 
+function listColumnsForTab(tab) {
+    if (tab === 'payments') {
+        return {
+            counterparty: 'Paid to',
+            ledger: 'Expense / AP account',
+            cash: 'Paid from (cash/bank)',
+        };
+    }
+    if (tab === 'receipts') {
+        return {
+            counterparty: 'Received from',
+            ledger: 'Against account',
+            cash: 'Received in (cash/bank)',
+        };
+    }
+    return {
+        counterparty: 'Party',
+        ledger: 'Ledger account',
+        cash: 'Cash / bank',
+    };
+}
+
+function showPaymentReceiptColumns(tab, journalType) {
+    if (tab === 'payments' || tab === 'receipts') return true;
+    if (tab === 'all' && (journalType === 'Payment' || journalType === 'Receipt')) {
+        return true;
+    }
+    return false;
+}
+
 function DetailDrawer({ id, onClose }) {
     const [loading, setLoading] = useState(true);
     const [data, setData] = useState(null);
@@ -108,8 +138,11 @@ function DetailDrawer({ id, onClose }) {
                                         <td>[{l.accountCode}] {l.accountName}</td>
                                         <td>{l.description || '—'}</td>
                                         <td>
-                                            {l.externalPartyName ||
-                                                (l.partyType && l.partyId ? `${l.partyType}#${l.partyId}` : l.supplierProductName || '—')}
+                                            {l.partyDisplayName ||
+                                                l.externalPartyName ||
+                                                (l.partyType && l.partyId
+                                                    ? `${l.partyType}#${l.partyId}`
+                                                    : l.supplierProductName || '—')}
                                         </td>
                                         <td style={{ textAlign: 'right' }}>{Number(l.debit) > 0 ? money(l.debit) : '—'}</td>
                                         <td style={{ textAlign: 'right' }}>{Number(l.credit) > 0 ? money(l.credit) : '—'}</td>
@@ -168,6 +201,9 @@ function LogTab({ tab }) {
     useEffect(() => { setOffset(0); }, [tab, dateFrom, dateTo, search]);
     useEffect(() => { load(); }, [load]);
 
+    const cols = listColumnsForTab(tab);
+    const showPrCols = tab === 'payments' || tab === 'receipts' || tab === 'all';
+
     return (
         <div>
             <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', marginBottom: 12, flexWrap: 'wrap' }}>
@@ -186,23 +222,51 @@ function LogTab({ tab }) {
                                 <tr>
                                     <th>Date</th>
                                     <th>Entry #</th>
-                                    <th>Type</th>
+                                    {tab === 'all' ? <th>Type</th> : null}
+                                    {showPrCols ? (
+                                        <>
+                                            <th>{cols.counterparty}</th>
+                                            <th>{cols.ledger}</th>
+                                            <th>{cols.cash}</th>
+                                        </>
+                                    ) : null}
                                     <th>Description</th>
                                     <th>Reference</th>
-                                    <th>Source</th>
                                     <th>Status</th>
                                     <th style={{ textAlign: 'right' }}>Total</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {data.journals.map((j) => (
+                                {data.journals.map((j) => {
+                                    const prCols = showPaymentReceiptColumns(tab, j.type);
+                                    return (
                                     <tr key={j.id} style={{ cursor: 'pointer' }} onClick={() => setDetailId(j.id)}>
                                         <td>{fmtDate(j.date)}</td>
                                         <td style={{ fontWeight: 700, color: '#1D4ED8' }}>{j.entryNumber}</td>
-                                        <td>{j.type}</td>
-                                        <td style={{ maxWidth: 240, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.description || '—'}</td>
+                                        {tab === 'all' ? <td>{j.type}</td> : null}
+                                        {showPrCols ? (
+                                            prCols ? (
+                                                <>
+                                                    <td style={{ maxWidth: 220, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={j.counterpartyLabel || ''}>
+                                                        {j.counterpartyLabel || '—'}
+                                                    </td>
+                                                    <td style={{ maxWidth: 260, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={j.ledgerAccountLabel || ''}>
+                                                        {j.ledgerAccountLabel || '—'}
+                                                    </td>
+                                                    <td style={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={j.cashAccountLabel || ''}>
+                                                        {j.cashAccountLabel || '—'}
+                                                    </td>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <td>—</td>
+                                                    <td>—</td>
+                                                    <td>—</td>
+                                                </>
+                                            )
+                                        ) : null}
+                                        <td style={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.description || '—'}</td>
                                         <td>{j.reference || '—'}</td>
-                                        <td>{j.source || '—'}</td>
                                         <td>
                                             <span style={{
                                                 padding: '2px 8px',
@@ -217,7 +281,8 @@ function LogTab({ tab }) {
                                         </td>
                                         <td style={{ textAlign: 'right', fontWeight: 700 }}>{money(j.totalDebit)}</td>
                                     </tr>
-                                ))}
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>

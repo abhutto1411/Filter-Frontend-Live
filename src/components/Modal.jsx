@@ -38,10 +38,13 @@ export default function Modal({
     className = '',
     contentClassName = '',
     width,
+    /** `large` — wide document-style panel with internal scroll regions. */
+    size = 'default',
     hideCloseButton = false,
     /** When true, backdrop click and header close do nothing (still render close for layout; disabled). */
     disableClose = false,
 }) {
+    const isLarge = size === 'large' || size === 'viewport';
     useEffect(() => {
         const prev = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
@@ -61,16 +64,35 @@ export default function Modal({
         return () => window.removeEventListener('keydown', onKey, true);
     }, [disableClose, onClose]);
 
+    const overlayStyleFinal = {
+        ...overlayStyle,
+        padding: isLarge ? 20 : overlayStyle.padding,
+    };
+
+    const contentClass = [
+        'app-modal-content',
+        contentClassName,
+        isLarge ? 'app-modal-content--large' : '',
+    ]
+        .filter(Boolean)
+        .join(' ');
+
+    const contentStyle = isLarge
+        ? { position: 'relative', zIndex: 1, width: 'min(94vw, 1060px)', maxWidth: 'none' }
+        : width
+          ? { width, maxWidth: 'none', position: 'relative', zIndex: 1 }
+          : { position: 'relative', zIndex: 1 };
+
     const node = (
         <div
-            className={`app-modal-overlay ${className}`}
-            style={overlayStyle}
+            className={`app-modal-overlay ${className}`.trim()}
+            style={overlayStyleFinal}
             onClick={disableClose ? undefined : onClose}
             role="presentation"
         >
             <div
-                className={`app-modal-content ${contentClassName}`.trim()}
-                style={width ? { width, maxWidth: 'none', position: 'relative', zIndex: 1 } : { position: 'relative', zIndex: 1 }}
+                className={contentClass}
+                style={contentStyle}
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="app-modal-header">

@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Users, Wrench, Radio, Plus, Pencil, Trash2, Loader, Eye, EyeOff } from 'lucide-react';
+import { Users, Wrench, Radio, Plus, Pencil, Trash2, Loader, Eye, EyeOff, ShieldCheck, Key, ChevronDown, ChevronRight } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import Modal from '../../components/Modal';
 import { useAuth } from '../../context/AuthContext';
+import * as workshopPermsApi from '../../services/workshopPermissionsApi';
+import { codesToActionsByTab, flattenActionsByTab } from '../../utils/permissions';
 import { ROLE_OPTIONS, COMMISSION_TYPE_OPTIONS, normalizeCommissionType } from './constants';
 import {
     loadWorkshopEmployeesCombined,
@@ -12,8 +14,8 @@ import {
     updateWorkshopPortalStaff,
     updateWorkshopTechnician,
     updateWorkshopCashier,
-    deleteWorkshopTechnician,
     deleteWorkshopCashier,
+    deleteWorkshopPortalStaff,
     getWorkshopBranches,
     getWorkshopTechnicianById,
     getWorkshopCashierById,
@@ -85,6 +87,8 @@ const EMPTY_FORM = {
     commission_type: 'percent_of_revenue',
     status: 'active',
     password: '',
+    /** Workshop RBAC role assignment — overlay on top of the job-title `role`. */
+    permissionRoleId: '',
 };
 
 export default function WorkshopEmployees({ selectedBranchId = 'all', branches: branchesProp = [] }) {
@@ -92,6 +96,10 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
     const canCreate = hasPermission('workshop.employees.create');
     const canEdit   = hasPermission('workshop.employees.edit');
     const canDelete = hasPermission('workshop.employees.delete');
+    // Gate the Roles & Permissions panel + per-employee actions.
+    const canManagePermissions = hasPermission('workshop.permissions.view');
+    const canCreateRoles       = hasPermission('workshop.permissions.create');
+    const canDeleteRoles       = hasPermission('workshop.permissions.delete');
     const [employees, setEmployees] = useState([]);
     const [branchList, setBranchList] = useState([]);
     const [workshopDepartments, setWorkshopDepartments] = useState([]);
@@ -101,6 +109,22 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
     const [saving, setSaving] = useState(false);
     const [listError, setListError] = useState('');
     const [modalOpen, setModalOpen] = useState(false);
+
+    // ─── Roles & Permissions (workshop-scoped) ────────────────────────────
+    const [workshopRoles, setWorkshopRoles] = useState([]);
+    const [rolesPanelOpen, setRolesPanelOpen] = useState(false);
+    const [roleEditTarget, setRoleEditTarget] = useState(null); // null = closed; {} = create; {...} = edit
+    const [portalAccessTarget, setPortalAccessTarget] = useState(null); // employee row
+    const [permissionsTarget, setPermissionsTarget] = useState(null); // employee row
+    const loadWorkshopRoles = useCallback(async () => {
+        try {
+            const res = await workshopPermsApi.listRoles();
+            setWorkshopRoles(res?.roles ?? []);
+        } catch {
+            setWorkshopRoles([]);
+        }
+    }, []);
+    useEffect(() => { loadWorkshopRoles(); }, [loadWorkshopRoles]);
     const [editing, setEditing] = useState(null);
     const [form, setForm] = useState(EMPTY_FORM);
     const [showPassword, setShowPassword] = useState(false);
@@ -324,6 +348,7 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
             commission_type: normalizeCommissionType(emp.commission_type),
             status: emp.status || 'active',
             password: '',
+            permissionRoleId: emp.permissionRole?.id ? String(emp.permissionRole.id) : '',
         });
         setShowPassword(false);
         setModalOpen(true);
@@ -516,6 +541,55 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
                 } else {
                     await updateWorkshopCashier(editing.id, body);
                 }
+
+                // Permission Role assignment — only if the dropdown was visible
+                // (employee has a User account) AND the value actually changed.
+                // Re-uses the workshop's portal-access endpoint to swap the
+                // role without touching userType or password.
+                if (editing.userId && canManagePermissions) {
+                    const currentRoleId = editing.permissionRole?.id ? String(editing.permissionRole.id) : '';
+                    const nextRoleId = String(form.permissionRoleId || '');
+                    if (currentRoleId !== nextRoleId) {
+                        // Prefer the SELECTED role's portal so backend's portal-match
+                        // check passes. Falls back to inferring from the user's
+                        // current portal if no new role was picked (i.e. removing).
+                        const selectedRole = nextRoleId
+                            ? workshopRoles.find((r) => String(r.id) === nextRoleId)
+                            : null;
+                        const currentPortal = selectedRole?.portal
+                            || editing.permissionRole?.portal
+                            || (editing.userType === 'cashier_user' ? 'cashier'
+                                : editing.role === 'technician'      ? 'technician'
+                                : 'workshop');
+                        try {
+                            await workshopPermsApi.grantPortalAccess(editing.userId, {
+                                portal: currentPortal,
+                                roleId: nextRoleId || null,
+                                password: null, // keep existing password
+                            });
+                        } catch (rerr) {
+                            // The main employee update already committed, but the role
+                            // swap failed. Common causes:
+                            //   - Vultr DB connection blip ("Can't reach database server")
+                            //   - Portal mismatch (role.portal !== currentPortal)
+                            //   - Role no longer exists (deleted in another tab)
+                            // Keep the modal open + setSaving(false) so user can retry
+                            // without losing their other unsaved edits.
+                            const msg = String(rerr?.message || 'unknown error');
+                            const isNetwork = /Can't reach|ECONNREFUSED|ETIMEDOUT|fetch failed/i.test(msg);
+                            alert(
+                                isNetwork
+                                    ? `Employee details saved, but ROLE assignment couldn't reach the database.\n\nThis is usually a temporary network blip — try saving again in a few seconds. Your role choice is still in the form.`
+                                    : `Employee saved, but role assignment failed:\n${msg}`,
+                            );
+                            // Bail out before modal closes so the user can retry without
+                            // re-opening + re-picking the role.
+                            setSaving(false);
+                            await loadEmployees();
+                            return;
+                        }
+                    }
+                }
             } else if (isTech) {
                 await createWorkshopTechnician(body);
             } else if (isPortalStaffRole(form.role)) {
@@ -544,12 +618,26 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
         }
     };
 
-    const handleDelete = async (id, source) => {
-        if (!confirm('Remove this employee?')) return;
+    const handleDelete = async (emp) => {
+        // Accept either the full row (new) or (id, source) for older callers.
+        const id = typeof emp === 'object' ? emp.id : emp;
+        const source = typeof emp === 'object' ? emp._source : arguments[1];
+        const isPortal = typeof emp === 'object' && isPortalEmployeeRow(emp);
+        if (source === 'technician') {
+            alert('Technicians cannot be deleted. Edit the technician and set Status to Inactive instead.');
+            return;
+        }
+        if (!confirm('Remove this employee? This cannot be undone.')) return;
         setSaving(true);
         try {
-            if (source === 'technician') await deleteWorkshopTechnician(id);
-            else await deleteWorkshopCashier(id);
+            if (isPortal) {
+                // Manager / supervisor / team_leader — User row, NOT cashiers/employees table.
+                // Uses User.id; the row's `userId` is the same as `id` for portal_user.
+                const userId = (typeof emp === 'object' ? (emp.userId ?? emp.id) : id);
+                await deleteWorkshopPortalStaff(userId);
+            } else {
+                await deleteWorkshopCashier(id);
+            }
             await loadEmployees();
         } catch (e) {
             alert(e.message || 'Delete failed');
@@ -569,12 +657,43 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
                         the workshop portal after approval.
                     </p>
                 </div>
-                {canCreate && (
-                    <button className="btn-portal" onClick={openAdd} disabled={saving}>
-                        <Plus size={15} /> Add New Employee
-                    </button>
-                )}
+                <div style={{ display: 'flex', gap: 10 }}>
+                    {canManagePermissions && (
+                        <button
+                            className="btn-portal-outline"
+                            onClick={() => setRolesPanelOpen((v) => !v)}
+                            title="Manage workshop roles & permissions"
+                        >
+                            <ShieldCheck size={15} /> Roles & Permissions ({workshopRoles.length})
+                        </button>
+                    )}
+                    {canCreate && (
+                        <button className="btn-portal" onClick={openAdd} disabled={saving}>
+                            <Plus size={15} /> Add New Employee
+                        </button>
+                    )}
+                </div>
             </div>
+
+            {rolesPanelOpen && canManagePermissions && (
+                <WorkshopRolesPanel
+                    roles={workshopRoles}
+                    canCreate={canCreateRoles}
+                    canDelete={canDeleteRoles}
+                    onCreate={() => setRoleEditTarget({})}
+                    onEdit={(r) => setRoleEditTarget(r)}
+                    onDelete={async (r) => {
+                        if (!window.confirm(`Delete role "${r.name}"?`)) return;
+                        try {
+                            await workshopPermsApi.deleteRole(r.id);
+                            await loadWorkshopRoles();
+                        } catch (e) {
+                            alert(e?.message || 'Could not delete role');
+                        }
+                    }}
+                    onClose={() => setRolesPanelOpen(false)}
+                />
+            )}
             {listError && (
                 <div className="ws-section" style={{ marginBottom: 12, padding: 12, color: '#B91C1C', fontSize: '0.875rem' }}>
                     {listError}
@@ -625,6 +744,7 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
                                 <tr>
                                     <th>Name</th>
                                     <th>Role</th>
+                                    <th>Assigned Role</th>
                                     <th>Department</th>
                                     <th>Branch</th>
                                     <th>Phone</th>
@@ -641,6 +761,19 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
                                             <strong>{emp.name}</strong>
                                         </td>
                                         <td>{String(emp.role || '').replace(/_/g, ' ') || '—'}</td>
+                                        <td>
+                                            {emp.permissionRole ? (
+                                                <span style={{
+                                                    display: 'inline-block', padding: '2px 8px',
+                                                    borderRadius: 999, background: '#f5f3ff',
+                                                    color: '#6b21a8', fontWeight: 700, fontSize: '0.75rem',
+                                                }}>
+                                                    {emp.permissionRole.name}
+                                                </span>
+                                            ) : (
+                                                <span style={{ color: '#94a3b8' }}>—</span>
+                                            )}
+                                        </td>
                                         <td>{formatEmployeeDepartments(emp) ?? '—'}</td>
                                         <td>{emp.branch || '—'}</td>
                                         <td>{emp.phone}</td>
@@ -683,10 +816,10 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
                                                     <Pencil size={12} />
                                                 </button>
                                             )}
-                                            {canDelete && (
+                                            {canDelete && emp._source !== 'technician' && (
                                                 <button
                                                     type="button"
-                                                    onClick={() => handleDelete(emp.id, emp._source)}
+                                                    onClick={() => handleDelete(emp)}
                                                     style={{
                                                         padding: '5px 10px',
                                                         background: '#FEE2E2',
@@ -700,6 +833,44 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
                                                     disabled={saving}
                                                 >
                                                     <Trash2 size={12} />
+                                                </button>
+                                            )}
+                                            {canManagePermissions && emp.userId && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPortalAccessTarget(emp)}
+                                                    title="Grant / change portal access (cashier / technician / workshop)"
+                                                    style={{
+                                                        padding: '5px 10px',
+                                                        background: '#FEF3C7',
+                                                        color: '#92400E',
+                                                        border: 'none',
+                                                        borderRadius: 6,
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.75rem',
+                                                    }}
+                                                >
+                                                    <Key size={12} />
+                                                </button>
+                                            )}
+                                            {canManagePermissions && emp.userId && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPermissionsTarget(emp)}
+                                                    title="Override permissions for this user"
+                                                    style={{
+                                                        padding: '5px 10px',
+                                                        background: '#F3E8FF',
+                                                        color: '#6B21A8',
+                                                        border: 'none',
+                                                        borderRadius: 6,
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.75rem',
+                                                    }}
+                                                >
+                                                    <ShieldCheck size={12} />
                                                 </button>
                                             )}
                                         </td>
@@ -831,7 +1002,43 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
                                                 </option>
                                             ))}
                                         </select>
+                                        <small style={{ color: 'var(--color-text-muted)', fontSize: '0.7rem' }}>
+                                            Job title — controls which workshop sub-flow they're slotted into.
+                                        </small>
                                     </div>
+
+                                    {/* Permission Role — only meaningful for existing employees that already
+                                        have a User account. The 🔑 Portal Access modal is the only way to
+                                        CREATE a User account (it also sets the portal + password). Once they
+                                        have one, this dropdown is a quick way to swap their RBAC role. */}
+                                    {editing && editing.userId && canManagePermissions && (
+                                        <div className="ws-field">
+                                            <label>Permission Role</label>
+                                            <select
+                                                value={form.permissionRoleId}
+                                                onChange={(e) => setForm((f) => ({ ...f, permissionRoleId: e.target.value }))}
+                                            >
+                                                <option value="">— No role (full access via legacy bypass) —</option>
+                                                {/* Show ALL workshop-managed roles regardless of portal — admin can
+                                                    assign cross-portal if they know what they're doing. Each option's
+                                                    portal is shown in the label so the choice is informed. Backend
+                                                    still validates portal compatibility on save. */}
+                                                {workshopRoles.length === 0 ? (
+                                                    <option value="" disabled>
+                                                        (No workshop roles created yet — create one in Roles & Permissions panel)
+                                                    </option>
+                                                ) : workshopRoles.map((r) => (
+                                                    <option key={r.id} value={r.id}>
+                                                        {r.name} [{r.portal}] · {r.permissionCount} permissions
+                                                    </option>
+                                                ))}
+                                            </select>
+                                            <small style={{ color: 'var(--color-text-muted)', fontSize: '0.7rem' }}>
+                                                Controls dashboard tabs + actions. To change portal or password, use the 🔑 Portal Access button.
+                                            </small>
+                                        </div>
+                                    )}
+
                                     {form.role === 'team_leader' && (
                                         <div className="ws-field" style={{ gridColumn: '1/-1' }}>
                                             <label>
@@ -1122,7 +1329,716 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
                         </div>
                     </Modal>
                 )}
+
+                {/* Role create / edit modal */}
+                {roleEditTarget && (
+                    <WorkshopRoleModal
+                        role={roleEditTarget.id ? roleEditTarget : null}
+                        branches={branchList}
+                        onClose={() => setRoleEditTarget(null)}
+                        onSaved={async () => { setRoleEditTarget(null); await loadWorkshopRoles(); }}
+                    />
+                )}
+
+                {/* Portal Access modal — per employee */}
+                {portalAccessTarget && (
+                    <PortalAccessModal
+                        employee={portalAccessTarget}
+                        roles={workshopRoles}
+                        onClose={() => setPortalAccessTarget(null)}
+                        onSaved={async () => {
+                            setPortalAccessTarget(null);
+                            await loadEmployees();
+                        }}
+                    />
+                )}
+
+                {/* Permission override modal — per employee */}
+                {permissionsTarget && (
+                    <EmployeePermissionsModal
+                        employee={permissionsTarget}
+                        onClose={() => setPermissionsTarget(null)}
+                        onSaved={() => setPermissionsTarget(null)}
+                    />
+                )}
             </AnimatePresence>
         </div>
     );
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Workshop Roles Panel — lists this workshop's custom roles                */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+const PORTAL_OPTIONS = [
+    { id: 'workshop',   label: 'Workshop Admin Portal' },
+    { id: 'cashier',    label: 'Cashier (POS) Portal' },
+    { id: 'technician', label: 'Technician Portal' },
+];
+
+/**
+ * Predefined role names — same job-titles list used by the Add Employee form
+ * (ROLE_OPTIONS in workshop/constants.js). Keeping this list in sync means a
+ * workshop will typically have roles named after the same job titles its
+ * employees hold, making role assignment self-documenting.
+ */
+const PREDEFINED_ROLE_NAMES = [
+    'cashier',
+    'technician',
+    'supervisor',
+    'manager',
+    'team_leader',
+    'locker_supervisor',
+    'locker_collector',
+];
+
+const formatRoleName = (slug) =>
+    slug.split('_').map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join(' ');
+
+function WorkshopRolesPanel({ roles, canCreate = true, canDelete = true, onCreate, onEdit, onDelete }) {
+    return (
+        <div className="ws-section" style={{ marginBottom: 16, padding: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>Workshop Roles</h3>
+                {canCreate && (
+                    <button className="btn-portal" onClick={onCreate}>
+                        <Plus size={14} /> Create Role
+                    </button>
+                )}
+            </div>
+            {roles.length === 0 ? (
+                <p style={{ color: '#94a3b8', fontSize: '0.875rem', margin: 0 }}>
+                    No custom roles yet. Click <strong>Create Role</strong> to bundle a set of permissions
+                    you can later assign to employees.
+                </p>
+            ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 10 }}>
+                    {roles.map((r) => (
+                        <div key={r.id} style={{
+                            border: '1px solid var(--color-border)',
+                            borderRadius: 10, padding: 12, background: '#fff',
+                            display: 'flex', flexDirection: 'column', gap: 6,
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <strong style={{ fontSize: '0.9375rem' }}>{r.name}</strong>
+                                <span style={{
+                                    fontSize: '0.7rem', fontWeight: 700,
+                                    padding: '2px 8px', borderRadius: 999,
+                                    background: r.portal === 'cashier' ? '#dbeafe' :
+                                                r.portal === 'technician' ? '#fed7aa' : '#dcfce7',
+                                    color:      r.portal === 'cashier' ? '#1e40af' :
+                                                r.portal === 'technician' ? '#9a3412' : '#166534',
+                                }}>
+                                    {r.portal}
+                                </span>
+                            </div>
+                            {r.description && (
+                                <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>{r.description}</p>
+                            )}
+                            <p style={{ margin: 0, fontSize: '0.75rem', color: '#94a3b8' }}>
+                                {r.permissionCount} permissions · {r.userCount} user(s) assigned
+                            </p>
+                            {r.portal === 'workshop' && (
+                                <p style={{ margin: 0, fontSize: '0.75rem', color: '#64748b' }}>
+                                    Branches: {r.branchScope === 'all' || !r.branches?.length
+                                        ? 'All'
+                                        : r.branches.map((b) => b.name).join(', ')}
+                                </p>
+                            )}
+                            <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                                <button
+                                    type="button"
+                                    style={{ flex: 1, padding: '5px', background: '#EFF6FF', color: '#2563EB', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700 }}
+                                    onClick={() => onEdit(r)}
+                                >
+                                    <Pencil size={12} /> Edit
+                                </button>
+                                {!r.isSystem && (
+                                    <button
+                                        type="button"
+                                        style={{ flex: 1, padding: '5px', background: '#FEE2E2', color: '#DC2626', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700 }}
+                                        onClick={() => onDelete(r)}
+                                    >
+                                        <Trash2 size={12} /> Delete
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Workshop Role Create / Edit Modal                                         */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function WorkshopRoleModal({ role, branches = [], onClose, onSaved }) {
+    const isEdit = Boolean(role?.id);
+    const [name, setName] = useState(role?.name ?? '');
+    const [description, setDescription] = useState(role?.description ?? '');
+    const [portal, setPortal] = useState(role?.portal ?? 'workshop');
+    const [perms, setPerms] = useState(role?.permissions ? codesToActionsByTab(role.permissions) : {});
+    const [tree, setTree] = useState([]);
+    const [loadingTree, setLoadingTree] = useState(false);
+    const [saving, setSaving] = useState(false);
+
+    // Branch scope — only meaningful for portal = 'workshop'. Empty array sent
+    // to backend = "All Branches" (no restriction).
+    //   - 'all'      → assigned users can switch between all workshop branches
+    //   - 'specific' → assigned users are restricted to selectedBranchIds only
+    const [branchScope, setBranchScope] = useState(role?.branchScope ?? 'all');
+    const [selectedBranchIds, setSelectedBranchIds] = useState(
+        (role?.branchIds ?? []).map(String),
+    );
+
+    useEffect(() => {
+        setLoadingTree(true);
+        workshopPermsApi.getRegistry(portal)
+            .then((res) => setTree(res?.tree ?? []))
+            .catch(() => setTree([]))
+            .finally(() => setLoadingTree(false));
+    }, [portal]);
+
+    const totalActions = useMemo(
+        () => tree.reduce((s, sec) => s + sec.tabs.reduce((c, t) => c + (t.actions?.length ?? 0), 0), 0),
+        [tree],
+    );
+    const selectedCount = useMemo(
+        () => Object.values(perms).reduce((s, m) => s + Object.values(m).filter(Boolean).length, 0),
+        [perms],
+    );
+
+    const toggleAction = (tabKey, action) =>
+        setPerms((p) => ({ ...p, [tabKey]: { ...(p[tabKey] || {}), [action]: !p[tabKey]?.[action] } }));
+    const toggleTabAll = (tab) => {
+        const allOn = tab.actions.every((a) => perms[tab.key]?.[a]);
+        const next = { ...(perms[tab.key] || {}) };
+        tab.actions.forEach((a) => { next[a] = !allOn; });
+        setPerms((p) => ({ ...p, [tab.key]: next }));
+    };
+    const selectAll = () => {
+        const allOn = selectedCount === totalActions;
+        const next = {};
+        if (!allOn) for (const sec of tree) for (const t of sec.tabs) {
+            next[t.key] = {};
+            for (const a of t.actions) next[t.key][a] = true;
+        }
+        setPerms(next);
+    };
+
+    const handleSave = async () => {
+        if (!name.trim()) { alert('Role name is required'); return; }
+        if (portal === 'workshop' && branchScope === 'specific' && selectedBranchIds.length === 0) {
+            alert('Pick at least one branch, or switch to "All Branches"');
+            return;
+        }
+        setSaving(true);
+        try {
+            const payload = {
+                name: name.trim(),
+                description: description.trim(),
+                permissions: flattenActionsByTab(perms),
+                // Branch scope: 'all' → empty list (no restriction);
+                // 'specific' → only the picked branches.
+                // Only sent for workshop portal — backend ignores for cashier/technician.
+                branchIds: portal === 'workshop' && branchScope === 'specific'
+                    ? selectedBranchIds.map(String)
+                    : [],
+            };
+            if (isEdit) {
+                await workshopPermsApi.updateRole(role.id, payload);
+            } else {
+                await workshopPermsApi.createRole({ ...payload, portal });
+            }
+            onSaved?.();
+        } catch (e) {
+            alert(e?.message || 'Could not save role');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <Modal
+            title={isEdit ? `Edit Role — ${role.name}` : 'Create Workshop Role'}
+            onClose={onClose}
+            width="780px"
+            footer={(
+                <>
+                    <button className="btn-portal-outline" onClick={onClose} disabled={saving}>Cancel</button>
+                    <button className="btn-portal" onClick={handleSave} disabled={saving}>
+                        {saving ? 'Saving…' : (isEdit ? 'Save Changes' : 'Create Role')}
+                    </button>
+                </>
+            )}
+        >
+            <div style={{ fontSize: '0.875rem' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                    <div>
+                        <label style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>Role name *</label>
+                        <select
+                            value={PREDEFINED_ROLE_NAMES.includes(name) ? name : (name ? '__custom__' : '')}
+                            onChange={(e) => {
+                                const v = e.target.value;
+                                if (v === '__custom__') setName('');     // open free-text below
+                                else if (v === '') setName('');
+                                else setName(v);
+                            }}
+                            disabled={isEdit}
+                            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--color-border)', opacity: isEdit ? 0.7 : 1 }}
+                        >
+                            <option value="">— Pick a role name —</option>
+                            {PREDEFINED_ROLE_NAMES.map((n) => (
+                                <option key={n} value={n}>{formatRoleName(n)}</option>
+                            ))}
+                            <option value="__custom__">Custom name…</option>
+                        </select>
+                        {/* Free-text input only when user picked "Custom" (or in edit mode). */}
+                        {(!PREDEFINED_ROLE_NAMES.includes(name) || isEdit) && (
+                            <input
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                placeholder={isEdit ? '' : 'Type a custom name'}
+                                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--color-border)', marginTop: 6 }}
+                            />
+                        )}
+                    </div>
+                    <div>
+                        <label style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>Portal</label>
+                        <select
+                            value={portal}
+                            onChange={(e) => { setPortal(e.target.value); setPerms({}); }}
+                            disabled={isEdit}
+                            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--color-border)', opacity: isEdit ? 0.7 : 1 }}
+                        >
+                            {PORTAL_OPTIONS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                        </select>
+                        {isEdit && (
+                            <small style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Portal cannot change after creation.</small>
+                        )}
+                    </div>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                    <label style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>Description</label>
+                    <input value={description} onChange={(e) => setDescription(e.target.value)} style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--color-border)' }} />
+                </div>
+
+                {/* Branch scope — workshop portal only. Cashier & technician use
+                    per-user User.branchId (set at employee creation) for scoping. */}
+                {portal === 'workshop' && (
+                    <div style={{ marginBottom: 14, padding: 12, background: '#f8fafc', border: '1px solid var(--color-border)', borderRadius: 10 }}>
+                        <label style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>Branch Access</label>
+                        <select
+                            value={branchScope}
+                            onChange={(e) => setBranchScope(e.target.value)}
+                            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--color-border)', marginBottom: branchScope === 'specific' ? 10 : 0 }}
+                        >
+                            <option value="all">All Branches (no restriction)</option>
+                            <option value="specific">Specific Branches…</option>
+                        </select>
+
+                        {branchScope === 'specific' && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                                {branches.length === 0 ? (
+                                    <small style={{ color: '#92400e' }}>No branches available.</small>
+                                ) : branches.map((b) => {
+                                    const id = String(b.id);
+                                    const on = selectedBranchIds.includes(id);
+                                    return (
+                                        <label key={id} style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 6,
+                                            padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
+                                            border: `1px solid ${on ? '#7c3aed' : '#cbd5e1'}`,
+                                            background: on ? '#f5f3ff' : '#fff',
+                                            color: on ? '#6b21a8' : '#475569',
+                                            fontSize: '0.8125rem', fontWeight: 600,
+                                        }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={on}
+                                                onChange={() => setSelectedBranchIds((prev) => (
+                                                    on ? prev.filter((x) => x !== id) : [...prev, id]
+                                                ))}
+                                                style={{ display: 'none' }}
+                                            />
+                                            {b.name}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        <small style={{ display: 'block', marginTop: 8, color: '#64748b', fontSize: '0.75rem' }}>
+                            Users with this role will only be able to switch between the selected branches in the sidebar.
+                        </small>
+                    </div>
+                )}
+
+                <div style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    padding: '10px 14px', borderRadius: 10, background: '#f8fafc',
+                    border: '1px solid var(--color-border)', marginBottom: 12,
+                }}>
+                    <span style={{ fontWeight: 700 }}>
+                        {selectedCount} of {totalActions} permissions selected
+                    </span>
+                    <button type="button" className="btn-link" onClick={selectAll}>
+                        {selectedCount === totalActions ? 'Deselect All' : 'Select All'}
+                    </button>
+                </div>
+
+                {loadingTree ? (
+                    <div style={{ padding: 30, textAlign: 'center', color: '#64748b' }}>
+                        <Loader size={18} className="spin" /> Loading permissions…
+                    </div>
+                ) : tree.length === 0 ? (
+                    <div style={{ padding: 20, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, fontSize: '0.875rem' }}>
+                        No permissions defined yet for the <strong>{portal}</strong> portal. You can still
+                        create the role — assigned users will use the legacy fallback (full access for now).
+                    </div>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {tree.map((sec) => (
+                            <SectionCard key={sec.section} section={sec} perms={perms} onToggleAction={toggleAction} onToggleTab={toggleTabAll} />
+                        ))}
+                    </div>
+                )}
+            </div>
+        </Modal>
+    );
+}
+
+function SectionCard({ section, perms, onToggleAction, onToggleTab }) {
+    const [open, setOpen] = useState(true);
+    const total = section.tabs.reduce((s, t) => s + (t.actions?.length ?? 0), 0);
+    const checked = section.tabs.reduce((s, t) => s + (t.actions?.filter((a) => perms[t.key]?.[a]).length ?? 0), 0);
+    return (
+        <div style={{ border: '1px solid var(--color-border)', borderRadius: 10, padding: 12, background: '#fff' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <button type="button" style={{ background: 'none', border: 'none', cursor: 'pointer' }} onClick={() => setOpen((o) => !o)}>
+                    {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+                <strong style={{ flex: 1 }}>{section.section}</strong>
+                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{checked}/{total}</span>
+            </div>
+            {open && section.tabs.map((tab) => {
+                if ((tab.actions?.length ?? 0) === 0) {
+                    return <div key={tab.key} style={{ padding: 8, fontSize: '0.8125rem', color: '#92400e', background: '#fffbeb', borderRadius: 6, marginBottom: 6 }}>{tab.label}</div>;
+                }
+                const all = tab.actions.every((a) => perms[tab.key]?.[a]);
+                return (
+                    <div key={tab.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', border: '1px solid var(--color-border)', borderRadius: 6, marginBottom: 6, background: '#fff' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', minWidth: 220 }}>
+                            <input type="checkbox" checked={all} onChange={() => onToggleTab(tab)} />
+                            <strong style={{ fontSize: '0.8125rem' }}>{tab.label}</strong>
+                        </label>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginLeft: 'auto' }}>
+                            {tab.actions.map((a) => {
+                                const on = !!perms[tab.key]?.[a];
+                                return (
+                                    <label key={a} style={{
+                                        display: 'inline-flex', alignItems: 'center', gap: 4,
+                                        padding: '3px 8px', borderRadius: 999, cursor: 'pointer',
+                                        border: `1px solid ${on ? '#7c3aed' : '#cbd5e1'}`,
+                                        background: on ? '#f5f3ff' : '#fff',
+                                        color: on ? '#6b21a8' : '#64748b',
+                                        fontSize: '0.7rem', fontWeight: 700,
+                                    }}>
+                                        <input type="checkbox" checked={on} onChange={() => onToggleAction(tab.key, a)} style={{ display: 'none' }} />
+                                        {a}
+                                    </label>
+                                );
+                            })}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Portal Access Modal — per employee                                        */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function PortalAccessModal({ employee, roles, onClose, onSaved }) {
+    const [portal, setPortal] = useState('workshop');
+    const [roleId, setRoleId] = useState('');
+    const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState('');
+
+    const availableRoles = useMemo(
+        () => roles.filter((r) => r.portal === portal),
+        [roles, portal],
+    );
+
+    const handleSave = async () => {
+        setError('');
+        if (!portal) { setError('Select a portal'); return; }
+        if (password && password.length > 0 && password.length < 6) {
+            setError('Password must be at least 6 characters (or leave blank to keep current)');
+            return;
+        }
+        setSaving(true);
+        try {
+            await workshopPermsApi.grantPortalAccess(employee.userId ?? employee.id, {
+                portal,
+                roleId: roleId || null,
+                password: password || null,
+            });
+            onSaved?.();
+        } catch (e) {
+            setError(e?.message || 'Could not grant portal access');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <Modal
+            title={`Portal Access — ${employee.name || employee.email}`}
+            onClose={onClose}
+            width="560px"
+            footer={(
+                <>
+                    <button className="btn-portal-outline" onClick={onClose} disabled={saving}>Cancel</button>
+                    <button className="btn-portal" onClick={handleSave} disabled={saving}>
+                        {saving ? 'Saving…' : 'Grant Access'}
+                    </button>
+                </>
+            )}
+        >
+            <div style={{ fontSize: '0.875rem' }}>
+                <div style={{ padding: 12, background: '#f8fafc', border: '1px solid var(--color-border)', borderRadius: 10, marginBottom: 14 }}>
+                    <strong>{employee.name || '—'}</strong>
+                    <div style={{ color: '#64748b', fontSize: '0.8125rem' }}>{employee.email || 'no email'}</div>
+                </div>
+                {error && (
+                    <div style={{ marginBottom: 12, padding: 10, background: '#fef2f2', color: '#991b1b', borderRadius: 8 }}>{error}</div>
+                )}
+
+                <div style={{ marginBottom: 12 }}>
+                    <label style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>Portal *</label>
+                    <select
+                        value={portal}
+                        onChange={(e) => { setPortal(e.target.value); setRoleId(''); }}
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--color-border)' }}
+                    >
+                        {PORTAL_OPTIONS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    </select>
+                    <small style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                        The employee will sign in via this portal's login page using their email + password.
+                    </small>
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                    <label style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>Role</label>
+                    <select
+                        value={roleId}
+                        onChange={(e) => setRoleId(e.target.value)}
+                        style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--color-border)' }}
+                    >
+                        <option value="">— No role (full access via legacy bypass) —</option>
+                        {availableRoles.map((r) => (
+                            <option key={r.id} value={r.id}>
+                                {r.name} · {r.permissionCount} permissions
+                            </option>
+                        ))}
+                    </select>
+                    {availableRoles.length === 0 && (
+                        <small style={{ color: '#92400e', fontSize: '0.75rem' }}>
+                            No roles defined for the {portal} portal yet. Create one in <strong>Roles & Permissions</strong> first.
+                        </small>
+                    )}
+                </div>
+
+                <div style={{ marginBottom: 12 }}>
+                    <label style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>
+                        New password <span style={{ fontWeight: 400, color: '#64748b' }}>(leave blank to keep current)</span>
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                        <input
+                            type={showPassword ? 'text' : 'password'}
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            placeholder="Min 6 characters"
+                            style={{ width: '100%', padding: '10px 36px 10px 12px', borderRadius: 8, border: '1px solid var(--color-border)' }}
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setShowPassword((v) => !v)}
+                            style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}
+                        >
+                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                    </div>
+                </div>
+
+                <div style={{
+                    padding: '10px 12px', background: '#eff6ff', border: '1px solid #bfdbfe',
+                    borderRadius: 8, fontSize: '0.75rem', color: '#1e40af',
+                }}>
+                    💡 This replaces any existing portal access this employee has — one employee can only
+                    use one portal at a time.
+                </div>
+            </div>
+        </Modal>
+    );
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Employee Permission Override Modal                                        */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+function EmployeePermissionsModal({ employee, onClose, onSaved }) {
+    const userId = employee.userId ?? employee.id;
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState('');
+    const [hasOverride, setHasOverride] = useState(false);
+    const [tree, setTree] = useState([]);
+    const [perms, setPerms] = useState({});
+
+    useEffect(() => {
+        let cancelled = false;
+        setLoading(true);
+        Promise.all([
+            workshopPermsApi.getEmployeePermissions(userId),
+            // We need a tree to render the matrix. Use the portal of the user's
+            // assigned role if any; otherwise default to 'workshop'.
+        ]).then(async ([res]) => {
+            if (cancelled) return;
+            setHasOverride(Boolean(res?.hasOverride));
+            // We don't know the portal from the employee row directly; try to infer.
+            const portalGuess = inferPortalFromEmployee(employee) || 'workshop';
+            const treeRes = await workshopPermsApi.getRegistry(portalGuess).catch(() => ({ tree: [] }));
+            if (cancelled) return;
+            setTree(treeRes?.tree ?? []);
+            setPerms(codesToActionsByTab(res?.effectiveCodes ?? []));
+        }).catch((e) => {
+            if (!cancelled) setError(e?.message || 'Failed to load permissions');
+        }).finally(() => {
+            if (!cancelled) setLoading(false);
+        });
+        return () => { cancelled = true; };
+    }, [userId, employee]);
+
+    const total = useMemo(
+        () => tree.reduce((s, sec) => s + sec.tabs.reduce((c, t) => c + (t.actions?.length ?? 0), 0), 0),
+        [tree],
+    );
+    const checked = useMemo(
+        () => Object.values(perms).reduce((s, m) => s + Object.values(m).filter(Boolean).length, 0),
+        [perms],
+    );
+
+    const toggleAction = (tabKey, action) =>
+        setPerms((p) => ({ ...p, [tabKey]: { ...(p[tabKey] || {}), [action]: !p[tabKey]?.[action] } }));
+    const toggleTabAll = (tab) => {
+        const allOn = tab.actions.every((a) => perms[tab.key]?.[a]);
+        const next = { ...(perms[tab.key] || {}) };
+        tab.actions.forEach((a) => { next[a] = !allOn; });
+        setPerms((p) => ({ ...p, [tab.key]: next }));
+    };
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            await workshopPermsApi.setEmployeePermissions(userId, flattenActionsByTab(perms));
+            onSaved?.();
+        } catch (e) {
+            alert(e?.message || 'Could not save');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleReset = async () => {
+        if (!window.confirm('Revert this employee to their role\'s default permissions?')) return;
+        setSaving(true);
+        try {
+            await workshopPermsApi.clearEmployeePermissions(userId);
+            onSaved?.();
+        } catch (e) {
+            alert(e?.message || 'Could not reset');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <Modal
+            title={`Permissions — ${employee.name || employee.email}`}
+            onClose={onClose}
+            width="780px"
+            footer={(
+                <>
+                    {hasOverride && (
+                        <button className="btn-portal-outline" onClick={handleReset} disabled={saving}>Reset to role defaults</button>
+                    )}
+                    <button className="btn-portal-outline" onClick={onClose} disabled={saving}>Cancel</button>
+                    <button className="btn-portal" onClick={handleSave} disabled={saving || loading}>
+                        {saving ? 'Saving…' : 'Save Override'}
+                    </button>
+                </>
+            )}
+        >
+            <div style={{ fontSize: '0.875rem' }}>
+                <div style={{
+                    padding: '10px 14px', borderRadius: 10,
+                    background: hasOverride ? '#faf5ff' : '#eff6ff',
+                    border: `1px solid ${hasOverride ? '#e9d5ff' : '#bfdbfe'}`,
+                    fontSize: '0.8125rem', marginBottom: 14, fontWeight: 600,
+                    color: hasOverride ? '#6b21a8' : '#1e40af',
+                }}>
+                    {hasOverride
+                        ? '🟣 Custom override active for this employee.'
+                        : '🔵 Using role defaults — saving below creates a per-user override.'}
+                </div>
+                {error && (
+                    <div style={{ marginBottom: 12, padding: 10, background: '#fef2f2', color: '#991b1b', borderRadius: 8 }}>{error}</div>
+                )}
+                {loading ? (
+                    <div style={{ padding: 30, textAlign: 'center', color: '#64748b' }}>
+                        <Loader size={18} className="spin" /> Loading…
+                    </div>
+                ) : (
+                    <>
+                        <div style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '10px 14px', borderRadius: 10, background: '#f1f5f9',
+                            border: '1px solid var(--color-border)', marginBottom: 12,
+                        }}>
+                            <strong>{checked} of {total} permissions selected</strong>
+                        </div>
+                        {tree.length === 0 ? (
+                            <div style={{ padding: 20, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8 }}>
+                                No permissions defined for this portal yet.
+                            </div>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                {tree.map((sec) => (
+                                    <SectionCard key={sec.section} section={sec} perms={perms} onToggleAction={toggleAction} onToggleTab={toggleTabAll} />
+                                ))}
+                            </div>
+                        )}
+                    </>
+                )}
+            </div>
+        </Modal>
+    );
+}
+
+function inferPortalFromEmployee(emp) {
+    const ut = String(emp.userType ?? '').toLowerCase();
+    if (ut === 'cashier_user') return 'cashier';
+    if (ut === 'workshop_user' || ut === 'workshop_owner') return 'workshop';
+    const role = String(emp.role ?? '').toLowerCase();
+    if (role === 'technician') return 'technician';
+    if (role === 'cashier') return 'cashier';
+    return 'workshop';
 }

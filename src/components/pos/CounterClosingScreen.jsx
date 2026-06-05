@@ -3,6 +3,73 @@ import { ArrowLeft, LogOut, Check, Lock, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
+function toNumber(v) {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : 0;
+}
+
+function DepartmentSalesTable({ rows, search, onSearchChange }) {
+    const q = (search || '').trim().toLowerCase();
+    const filtered = useMemo(() => {
+        if (!q) return rows;
+        return rows.filter((r) => {
+            const name = (r.departmentName ?? r.department_name ?? '').toString();
+            const orders = String(r.ordersCount ?? r.orders_count ?? '');
+            const rev = toNumber(r.revenueSar ?? r.revenue_sar).toFixed(2);
+            return `${name} ${orders} ${rev}`.toLowerCase().includes(q);
+        });
+    }, [rows, q]);
+
+    return (
+        <div style={{ background: '#fff', borderRadius: 14, padding: '16px 20px', marginBottom: 16, border: '1px solid #e5e7eb' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <div style={{ width: 3, height: 18, background: '#FCC247', borderRadius: 2 }} />
+                <p style={{ margin: 0, fontWeight: 800, fontSize: '0.88rem', color: '#1E2124' }}>Department Sales</p>
+            </div>
+            <input
+                type="search"
+                placeholder="Search department, orders, revenue…"
+                value={search}
+                onChange={(e) => onSearchChange?.(e.target.value)}
+                style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    marginBottom: 12,
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 10,
+                    fontSize: '0.88rem',
+                    fontFamily: 'inherit',
+                    boxSizing: 'border-box',
+                    background: '#F8FAFC',
+                }}
+            />
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.2fr', gap: 8, padding: '10px 12px', background: '#f1f5f9', borderRadius: '8px 8px 0 0', fontSize: '0.68rem', fontWeight: 800, color: '#64748b', letterSpacing: 0.4 }}>
+                <span>DEPARTMENT</span>
+                <span style={{ textAlign: 'center' }}>ORDERS</span>
+                <span style={{ textAlign: 'right' }}>REVENUE (SAR)</span>
+            </div>
+            {filtered.length === 0 ? (
+                <p style={{ margin: 0, padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+                    {rows.length === 0 ? 'No department sales for this shift yet.' : 'No rows match your search.'}
+                </p>
+            ) : (
+                filtered.map((row, i) => (
+                    <div
+                        key={row.departmentId ?? row.department_id ?? i}
+                        style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1.2fr', gap: 8, padding: '12px', fontSize: '0.82rem', borderBottom: '1px solid #f1f5f9', alignItems: 'center' }}
+                    >
+                        <strong style={{ color: '#1E2124' }}>{row.departmentName ?? row.department_name ?? '—'}</strong>
+                        <span style={{ textAlign: 'center', fontWeight: 600 }}>{toNumber(row.ordersCount ?? row.orders_count)}</span>
+                        <span style={{ textAlign: 'right', fontWeight: 900 }}>
+                            SAR {toNumber(row.revenueSar ?? row.revenue_sar).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                    </div>
+                ))
+            )}
+        </div>
+    );
+}
+
 const CATEGORIES = [
     { key: 'cash', label: 'Cash', sysKey: 'totalCash' },
     { key: 'bank', label: 'Bank (Card/Transfer)', sysKey: 'totalCard' },
@@ -19,21 +86,44 @@ export default function CounterClosingScreen({ onBack, onLogout }) {
     const [submitted, setSubmitted] = useState(false);
     const [summary, setSummary] = useState(null);
     const [loadingSummary, setLoadingSummary] = useState(true);
+    const [departmentSearch, setDepartmentSearch] = useState('');
+    const [closingResult, setClosingResult] = useState(null);
 
     useEffect(() => {
         setLoadingSummary(true);
-        // Reference sends date (YYYY-MM-DD) and workshopId; workshopId is optional when empty.
-        const today = new Date().toISOString().split('T')[0];
         const workshopId = user?.workshopId || user?.workshop_id || '';
-        const qs = new URLSearchParams({
-            date: today,
-            ...(workshopId ? { workshopId: String(workshopId) } : {}),
-        }).toString();
-        apiFetch(`/cashier/store-closing?${qs}`)
-            .then(d => setSummary(d.summary || d.data || d))
+        const qs = new URLSearchParams(
+            workshopId ? { workshopId: String(workshopId) } : {},
+        ).toString();
+        const path = qs ? `/cashier/store-closing?${qs}` : '/cashier/store-closing';
+        apiFetch(path)
+            .then((d) => setSummary(d.summary || d.data || d))
             .catch(() => setSummary(null))
             .finally(() => setLoadingSummary(false));
     }, [user]);
+
+    const departmentRows = useMemo(() => {
+        const raw = closingResult?.departmentBreakdown ?? summary?.departmentBreakdown;
+        return Array.isArray(raw) ? raw : [];
+    }, [closingResult, summary]);
+
+    const sessionOpenedAt = closingResult?.openedAt ?? summary?.openedAt ?? null;
+    const sessionClosedAt = closingResult?.closedAt ?? null;
+
+    const formatSessionTime = (iso) => {
+        if (!iso) return '—';
+        try {
+            return new Date(iso).toLocaleString('en-SA', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        } catch {
+            return '—';
+        }
+    };
 
     const setCount = (k, v) => setCounts(c => ({ ...c, [k]: v }));
 
@@ -58,7 +148,7 @@ export default function CounterClosingScreen({ onBack, onLogout }) {
         if (!window.confirm('Submit store closing report? This will lock the shift.')) return;
         setSubmitting(true);
         try {
-            await apiFetch('/cashier/counter-closing', {
+            const res = await apiFetch('/cashier/counter-closing', {
                 method: 'POST',
                 body: JSON.stringify({
                     physicalCash: parseFloat(counts.cash) || 0,
@@ -73,6 +163,7 @@ export default function CounterClosingScreen({ onBack, onLogout }) {
                     rows: rows.map(r => ({ category: r.key, system: r.system, physical: r.physical, diff: r.diff })),
                 }),
             });
+            setClosingResult(res?.data ?? res ?? null);
             setSubmitted(true);
         } catch (e) {
             alert('Error: ' + e.message);
@@ -94,6 +185,28 @@ export default function CounterClosingScreen({ onBack, onLogout }) {
                     <p style={{ margin: '0 0 14px', fontWeight: 800, fontSize: '0.95rem', color: '#1E2124' }}>Reconciliation Result</p>
                     <ReconTable rows={rows} totalSystem={totalSystem} totalPhysical={totalPhysical} totalDiff={totalDiff} />
                 </div>
+
+                {(sessionOpenedAt || sessionClosedAt) && (
+                    <div style={{ background: '#fff', borderRadius: 14, padding: '16px 20px', marginBottom: 16, border: '1px solid #e5e7eb', textAlign: 'left' }}>
+                        <p style={{ margin: '0 0 10px', fontWeight: 800, fontSize: '0.88rem', color: '#1E2124' }}>Session</p>
+                        {sessionOpenedAt && (
+                            <p style={{ margin: '0 0 6px', fontSize: '0.82rem', color: '#475569' }}>
+                                <strong>Start:</strong> {formatSessionTime(sessionOpenedAt)}
+                            </p>
+                        )}
+                        {sessionClosedAt && (
+                            <p style={{ margin: 0, fontSize: '0.82rem', color: '#475569' }}>
+                                <strong>End:</strong> {formatSessionTime(sessionClosedAt)}
+                            </p>
+                        )}
+                    </div>
+                )}
+
+                <DepartmentSalesTable
+                    rows={departmentRows}
+                    search={departmentSearch}
+                    onSearchChange={setDepartmentSearch}
+                />
 
                 <button onClick={onLogout}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '14px 32px', background: '#23262D', color: '#FCC247', border: 'none', borderRadius: 14, fontWeight: 800, fontSize: '0.95rem', cursor: 'pointer', fontFamily: 'inherit' }}>

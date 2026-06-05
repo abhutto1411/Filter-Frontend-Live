@@ -1,16 +1,18 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Plus,
     Calendar,
     ShoppingCart,
     Search,
     Zap,
-    Eye,
-    Download,
     Building2,
     History,
     ChevronDown,
     Trash2,
+    BookOpen,
+    Edit,
+    Package,
+    Loader2,
 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import Modal from '../../components/Modal';
@@ -18,15 +20,15 @@ import SupplierSuperSupplierPurchasesPanel from './SupplierSuperSupplierPurchase
 import '../../styles/admin/AccountingPage.css';
 import {
     createSupplierSuperSupplierPurchase,
-    downloadSupplierPayablePdf,
-    getSupplierPayable,
+    getSuperSupplierApLedger,
+    getSuperSupplierPurchaseProducts,
     getSupplierInventoryStockBalances,
     getSupplierSuperSupplierPurchase,
-    listSupplierPayables,
     listSupplierSuperSuppliers,
     createSupplierSuperSupplier,
+    updateSupplierSuperSupplier,
+    deleteSupplierSuperSupplier,
     listSupplierSuperSupplierAudit,
-    listSupplierSuperSupplierPurchases,
     updateSupplierSuperSupplierPurchase,
 } from '../../services/supplierApi';
 import { ShimmerTable, ShimmerTextBlock } from '../../components/supplier/Shimmer';
@@ -163,29 +165,6 @@ function reconstructSSPUnitPriceInput(it, amountsTaxInclusive, taxCode) {
     return String(roundMoney2(grossInclBeforeDisc / qty));
 }
 
-function extractArray(res, keys) {
-    if (!res || typeof res !== 'object') return [];
-    if (Array.isArray(res)) return res;
-    for (const k of keys) {
-        if (Array.isArray(res[k])) return res[k];
-    }
-    return [];
-}
-
-function mapPayableToRow(p) {
-    const statusRaw = (p.status ?? p.state ?? 'pending').toString();
-    const status =
-        statusRaw.charAt(0).toUpperCase() + statusRaw.slice(1).toLowerCase();
-    return {
-        id: p.id,
-        ref: p.vatNumber ?? p.reference ?? p.invoiceRef ?? '-',
-        date: (p.openingBalanceDate ?? p.date ?? p.invoiceDate ?? '-').toString().slice(0, 10),
-        description: p.companyName ?? p.vendorName ?? p.name ?? '-',
-        amount: Number(p.openingBalance ?? p.amount ?? p.total ?? p.balance ?? 0),
-        status,
-    };
-}
-
 function nextLineId() {
     return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
@@ -211,26 +190,124 @@ function mapStockBalanceToPurchasePickerRow(raw) {
               : '';
     if (!pid) return null;
     const qtyWh = Number(raw.currentBalanceWarehouse || 0);
-    const unitCost = qtyWh > 0 ? Number(raw.valueWarehouseSar || 0) / qtyWh : 0;
-    const price = Number.isFinite(unitCost) ? Math.max(0, unitCost) : 0;
+    const conversionFactor = Number(raw.conversionFactor) || 1;
+    const warehouseUnit =
+        raw.warehouseUnit || raw.unitCode || raw.unit || 'Box';
+    const workshopUnit = raw.workshopUnit || 'pcs';
+    const unitCostWh =
+        qtyWh > 0 ? Number(raw.valueWarehouseSar || 0) / qtyWh : 0;
+    const lastPurchaseRaw =
+        raw && typeof raw.lastPurchase === 'object' && raw.lastPurchase != null
+            ? raw.lastPurchase
+            : null;
+    const hasPreviousPurchase = !!(
+        lastPurchaseRaw &&
+        String(lastPurchaseRaw.purchaseDate || '').trim() !== ''
+    );
+    const lastPurchasePriceNum = hasPreviousPurchase
+        ? Number(lastPurchaseRaw.unitPrice ?? raw.lastPurchasePrice ?? 0)
+        : 0;
+    const purchaseDateRaw = String(lastPurchaseRaw?.purchaseDate || '').trim();
+    const supplierLabel = String(
+        lastPurchaseRaw?.superSupplierName ||
+            raw.lastPurchaseSupplierLabel ||
+            '',
+    ).trim();
+    const lastPurchaseMeta =
+        hasPreviousPurchase && (purchaseDateRaw || supplierLabel)
+            ? [purchaseDateRaw, supplierLabel].filter(Boolean).join(' • ')
+            : '';
+    const price = Number.isFinite(unitCostWh) ? Math.max(0, unitCostWh) : 0;
+    const uom = warehouseUnit;
     return {
         id: pid,
         sku: String(raw.sku ?? raw.barcode ?? '').trim(),
         name: raw.productName || 'Product',
         price,
-        unit: raw.workshopUnit || raw.unitCode || raw.unit || 'pcs',
+        unit: uom,
+        warehouseUnit,
+        workshopUnit,
+        conversionFactor,
+        warehouseStockQty: qtyWh,
+        stockQtyWorkshop: Number(raw.currentBalanceWorkshop ?? 0),
         type: 'Stock',
         stockHint:
-            qtyWh > 0
-                ? `Warehouse stock: ${qtyWh}`
-                : 'No warehouse qty — edit unit price if needed',
+            qtyWh >= 0
+                ? `Warehouse stock: ${qtyWh} ${warehouseUnit}${conversionFactor > 1 ? ` (= ${qtyWh * conversionFactor} ${workshopUnit})` : ''}`
+                : 'Enter qty in warehouse or workshop UOM; stock-in converts to warehouse units.',
+        hasPreviousPurchase,
+        lastPrice: lastPurchasePriceNum,
+        lastPurchaseMeta,
     };
+}
+
+function normPiUomLabel(u) {
+    return String(u ?? '').trim().toLowerCase();
+}
+
+function isPiWarehouseUomLine(line, inv) {
+    const wu = normPiUomLabel(inv?.warehouseUnit);
+    const u = normPiUomLabel(line?.uom);
+    return !!wu && !!u && u === wu;
+}
+
+function findPiCapsRow(line, inventoryItems) {
+    const pid = String(line?.supplierProductId ?? '').trim();
+    if (!pid) return null;
+    return inventoryItems.find((inv) => String(inv.id) === pid) ?? null;
+}
+
+function linePiUomOptions(line, inv) {
+    const opts = [];
+    const wu = String(inv?.warehouseUnit ?? '').trim();
+    const wsu = String(inv?.workshopUnit ?? '').trim();
+    if (wu) opts.push(wu);
+    if (wsu && normPiUomLabel(wsu) !== normPiUomLabel(wu)) opts.push(wsu);
+    if (opts.length === 0) {
+        return [String(line?.uom ?? 'pcs').trim() || 'pcs'];
+    }
+    return opts;
+}
+
+function formatPiUomConversionPreview(line, inv) {
+    if (!inv) return '';
+    const cf = Number(inv.conversionFactor) || 1;
+    if (!(cf > 1)) return '';
+    const wu = inv.warehouseUnit || 'Box';
+    const wsu = inv.workshopUnit || 'pcs';
+    const qty = parseFloat(String(line.qty).replace(',', '.')) || 0;
+    if (!(qty > 0)) return '';
+    const price = parseFloat(String(line.price).replace(',', '.')) || 0;
+    if (isPiWarehouseUomLine(line, inv)) {
+        const wsQty = roundMoney2(qty * cf);
+        const wsPrice = cf > 0 ? roundMoney2(price / cf) : price;
+        return `${qty} ${wu} → +${wsQty} ${wsu} in stock · SAR ${price.toFixed(2)}/${wu} → SAR ${wsPrice.toFixed(2)}/${wsu} cost`;
+    }
+    const whQty = roundMoney2(qty / cf);
+    return `${qty} ${wsu} → +${whQty} ${wu} warehouse stock`;
+}
+
+function scorePurchaseSearchItem(item, q) {
+    const name = String(item.name || '').toLowerCase();
+    const sku = String(item.sku || '').toLowerCase();
+    if (!q) return 0;
+    if (sku === q) return 100;
+    if (name === q) return 95;
+    if (sku.startsWith(q)) return 90;
+    if (name.startsWith(q)) return 85;
+    if (sku.includes(q)) return 70;
+    if (name.includes(q)) return 60;
+    const tokens = q.split(/\s+/).filter((t) => t.length >= 2);
+    let hits = 0;
+    for (const t of tokens) {
+        if (name.includes(t) || sku.includes(t)) hits += 1;
+    }
+    if (tokens.length && hits === tokens.length) return 50 + hits * 5;
+    return 0;
 }
 
 const SEARCH_QUICK_PICK_PI = 12;
 const SEARCH_MAX_RESULTS_PI = 40;
-/** Max purchases to load line detail for in super-supplier history modal (avoids huge parallel GET bursts). */
-const SSP_HISTORY_DETAIL_CAP = 50;
 
 /** Hydrated when navigating from Stock Inventory → Adjust via Purchase */
 const PI_PRESET_FROM_STOCK_FLAG = 'supplier_pi_open_from_stock';
@@ -238,17 +315,38 @@ const PI_PRESET_STOCK_LINE = 'supplier_pi_preset_stock_line';
 
 /** @typedef {'payables'|'super_suppliers'|'ssp_invoices'} ApTabId */
 
-function statusBadgeClass(status) {
-    const s = (status || '').toLowerCase();
-    if (s.includes('paid') || s.includes('approved') || s.includes('closed')) return 'status-completed';
-    if (s.includes('overdue') || s.includes('cancel')) return 'status-badge'; // use red style if exists
-    return 'status-completed';
+function fmtApMoney(value) {
+    return Number(value ?? 0).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+}
+
+function formatAccountsPayableDisplay(amount) {
+    const n = Number(amount ?? 0);
+    if (n < -0.005) {
+        return `- SAR ${fmtApMoney(Math.abs(n))}`;
+    }
+    return `SAR ${fmtApMoney(n)}`;
+}
+
+function apStatusLabel(apStatus) {
+    if (apStatus === 'unpaid') return 'Unpaid';
+    if (apStatus === 'overpaid') return 'Overpaid';
+    return 'Paid';
+}
+
+function apStatusBadgeStyle(apStatus) {
+    if (apStatus === 'unpaid') {
+        return { background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FECACA' };
+    }
+    if (apStatus === 'overpaid') {
+        return { background: '#FFEDD5', color: '#C2410C', border: '1px solid #FED7AA' };
+    }
+    return { background: '#DCFCE7', color: '#15803D', border: '1px solid #BBF7D0' };
 }
 
 export default function SupplierPurchaseInvoices() {
-    const [invoices, setInvoices] = useState([]);
-    const [listLoading, setListLoading] = useState(true);
-    const [listError, setListError] = useState('');
     const [modalOpen, setModalOpen] = useState(false);
     const [showLineNum, setShowLineNum] = useState(false);
     const [showDesc, setShowDesc] = useState(false);
@@ -279,6 +377,10 @@ export default function SupplierPurchaseInvoices() {
     const [itemPickerLineId, setItemPickerLineId] = useState(null);
     const [itemPickerInput, setItemPickerInput] = useState('');
     const [itemPickerFilter, setItemPickerFilter] = useState('');
+    const [itemPickerSelectedIndex, setItemPickerSelectedIndex] = useState(0);
+    const [lastPurchaseStockRefreshing, setLastPurchaseStockRefreshing] = useState(false);
+    const lineFieldRefs = useRef({});
+    const pendingFocusLineFieldRef = useRef(null);
 
     const [sspPanelKey, setSspPanelKey] = useState(0);
     /** @type {[ApTabId, React.Dispatch<React.SetStateAction<ApTabId>>]} */
@@ -289,11 +391,6 @@ export default function SupplierPurchaseInvoices() {
     const [catalogItems, setCatalogItems] = useState([]);
     const [catalogLoading, setCatalogLoading] = useState(false);
 
-    const [viewOpen, setViewOpen] = useState(false);
-    const [viewLoading, setViewLoading] = useState(false);
-    const [viewError, setViewError] = useState('');
-    const [viewDetail, setViewDetail] = useState(null);
-
     const [createSubmitting, setCreateSubmitting] = useState(false);
     const [createError, setCreateError] = useState('');
     /** Same modal as New Purchase Invoice — edit loads SSP purchase into identical fields */
@@ -302,10 +399,11 @@ export default function SupplierPurchaseInvoices() {
     );
     const [editingSspPurchaseId, setEditingSspPurchaseId] = useState(null);
     const [sspPurchaseEditLoading, setSspPurchaseEditLoading] = useState(false);
-    const [downloadingId, setDownloadingId] = useState(null);
 
     const [superSuppliers, setSuperSuppliers] = useState([]);
     const [ssLoading, setSsLoading] = useState(true);
+    const [ssListError, setSsListError] = useState('');
+    const [supplierSearch, setSupplierSearch] = useState('');
     const [addSsOpen, setAddSsOpen] = useState(false);
     const [ssForm, setSsForm] = useState({
         name: '',
@@ -317,48 +415,39 @@ export default function SupplierPurchaseInvoices() {
     });
     const [ssSaving, setSsSaving] = useState(false);
     const [ssErr, setSsErr] = useState('');
+    const [editingSuperSupplierId, setEditingSuperSupplierId] = useState(null);
+    const [ssTogglingId, setSsTogglingId] = useState(null);
+    const [ssDeletingId, setSsDeletingId] = useState(null);
     const [createSspPurchaseForId, setCreateSspPurchaseForId] = useState(null);
     const [auditOpen, setAuditOpen] = useState(false);
     const [auditSsFilter, setAuditSsFilter] = useState('');
     const [auditItems, setAuditItems] = useState([]);
     const [auditLoading, setAuditLoading] = useState(false);
 
-    const [ssHistoryOpen, setSsHistoryOpen] = useState(false);
-    const [ssHistoryLoading, setSsHistoryLoading] = useState(false);
-    const [ssHistoryError, setSsHistoryError] = useState('');
-    const [ssHistoryInfo, setSsHistoryInfo] = useState('');
-    const [ssHistorySupplierName, setSsHistorySupplierName] = useState('');
-    const [ssHistoryLines, setSsHistoryLines] = useState([]);
+    const [ssLedgerOpen, setSsLedgerOpen] = useState(false);
+    const [ssLedgerLoading, setSsLedgerLoading] = useState(false);
+    const [ssLedgerError, setSsLedgerError] = useState('');
+    const [ssLedgerData, setSsLedgerData] = useState(null);
 
-    const loadPayables = useCallback(async () => {
-        setListLoading(true);
-        setListError('');
-        try {
-            const res = await listSupplierPayables({ limit: 200 });
-            const raw = extractArray(res, ['payables', 'list', 'items', 'data']);
-            const list = raw.map(mapPayableToRow).filter((row) => row.id != null);
-            setInvoices(list);
-        } catch (err) {
-            console.error('Supplier purchase invoices API failed:', err);
-            setInvoices([]);
-            setListError(err?.message || 'Failed to load payables');
-        } finally {
-            setListLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        loadPayables();
-    }, [loadPayables]);
+    const [ssProductsOpen, setSsProductsOpen] = useState(false);
+    const [ssProductsLoading, setSsProductsLoading] = useState(false);
+    const [ssProductsError, setSsProductsError] = useState('');
+    const [ssProductsData, setSsProductsData] = useState(null);
+    const [ssProductsSuperSupplierId, setSsProductsSuperSupplierId] = useState('');
+    const [ssProductsDateFrom, setSsProductsDateFrom] = useState('');
+    const [ssProductsDateTo, setSsProductsDateTo] = useState('');
+    const [ssProductsProductFilter, setSsProductsProductFilter] = useState('');
 
     const loadSuperSuppliers = useCallback(async () => {
         setSsLoading(true);
+        setSsListError('');
         try {
             const res = await listSupplierSuperSuppliers();
             const list = res?.superSuppliers ?? [];
             setSuperSuppliers(Array.isArray(list) ? list : []);
-        } catch {
+        } catch (err) {
             setSuperSuppliers([]);
+            setSsListError(err?.message || 'Failed to load suppliers');
         } finally {
             setSsLoading(false);
         }
@@ -367,6 +456,108 @@ export default function SupplierPurchaseInvoices() {
     useEffect(() => {
         loadSuperSuppliers();
     }, [loadSuperSuppliers]);
+
+    const filteredSuperSuppliers = useMemo(() => {
+        const q = supplierSearch.trim().toLowerCase();
+        if (!q) return superSuppliers;
+        return superSuppliers.filter((ss) => {
+            const hay = [ss.name, ss.vatNumber, ss.mobile, ss.email, ss.notes]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
+            return hay.includes(q);
+        });
+    }, [superSuppliers, supplierSearch]);
+
+    const aggregateAp = useMemo(
+        () =>
+            filteredSuperSuppliers.reduce(
+                (sum, ss) => sum + Number(ss.accountsPayable ?? 0),
+                0,
+            ),
+        [filteredSuperSuppliers],
+    );
+
+    const openSuperSupplierLedger = async (superSupplierId, supplierName = '') => {
+        setSsLedgerOpen(true);
+        setSsLedgerLoading(true);
+        setSsLedgerError('');
+        setSsLedgerData({ supplier: { name: supplierName || 'Super supplier' } });
+        try {
+            const res = await getSuperSupplierApLedger(String(superSupplierId));
+            const root = res?.data && typeof res.data === 'object' ? res.data : res;
+            setSsLedgerData(root);
+        } catch (e) {
+            setSsLedgerError(e?.message || 'Could not load account ledger.');
+            setSsLedgerData(null);
+        } finally {
+            setSsLedgerLoading(false);
+        }
+    };
+
+    const closeSuperSupplierLedger = () => {
+        setSsLedgerOpen(false);
+        setSsLedgerError('');
+        setSsLedgerData(null);
+        void loadSuperSuppliers();
+    };
+
+    const loadSuperSupplierProducts = useCallback(
+        async (superSupplierId, filters = {}) => {
+            if (!superSupplierId) return;
+            setSsProductsLoading(true);
+            setSsProductsError('');
+            try {
+                const res = await getSuperSupplierPurchaseProducts(String(superSupplierId), filters);
+                const root = res?.data && typeof res.data === 'object' ? res.data : res;
+                setSsProductsData(root);
+            } catch (e) {
+                setSsProductsError(e?.message || 'Could not load purchased products.');
+                setSsProductsData(null);
+            } finally {
+                setSsProductsLoading(false);
+            }
+        },
+        [],
+    );
+
+    const openSuperSupplierProducts = (superSupplierId, supplierName = '') => {
+        const id = String(superSupplierId);
+        setSsProductsSuperSupplierId(id);
+        setSsProductsOpen(true);
+        setSsProductsDateFrom('');
+        setSsProductsDateTo('');
+        setSsProductsProductFilter('');
+        setSsProductsData({ supplier: { name: supplierName || 'Super supplier' } });
+        void loadSuperSupplierProducts(id, {});
+    };
+
+    const closeSuperSupplierProducts = () => {
+        setSsProductsOpen(false);
+        setSsProductsError('');
+        setSsProductsData(null);
+        setSsProductsSuperSupplierId('');
+        setSsProductsDateFrom('');
+        setSsProductsDateTo('');
+        setSsProductsProductFilter('');
+    };
+
+    const applySuperSupplierProductsFilters = () => {
+        if (!ssProductsSuperSupplierId) return;
+        void loadSuperSupplierProducts(ssProductsSuperSupplierId, {
+            dateFrom: ssProductsDateFrom || undefined,
+            dateTo: ssProductsDateTo || undefined,
+            product: ssProductsProductFilter.trim() || undefined,
+        });
+    };
+
+    const clearSuperSupplierProductsFilters = () => {
+        setSsProductsDateFrom('');
+        setSsProductsDateTo('');
+        setSsProductsProductFilter('');
+        if (!ssProductsSuperSupplierId) return;
+        void loadSuperSupplierProducts(ssProductsSuperSupplierId, {});
+    };
 
     const openAuditModal = async (superSupplierId = '') => {
         setAuditOpen(true);
@@ -385,83 +576,6 @@ export default function SupplierPurchaseInvoices() {
         }
     };
 
-    const openSuperSupplierPurchaseHistory = async (superSupplierId, supplierName = '') => {
-        setSsHistoryOpen(true);
-        setSsHistorySupplierName(supplierName || 'Super supplier');
-        setSsHistoryLoading(true);
-        setSsHistoryError('');
-        setSsHistoryInfo('');
-        setSsHistoryLines([]);
-        try {
-            const res = await listSupplierSuperSupplierPurchases({
-                superSupplierId: String(superSupplierId),
-                limit: 200,
-                offset: 0,
-            });
-            const purchases = Array.isArray(res?.purchases) ? res.purchases : [];
-            const capped = purchases.slice(0, SSP_HISTORY_DETAIL_CAP);
-            const details = await Promise.all(
-                capped.map(async (row) => {
-                    try {
-                        const d = await getSupplierSuperSupplierPurchase(row.id);
-                        return { listRow: row, purchase: d?.purchase ?? d?.data ?? d };
-                    } catch {
-                        return { listRow: row, purchase: null };
-                    }
-                }),
-            );
-            const lines = [];
-            for (const { listRow, purchase } of details) {
-                const purchaseDate = (purchase?.purchaseDate ?? listRow?.purchaseDate ?? '')
-                    .toString()
-                    .slice(0, 10);
-                const invoiceNo = purchase?.invoiceNo ?? listRow?.invoiceNo ?? `SSP-${listRow?.id}`;
-                const items = Array.isArray(purchase?.items) ? purchase.items : [];
-                if (items.length > 0) {
-                    items.forEach((it, idx) => {
-                        lines.push({
-                            key: `${listRow.id}-${it.id ?? idx}`,
-                            purchaseDate,
-                            invoiceNo,
-                            productName: it.productName || '—',
-                            sku: it.sku || '—',
-                            qty: Number(it.qty ?? 0),
-                            unit: it.unit || 'pcs',
-                            unitPrice: Number(it.unitPrice ?? 0),
-                            lineTotal: Number(it.lineTotal ?? 0),
-                        });
-                    });
-                } else {
-                    const total = Number(purchase?.total ?? listRow?.total ?? 0);
-                    lines.push({
-                        key: `${listRow.id}-summary`,
-                        purchaseDate,
-                        invoiceNo,
-                        productName:
-                            (purchase?.description || listRow?.primaryProductName || '').trim() ||
-                            'Purchase (no line detail)',
-                        sku: '—',
-                        qty: null,
-                        unit: '—',
-                        unitPrice: null,
-                        lineTotal: total,
-                    });
-                }
-            }
-            setSsHistoryLines(lines);
-            if (purchases.length > SSP_HISTORY_DETAIL_CAP) {
-                setSsHistoryInfo(
-                    `Line detail is shown for the ${SSP_HISTORY_DETAIL_CAP} most recent purchases (${purchases.length} total).`,
-                );
-            }
-        } catch (e) {
-            setSsHistoryError(e?.message || 'Could not load purchase history.');
-            setSsHistoryLines([]);
-        } finally {
-            setSsHistoryLoading(false);
-        }
-    };
-
     const handleSaveSuperSupplier = async () => {
         if (!ssForm.name?.trim()) {
             setSsErr('Name is required');
@@ -470,15 +584,21 @@ export default function SupplierPurchaseInvoices() {
         setSsSaving(true);
         setSsErr('');
         try {
-            await createSupplierSuperSupplier({
+            const payload = {
                 name: ssForm.name.trim(),
                 mobile: ssForm.mobile?.trim() || undefined,
                 email: ssForm.email?.trim() || undefined,
                 vatNumber: ssForm.vatNumber?.trim() || undefined,
                 address: ssForm.address?.trim() || undefined,
                 notes: ssForm.notes?.trim() || undefined,
-            });
+            };
+            if (editingSuperSupplierId) {
+                await updateSupplierSuperSupplier(editingSuperSupplierId, payload);
+            } else {
+                await createSupplierSuperSupplier(payload);
+            }
             setAddSsOpen(false);
+            setEditingSuperSupplierId(null);
             setSsForm({
                 name: '',
                 mobile: '',
@@ -495,11 +615,92 @@ export default function SupplierPurchaseInvoices() {
         }
     };
 
+    const openEditSuperSupplier = (ss) => {
+        setSsErr('');
+        setEditingSuperSupplierId(String(ss.id));
+        setSsForm({
+            name: ss.name || '',
+            mobile: ss.mobile || '',
+            email: ss.email || '',
+            vatNumber: ss.vatNumber || '',
+            address: ss.address || '',
+            notes: ss.notes || '',
+        });
+        setApTab('super_suppliers');
+        setAddSsOpen(true);
+    };
+
+    const openAddSuperSupplier = () => {
+        setSsErr('');
+        setEditingSuperSupplierId(null);
+        setSsForm({
+            name: '',
+            mobile: '',
+            email: '',
+            vatNumber: '',
+            address: '',
+            notes: '',
+        });
+        setApTab('super_suppliers');
+        setAddSsOpen(true);
+    };
+
+    const handleToggleSuperSupplierActive = async (ss) => {
+        const id = String(ss.id);
+        setSsTogglingId(id);
+        try {
+            await updateSupplierSuperSupplier(id, { isActive: !ss.isActive });
+            await loadSuperSuppliers();
+        } catch (e) {
+            window.alert(e?.message || 'Could not update status');
+        } finally {
+            setSsTogglingId(null);
+        }
+    };
+
+    const handleDeleteSuperSupplier = async (ss) => {
+        const purchaseCount = Number(ss.purchaseCount ?? 0);
+        const apBalance = Number(ss.accountsPayable ?? 0);
+        if (purchaseCount > 0 || Math.abs(apBalance) > 0.005) {
+            window.alert(
+                'This super supplier cannot be deleted because purchase or ledger transactions exist.',
+            );
+            return;
+        }
+        if (
+            !window.confirm(
+                `Delete super supplier "${ss.name}"? This cannot be undone.`,
+            )
+        ) {
+            return;
+        }
+        const id = String(ss.id);
+        setSsDeletingId(id);
+        try {
+            await deleteSupplierSuperSupplier(id);
+            await loadSuperSuppliers();
+        } catch (e) {
+            window.alert(e?.message || 'Could not delete super supplier');
+        } finally {
+            setSsDeletingId(null);
+        }
+    };
+
+    const canDeleteSuperSupplier = (ss) => {
+        const purchaseCount = Number(ss.purchaseCount ?? 0);
+        const apBalance = Number(ss.accountsPayable ?? 0);
+        return purchaseCount === 0 && Math.abs(apBalance) <= 0.005;
+    };
+
     useEffect(() => {
         if (!modalOpen) return undefined;
         let cancelled = false;
         setCatalogLoading(true);
-        getSupplierInventoryStockBalances({ limit: 500, offset: 0 })
+        const params = { limit: 500, offset: 0 };
+        if (superSupplierId) {
+            params.superSupplierId = String(superSupplierId);
+        }
+        getSupplierInventoryStockBalances(params)
             .then((res) => {
                 const raw = Array.isArray(res?.items) ? res.items : [];
                 const mapped = raw
@@ -516,27 +717,89 @@ export default function SupplierPurchaseInvoices() {
         return () => {
             cancelled = true;
         };
-    }, [modalOpen]);
+    }, [modalOpen, superSupplierId]);
+
+    useEffect(() => {
+        if (!modalOpen || !superSupplierId) return undefined;
+        let cancelled = false;
+        setLastPurchaseStockRefreshing(true);
+        getSupplierInventoryStockBalances({
+            limit: 500,
+            offset: 0,
+            superSupplierId: String(superSupplierId),
+        })
+            .then((res) => {
+                if (cancelled) return;
+                const normalized = (Array.isArray(res?.items) ? res.items : [])
+                    .map((row) => mapStockBalanceToPurchasePickerRow(row))
+                    .filter(Boolean);
+                setCatalogItems((prev) => {
+                    const byId = new Map(normalized.map((r) => [String(r.id), r]));
+                    return prev.map((p) => byId.get(String(p.id)) ?? p);
+                });
+                setLineItems((prev) =>
+                    prev.map((line) => {
+                        if (!line.supplierProductId) return line;
+                        const inv = normalized.find(
+                            (x) => String(x.id) === String(line.supplierProductId),
+                        );
+                        if (!inv) return line;
+                        const hasPrev = !!inv.hasPreviousPurchase;
+                        return applyLineTotals(
+                            {
+                                ...line,
+                                uom: line.uom || inv.unit,
+                                warehouseUnit: inv.warehouseUnit ?? line.warehouseUnit,
+                                workshopUnitCatalog:
+                                    inv.workshopUnit ?? line.workshopUnitCatalog,
+                                conversionFactor:
+                                    inv.conversionFactor ?? line.conversionFactor,
+                                hasPreviousPurchase: hasPrev,
+                                lastPurchasePrice: hasPrev
+                                    ? Number(inv.lastPrice ?? 0)
+                                    : 0,
+                                lastPurchaseMeta: hasPrev
+                                    ? String(inv.lastPurchaseMeta || '').trim()
+                                    : '',
+                            },
+                            amountsTaxInclusive,
+                        );
+                    }),
+                );
+            })
+            .catch(() => {})
+            .finally(() => {
+                if (!cancelled) setLastPurchaseStockRefreshing(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [modalOpen, superSupplierId, amountsTaxInclusive]);
 
     const catalogForSearch = catalogItems.length ? catalogItems : [];
 
     const getSearchSuggestionsPi = (query) => {
-        const items = [...catalogForSearch].sort((a, b) =>
-            String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' }),
-        );
+        const items = catalogForSearch;
         const q = query.trim().toLowerCase();
-        if (!q) return items.slice(0, SEARCH_QUICK_PICK_PI);
+        if (!q) {
+            return [...items]
+                .sort((a, b) =>
+                    String(a.name || '').localeCompare(String(b.name || ''), undefined, {
+                        sensitivity: 'base',
+                    }),
+                )
+                .slice(0, SEARCH_QUICK_PICK_PI);
+        }
         return items
-            .filter(
-                (i) =>
-                    String(i.name || '')
-                        .toLowerCase()
-                        .includes(q) ||
-                    String(i.sku || '')
-                        .toLowerCase()
-                        .includes(q),
+            .map((item) => ({ item, score: scorePurchaseSearchItem(item, q) }))
+            .filter((x) => x.score > 0)
+            .sort(
+                (a, b) =>
+                    b.score - a.score ||
+                    String(a.item.name || '').localeCompare(String(b.item.name || '')),
             )
-            .slice(0, SEARCH_MAX_RESULTS_PI);
+            .slice(0, SEARCH_MAX_RESULTS_PI)
+            .map((x) => x.item);
     };
 
     const applySearchQueryPi = (value) => {
@@ -589,6 +852,57 @@ export default function SupplierPurchaseInvoices() {
         return () => document.removeEventListener('mousedown', onDocMouseDown);
     }, [modalOpen, itemPickerLineId]);
 
+    useEffect(() => {
+        setItemPickerSelectedIndex(0);
+    }, [itemPickerFilter, itemPickerLineId]);
+
+    const getLineTabFields = useCallback(() => {
+        const fields = ['item', 'account'];
+        if (showDesc) fields.push('description');
+        fields.push('uom', 'qty', 'price');
+        if (showDiscount) {
+            fields.push('discount', 'discountMode');
+        }
+        fields.push('taxCode');
+        return fields;
+    }, [showDesc, showDiscount]);
+
+    const focusLineField = useCallback((lineId, fieldName) => {
+        requestAnimationFrame(() => {
+            lineFieldRefs.current[`${lineId}:${fieldName}`]?.focus?.();
+        });
+    }, []);
+
+    useEffect(() => {
+        const pending = pendingFocusLineFieldRef.current;
+        if (!pending) return;
+        pendingFocusLineFieldRef.current = null;
+        focusLineField(pending.lineId, pending.fieldName);
+    }, [lineItems.length, focusLineField]);
+
+    const lastPurchaseHintForLine = useCallback(
+        (line) => {
+            if (line.supplierProductId) {
+                const inv = catalogItems.find(
+                    (x) => String(x.id) === String(line.supplierProductId),
+                );
+                if (inv) {
+                    return {
+                        hasPrev: !!inv.hasPreviousPurchase,
+                        price: Number(inv.lastPrice ?? 0),
+                        meta: String(inv.lastPurchaseMeta || '').trim(),
+                    };
+                }
+            }
+            return {
+                hasPrev: !!line.hasPreviousPurchase,
+                price: Number(line.lastPurchasePrice ?? 0),
+                meta: String(line.lastPurchaseMeta || '').trim(),
+            };
+        },
+        [catalogItems],
+    );
+
     /** Apply stock row to an existing line — same source as “Search stock inventory”. */
     const applyCatalogPurchaseItemToLine = (lineId, catItem) => {
         const unitPrice = Number(catItem.price) || 0;
@@ -608,8 +922,19 @@ export default function SupplierPurchaseInvoices() {
                         catItem.type === 'Stock'
                             ? '1410 - Inventory Asset'
                             : '5100 - Cost of Goods Sold',
-                    uom: catItem.unit || line.uom || 'pcs',
+                    uom: catItem.unit || catItem.warehouseUnit || line.uom || 'Box',
+                    warehouseUnit: catItem.warehouseUnit ?? line.warehouseUnit ?? null,
+                    workshopUnitCatalog:
+                        catItem.workshopUnit ?? line.workshopUnitCatalog ?? null,
+                    conversionFactor: catItem.conversionFactor ?? line.conversionFactor ?? 1,
                     price: unitPrice,
+                    hasPreviousPurchase: !!catItem.hasPreviousPurchase,
+                    lastPurchasePrice: catItem.hasPreviousPurchase
+                        ? Number(catItem.lastPrice ?? 0)
+                        : Number(line.lastPurchasePrice ?? 0),
+                    lastPurchaseMeta: catItem.hasPreviousPurchase
+                        ? String(catItem.lastPurchaseMeta || '').trim()
+                        : '',
                 };
                 return applyLineTotals(raw, amountsTaxInclusive);
             }),
@@ -617,6 +942,7 @@ export default function SupplierPurchaseInvoices() {
         setItemPickerLineId(null);
         setItemPickerInput('');
         setItemPickerFilter('');
+        focusLineField(lineId, 'uom');
     };
 
     const removePurchaseLine = (lineId) => {
@@ -625,11 +951,24 @@ export default function SupplierPurchaseInvoices() {
     };
 
     const updateLineItem = (id, field, value) => {
-        const recalc = new Set(['qty', 'price', 'taxCode', 'discount', 'discountMode']);
+        const recalc = new Set(['qty', 'price', 'taxCode', 'discount', 'discountMode', 'uom']);
         setLineItems((prev) =>
             prev.map((line) => {
                 if (line.id !== id) return line;
-                const updated = { ...line, [field]: value };
+                let updated = { ...line, [field]: value };
+                if (field === 'uom') {
+                    const inv = findPiCapsRow(line, catalogItems);
+                    const cf = Number(inv?.conversionFactor) || 1;
+                    const oldIsWh = isPiWarehouseUomLine(line, inv);
+                    const newIsWh = isPiWarehouseUomLine(updated, inv);
+                    if (inv && cf > 0 && oldIsWh !== newIsWh) {
+                        const p = parseFloat(String(line.price).replace(',', '.')) || 0;
+                        updated = {
+                            ...updated,
+                            price: roundMoney2(oldIsWh ? p / cf : p * cf),
+                        };
+                    }
+                }
                 return recalc.has(field)
                     ? applyLineTotals(updated, amountsTaxInclusive)
                     : updated;
@@ -713,14 +1052,15 @@ export default function SupplierPurchaseInvoices() {
     const summary = getSummary();
 
     const addEmptyPurchaseLine = () => {
+        const lineId = nextLineId();
         const raw = {
-            id: nextLineId(),
+            id: lineId,
             item: '',
             sku: '',
             supplierProductId: undefined,
             account: '1410 - Inventory Asset',
             description: '',
-            uom: 'pcs',
+            uom: 'Box',
             qty: 1,
             price: 0,
             discount: 0,
@@ -728,23 +1068,89 @@ export default function SupplierPurchaseInvoices() {
             taxCode: 'VAT 15%',
             taxAmt: '0.00',
             totalFinal: '0.00',
+            hasPreviousPurchase: false,
+            lastPurchasePrice: 0,
+            lastPurchaseMeta: '',
         };
         const newLine = applyLineTotals(raw, amountsTaxInclusive);
         setLineItems((prev) => [...prev, newLine]);
+        pendingFocusLineFieldRef.current = { lineId, fieldName: 'item' };
+        return lineId;
+    };
+
+    const handleLineFieldTab = (e, lineId, fieldName, lineIndex) => {
+        if (e.key !== 'Tab' || e.shiftKey) return;
+        const fields = getLineTabFields();
+        const fieldIdx = fields.indexOf(fieldName);
+        if (fieldIdx < 0 || fieldIdx !== fields.length - 1) return;
+        if (lineIndex !== lineItems.length - 1) return;
+        e.preventDefault();
+        addEmptyPurchaseLine();
+    };
+
+    const handleLineItemPickerKeyDown = (e, line) => {
+        const suggestions = getSearchSuggestionsPi(itemPickerFilter);
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setItemPickerSelectedIndex((i) =>
+                Math.min(i + 1, Math.max(0, suggestions.length - 1)),
+            );
+            return;
+        }
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setItemPickerSelectedIndex((i) => Math.max(i - 1, 0));
+            return;
+        }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (
+                itemPickerLineId === line.id &&
+                suggestions[itemPickerSelectedIndex]
+            ) {
+                applyCatalogPurchaseItemToLine(
+                    line.id,
+                    suggestions[itemPickerSelectedIndex],
+                );
+                return;
+            }
+            const text = String(itemPickerInputRef.current ?? '').trim();
+            setLineItems((prev) =>
+                prev.map((l) => (l.id === line.id ? { ...l, item: text } : l)),
+            );
+            setItemPickerLineId(null);
+            setItemPickerInput('');
+            setItemPickerFilter('');
+            focusLineField(line.id, 'account');
+            return;
+        }
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            setItemPickerLineId(null);
+            setItemPickerInput('');
+            setItemPickerFilter('');
+        }
     };
 
     const addItemToLines = (item) => {
+        const lineId = nextLineId();
         const unitPrice = Number(item.price) || 0;
         const catalogId =
-            item?.id != null && String(item.id).trim() !== '' ? String(item.id).trim() : undefined;
+            item?.id != null && String(item.id).trim() !== ''
+                ? String(item.id).trim()
+                : undefined;
         const raw = {
-            id: nextLineId(),
+            id: lineId,
             sku: item.sku || '',
             item: item.name,
             supplierProductId: catalogId,
-            account: item.type === 'Stock' ? '1410 - Inventory Asset' : '5100 - Cost of Goods Sold',
+            account:
+                item.type === 'Stock' ? '1410 - Inventory Asset' : '5100 - Cost of Goods Sold',
             description: '',
-            uom: item.unit,
+            uom: item.unit || item.warehouseUnit || 'Box',
+            warehouseUnit: item.warehouseUnit ?? null,
+            workshopUnitCatalog: item.workshopUnit ?? null,
+            conversionFactor: item.conversionFactor ?? 1,
             qty: 1,
             price: unitPrice,
             discount: 0,
@@ -752,20 +1158,34 @@ export default function SupplierPurchaseInvoices() {
             taxCode: 'VAT 15%',
             taxAmt: '0.00',
             totalFinal: '0.00',
+            hasPreviousPurchase: !!item.hasPreviousPurchase,
+            lastPurchasePrice: item.hasPreviousPurchase ? Number(item.lastPrice ?? 0) : 0,
+            lastPurchaseMeta: item.hasPreviousPurchase
+                ? String(item.lastPurchaseMeta || '').trim()
+                : '',
         };
         const newLine = applyLineTotals(raw, amountsTaxInclusive);
         setLineItems((prev) => [...prev, newLine]);
         setSearchQuery('');
         setShowDropdown(false);
+        pendingFocusLineFieldRef.current = { lineId, fieldName: 'uom' };
+        return lineId;
     };
 
     const handleKeyDown = (e) => {
         if (!showDropdown) return;
-        if (e.key === 'ArrowDown') setSelectedIndex((i) => (i < searchResults.length - 1 ? i + 1 : i));
-        else if (e.key === 'ArrowUp') setSelectedIndex((i) => (i > 0 ? i - 1 : i));
-        else if (e.key === 'Enter' && selectedIndex >= 0 && searchResults[selectedIndex]) {
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setSelectedIndex((i) => (i < searchResults.length - 1 ? i + 1 : i));
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setSelectedIndex((i) => (i > 0 ? i - 1 : i));
+        } else if (e.key === 'Enter' && selectedIndex >= 0 && searchResults[selectedIndex]) {
+            e.preventDefault();
             addItemToLines(searchResults[selectedIndex]);
-        } else if (e.key === 'Escape') setShowDropdown(false);
+        } else if (e.key === 'Escape') {
+            setShowDropdown(false);
+        }
     };
 
     const evalMath = (expr) => {
@@ -811,7 +1231,7 @@ export default function SupplierPurchaseInvoices() {
         if (showDesc) cols.push('2fr');
         cols.push('0.8fr', '0.8fr', '1fr');
         if (showDiscount) cols.push('minmax(140px, 1.35fr)');
-        cols.push('1fr', '1fr', '1fr', '1fr');
+        cols.push('1fr', '1fr', '1fr', '1fr', '1fr'); // Total, TaxCode, TaxAmt, Grand Total, Last Purchase
         cols.push('48px');
         return cols.join(' ');
     };
@@ -930,7 +1350,7 @@ export default function SupplierPurchaseInvoices() {
                                     : undefined,
                             account: '1410 - Inventory Asset',
                             description: String(it.lineDescription ?? '').trim(),
-                            uom: it.unit || 'pcs',
+                            uom: it.unit || 'Box',
                             qty: String(it.qty ?? 1),
                             price: priceStr,
                             discount: discVal,
@@ -938,7 +1358,9 @@ export default function SupplierPurchaseInvoices() {
                             taxCode,
                             taxAmt: '0.00',
                             totalFinal: '0.00',
-                            lastSalePrice: Number(it.unitPrice ?? 0),
+                            hasPreviousPurchase: false,
+                            lastPurchasePrice: 0,
+                            lastPurchaseMeta: '',
                         },
                         taxIncl,
                     );
@@ -1118,7 +1540,7 @@ export default function SupplierPurchaseInvoices() {
             resetCreateForm();
             setSspPanelKey((k) => k + 1);
             setApTab('ssp_invoices');
-            await Promise.all([loadPayables(), loadSuperSuppliers()]);
+            await loadSuperSuppliers();
         } catch (err) {
             console.error('Save super supplier purchase failed:', err);
             setCreateError(err?.message || 'Could not save purchase invoice');
@@ -1127,81 +1549,9 @@ export default function SupplierPurchaseInvoices() {
         }
     };
 
-    const openView = async (id) => {
-        setViewOpen(true);
-        setViewDetail(null);
-        setViewError('');
-        setViewLoading(true);
-        try {
-            const res = await getSupplierPayable(id);
-            const detail = res?.payable ?? res?.data ?? res;
-            setViewDetail(detail);
-        } catch (err) {
-            setViewError(err?.message || 'Could not load payable');
-        } finally {
-            setViewLoading(false);
-        }
-    };
-
-    const triggerBlobDownload = (blob, filename) => {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
-    };
-
-    const handleDownload = async (id) => {
-        setDownloadingId(id);
-        try {
-            const { blob, filename } = await downloadSupplierPayablePdf(id);
-            triggerBlobDownload(blob, filename);
-        } catch (pdfErr) {
-            try {
-                const res = await getSupplierPayable(id);
-                const detail = res?.payable ?? res?.data ?? res;
-                const text = typeof detail === 'object' ? JSON.stringify(detail, null, 2) : String(detail);
-                const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
-                triggerBlobDownload(blob, `payable-${id}.json`);
-            } catch (err) {
-                window.alert(err?.message || pdfErr?.message || 'Download failed');
-            }
-        } finally {
-            setDownloadingId(null);
-        }
-    };
-
-    const renderViewFields = (p) => {
-        if (!p || typeof p !== 'object') return <p style={{ color: 'var(--color-text-muted)' }}>No detail returned.</p>;
-        const rows = [
-            ['ID', p.id],
-            ['Vendor', p.companyName ?? p.vendorName],
-            ['VAT / Ref', p.vatNumber ?? p.reference],
-            ['Date', p.openingBalanceDate ?? p.date],
-            ['Amount (SAR)', p.openingBalance ?? p.amount ?? p.total],
-            ['Status', p.status ?? p.state],
-            ['Contact', p.contactPerson],
-            ['Phone', p.contactNumber],
-            ['Notes', p.notes],
-        ].filter(([, v]) => v !== undefined && v !== null && v !== '');
-        return (
-            <table className="ws-table" style={{ marginTop: 8 }}>
-                <tbody>
-                    {rows.map(([k, v]) => (
-                        <tr key={k}>
-                            <td style={{ fontWeight: 600, width: '35%', verticalAlign: 'top' }}>{k}</td>
-                            <td>{String(v)}</td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        );
-    };
-
     return (
         <div className="purchases-view">
-            {listError ? (
+            {ssListError ? (
                 <div
                     className="ws-section"
                     style={{
@@ -1214,14 +1564,14 @@ export default function SupplierPurchaseInvoices() {
                         fontSize: '0.875rem',
                     }}
                 >
-                    <strong>Could not load purchase invoices:</strong> {listError}
+                    <strong>Could not load suppliers:</strong> {ssListError}
                 </div>
             ) : null}
 
             <header className="purchases-header-row">
                 <div className="pi-header-left">
                     <h2 className="cash-bank-title">Purchases</h2>
-                    <p className="cash-bank-desc">Track payables, super suppliers, and upstream purchase invoices.</p>
+                    <p className="cash-bank-desc">Track supplier payables, super suppliers, and upstream purchase invoices.</p>
                 </div>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <button
@@ -1229,8 +1579,7 @@ export default function SupplierPurchaseInvoices() {
                         className="btn-save-all"
                         onClick={() => {
                             setSsErr('');
-                            setApTab('super_suppliers');
-                            setAddSsOpen(true);
+                            openAddSuperSupplier();
                         }}
                     >
                         <Building2 size={18} /> Add Super Supplier
@@ -1264,7 +1613,7 @@ export default function SupplierPurchaseInvoices() {
                 }}
             >
                 {[
-                    { id: 'payables', label: 'Payables' },
+                    { id: 'payables', label: 'Suppliers' },
                     { id: 'super_suppliers', label: 'Super suppliers' },
                     { id: 'ssp_invoices', label: 'Super supplier invoices' },
                 ].map((t) => {
@@ -1304,67 +1653,168 @@ export default function SupplierPurchaseInvoices() {
                 className="premium-table cash-bank-table"
                 style={{ display: apTab === 'payables' ? undefined : 'none' }}
             >
+                <div
+                    style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 12,
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '12px 16px',
+                        borderBottom: '1px solid #E2E8F0',
+                        background: '#FAFAFA',
+                    }}
+                >
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                        <div
+                            style={{
+                                background: '#F1F5F9',
+                                padding: '8px 12px',
+                                borderRadius: 10,
+                                fontSize: '0.8125rem',
+                            }}
+                        >
+                            Total suppliers: <strong>{filteredSuperSuppliers.length}</strong>
+                        </div>
+                        <div
+                            style={{
+                                background: '#FEF3C7',
+                                padding: '8px 12px',
+                                borderRadius: 10,
+                                fontSize: '0.8125rem',
+                            }}
+                        >
+                            Aggregate AP: <strong>{formatAccountsPayableDisplay(aggregateAp)}</strong>
+                        </div>
+                    </div>
+                    <div style={{ position: 'relative', minWidth: 220 }}>
+                        <Search
+                            size={16}
+                            style={{
+                                position: 'absolute',
+                                left: 10,
+                                top: '50%',
+                                transform: 'translateY(-50%)',
+                                color: '#94A3B8',
+                            }}
+                        />
+                        <input
+                            type="search"
+                            value={supplierSearch}
+                            onChange={(e) => setSupplierSearch(e.target.value)}
+                            placeholder="Search suppliers…"
+                            style={{
+                                width: '100%',
+                                padding: '8px 12px 8px 34px',
+                                borderRadius: 8,
+                                border: '1px solid #E2E8F0',
+                                fontSize: '0.875rem',
+                            }}
+                        />
+                    </div>
+                </div>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                         <tr className="table-header-row">
-                            <th className="table-th">Date</th>
-                            <th className="table-th">Reference</th>
-                            <th className="table-th">Description</th>
-                            <th className="table-th">Amount (SAR)</th>
+                            <th className="table-th">Name</th>
+                            <th className="table-th">Accounts payable</th>
                             <th className="table-th">Status</th>
                             <th className="table-th">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {listLoading ? (
+                        {ssLoading ? (
                             <tr>
-                                <td colSpan={6} style={{ padding: 0, verticalAlign: 'top' }}>
+                                <td colSpan={4} style={{ padding: 0, verticalAlign: 'top' }}>
                                     <div style={{ padding: 16 }}>
-                                        <ShimmerTable rows={8} columns={6} />
+                                        <ShimmerTable rows={8} columns={4} />
                                     </div>
                                 </td>
                             </tr>
-                        ) : invoices.length === 0 ? (
+                        ) : filteredSuperSuppliers.length === 0 ? (
                             <tr>
-                                <td colSpan={6} className="table-cell table-empty">
-                                    {listError ? 'No data loaded.' : 'No purchase invoices found.'}
+                                <td colSpan={4} className="table-cell table-empty">
+                                    {ssListError
+                                        ? 'No data loaded.'
+                                        : superSuppliers.length === 0
+                                          ? 'No super suppliers yet. Use "Add Super Supplier" above.'
+                                          : 'No suppliers match your search.'}
                                 </td>
                             </tr>
                         ) : (
-                            invoices.map((inv) => (
-                                <tr key={String(inv.id)} className="table-row">
-                                    <td className="table-cell">{inv.date}</td>
-                                    <td className="table-cell">{inv.ref}</td>
-                                    <td className="table-cell">{inv.description}</td>
+                            filteredSuperSuppliers.map((ss) => {
+                                const apStatus = ss.apStatus ?? 'paid';
+                                return (
+                                    <tr key={String(ss.id)} className="table-row">
                                     <td className="table-cell">
-                                        SAR {(inv.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            <button
+                                                type="button"
+                                                onClick={() =>
+                                                    openSuperSupplierLedger(String(ss.id), ss.name)
+                                                }
+                                                style={{
+                                                    display: 'block',
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    padding: 0,
+                                                    margin: 0,
+                                                    cursor: 'pointer',
+                                                    textAlign: 'left',
+                                                    font: 'inherit',
+                                                }}
+                                                title="Open accounts payable ledger"
+                                            >
+                                                <strong
+                                                    style={{
+                                                        color: '#EA580C',
+                                                        textDecoration: 'underline',
+                                                    }}
+                                                >
+                                                    {ss.name}
+                                                </strong>
+                                            </button>
+                                            {ss.vatNumber ? (
+                                                <div
+                                                    style={{
+                                                        fontSize: '0.75rem',
+                                                        color: 'var(--color-text-muted)',
+                                                        marginTop: 4,
+                                                    }}
+                                                >
+                                                    VAT: {ss.vatNumber}
+                                                </div>
+                                            ) : null}
                                     </td>
                                     <td className="table-cell">
-                                        <span className={`status-badge ${statusBadgeClass(inv.status)}`}>{inv.status}</span>
+                                            {formatAccountsPayableDisplay(ss.accountsPayable)}
                                     </td>
                                     <td className="table-cell">
-                                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                            <span
+                                                className="status-badge"
+                                                style={{
+                                                    ...apStatusBadgeStyle(apStatus),
+                                                    fontWeight: 700,
+                                                    textTransform: 'none',
+                                                }}
+                                            >
+                                                {apStatusLabel(apStatus)}
+                                            </span>
+                                        </td>
+                                        <td className="table-cell">
                                             <button
                                                 type="button"
                                                 className="btn-pi-cancel"
                                                 style={{ padding: '6px 12px', fontSize: '0.8125rem' }}
-                                                onClick={() => openView(inv.id)}
+                                                onClick={() =>
+                                                    openSuperSupplierLedger(String(ss.id), ss.name)
+                                                }
                                             >
-                                                <Eye size={14} /> View
+                                                <BookOpen size={14} /> Ledger
                                             </button>
-                                            <button
-                                                type="button"
-                                                className="btn-pi-cancel"
-                                                style={{ padding: '6px 12px', fontSize: '0.8125rem' }}
-                                                disabled={downloadingId === inv.id}
-                                                onClick={() => handleDownload(inv.id)}
-                                            >
-                                                <Download size={14} /> {downloadingId === inv.id ? '…' : 'Download'}
-                                            </button>
-                                        </div>
                                     </td>
                                 </tr>
-                            ))
+                                );
+                            })
                         )}
                     </tbody>
                 </table>
@@ -1437,7 +1887,7 @@ export default function SupplierPurchaseInvoices() {
                                         <td className="table-cell">
                                             <button
                                                 type="button"
-                                                onClick={() => openSuperSupplierPurchaseHistory(String(ss.id), ss.name)}
+                                                onClick={() => openSuperSupplierProducts(String(ss.id), ss.name)}
                                                 style={{
                                                     display: 'block',
                                                     background: 'none',
@@ -1448,7 +1898,7 @@ export default function SupplierPurchaseInvoices() {
                                                     textAlign: 'left',
                                                     font: 'inherit',
                                                 }}
-                                                title="View purchase history for this vendor"
+                                                title="View purchased products"
                                             >
                                                 <strong style={{ color: '#EA580C', textDecoration: 'underline' }}>{ss.name}</strong>
                                             </button>
@@ -1471,27 +1921,71 @@ export default function SupplierPurchaseInvoices() {
                                             </span>
                                         </td>
                                         <td className="table-cell">
-                                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                                <button
-                                                    type="button"
-                                                    className="btn-pi-cancel"
-                                                    style={{ padding: '6px 12px', fontSize: '0.8125rem' }}
-                                                    disabled={!ss.isActive}
-                                                    onClick={() => {
-                                                        setApTab('ssp_invoices');
-                                                        setCreateSspPurchaseForId(String(ss.id));
+                                            <div
+                                                style={{
+                                                    display: 'flex',
+                                                    gap: 10,
+                                                    flexWrap: 'wrap',
+                                                    alignItems: 'center',
+                                                }}
+                                            >
+                                                <label
+                                                    style={{
+                                                        display: 'inline-flex',
+                                                        alignItems: 'center',
+                                                        gap: 8,
+                                                        cursor:
+                                                            ssTogglingId === String(ss.id)
+                                                                ? 'wait'
+                                                                : 'pointer',
+                                                        fontSize: '0.8125rem',
+                                                        opacity:
+                                                            ssTogglingId === String(ss.id) ? 0.6 : 1,
                                                     }}
+                                                    title={
+                                                        ss.isActive
+                                                            ? 'Set inactive'
+                                                            : 'Set active'
+                                                    }
                                                 >
-                                                    <Plus size={14} /> Record purchase
-                                                </button>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={Boolean(ss.isActive)}
+                                                        disabled={ssTogglingId === String(ss.id)}
+                                                        onChange={() =>
+                                                            handleToggleSuperSupplierActive(ss)
+                                                        }
+                                                        style={{ width: 16, height: 16 }}
+                                                    />
+                                                    {ss.isActive ? 'Active' : 'Inactive'}
+                                                </label>
                                                 <button
                                                     type="button"
                                                     className="btn-pi-cancel"
                                                     style={{ padding: '6px 12px', fontSize: '0.8125rem' }}
-                                                    onClick={() => openAuditModal(String(ss.id))}
+                                                    onClick={() => openEditSuperSupplier(ss)}
                                                 >
-                                                    <History size={14} /> Audit
+                                                    <Edit size={14} /> Edit
                                                 </button>
+                                                {canDeleteSuperSupplier(ss) ? (
+                                                <button
+                                                    type="button"
+                                                    className="btn-pi-cancel"
+                                                        style={{
+                                                            padding: '6px 12px',
+                                                            fontSize: '0.8125rem',
+                                                            color: '#B91C1C',
+                                                            borderColor: '#FECACA',
+                                                        }}
+                                                        disabled={ssDeletingId === String(ss.id)}
+                                                        onClick={() => handleDeleteSuperSupplier(ss)}
+                                                    >
+                                                        <Trash2 size={14} />{' '}
+                                                        {ssDeletingId === String(ss.id)
+                                                            ? 'Deleting…'
+                                                            : 'Delete'}
+                                                </button>
+                                                ) : null}
                                             </div>
                                         </td>
                                     </tr>
@@ -1524,18 +2018,34 @@ export default function SupplierPurchaseInvoices() {
                     <Modal
                         title={
                             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <Building2 size={20} /> Add Super Supplier
+                                <Building2 size={20} />{' '}
+                                {editingSuperSupplierId ? 'Edit Super Supplier' : 'Add Super Supplier'}
                             </span>
                         }
-                        onClose={() => !ssSaving && setAddSsOpen(false)}
+                        onClose={() => {
+                            if (!ssSaving) {
+                                setAddSsOpen(false);
+                                setEditingSuperSupplierId(null);
+                                setSsErr('');
+                            }
+                        }}
                         width="520px"
                         footer={
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-                                <button type="button" className="btn-portal-outline" disabled={ssSaving} onClick={() => setAddSsOpen(false)}>
+                                <button
+                                    type="button"
+                                    className="btn-portal-outline"
+                                    disabled={ssSaving}
+                                    onClick={() => {
+                                        setAddSsOpen(false);
+                                        setEditingSuperSupplierId(null);
+                                        setSsErr('');
+                                    }}
+                                >
                                     Cancel
                                 </button>
                                 <button type="button" className="btn-pi-create" disabled={ssSaving} onClick={handleSaveSuperSupplier}>
-                                    {ssSaving ? 'Saving…' : 'Save'}
+                                    {ssSaving ? 'Saving…' : editingSuperSupplierId ? 'Save changes' : 'Save'}
                                 </button>
                             </div>
                         }
@@ -1599,94 +2109,130 @@ export default function SupplierPurchaseInvoices() {
                     </Modal>
                 )}
 
-                {ssHistoryOpen && (
+                {ssLedgerOpen && (
                     <Modal
                         title={
                             <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <ShoppingCart size={20} /> Purchases from {ssHistorySupplierName}
+                                <BookOpen size={20} /> Account ledger —{' '}
+                                {ssLedgerData?.supplier?.name || 'Super supplier'}
                             </span>
                         }
-                        onClose={() => {
-                            setSsHistoryOpen(false);
-                            setSsHistoryError('');
-                            setSsHistoryInfo('');
-                            setSsHistoryLines([]);
-                        }}
-                        width="900px"
+                        onClose={closeSuperSupplierLedger}
+                        width="960px"
                         footer={
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    width: '100%',
+                                    flexWrap: 'wrap',
+                                    gap: 8,
+                                }}
+                            >
+                                <span style={{ fontSize: '0.9375rem', fontWeight: 700 }}>
+                                    Current accounts payable:{' '}
+                                    {formatAccountsPayableDisplay(ssLedgerData?.accountsPayable)}
+                                </span>
                             <button
                                 type="button"
                                 className="btn-portal-outline"
-                                onClick={() => {
-                                    setSsHistoryOpen(false);
-                                    setSsHistoryError('');
-                                    setSsHistoryInfo('');
-                                    setSsHistoryLines([]);
-                                }}
+                                    onClick={closeSuperSupplierLedger}
                             >
                                 Close
                             </button>
+                            </div>
                         }
                     >
-                        {ssHistoryLoading ? (
+                        {ssLedgerLoading ? (
                             <ShimmerTextBlock lines={8} />
-                        ) : ssHistoryError ? (
-                            <p style={{ margin: 0, color: '#B91C1C', fontSize: '0.875rem' }}>{ssHistoryError}</p>
+                        ) : ssLedgerError ? (
+                            <p style={{ margin: 0, color: '#B91C1C', fontSize: '0.875rem' }}>{ssLedgerError}</p>
                         ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                                {ssHistoryInfo ? (
-                                    <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                                        {ssHistoryInfo}
-                                    </p>
-                                ) : null}
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                                    <div
+                                        style={{
+                                            background: '#F1F5F9',
+                                            padding: '10px 14px',
+                                            borderRadius: 10,
+                                            fontSize: '0.8125rem',
+                                        }}
+                                    >
+                                        Account:{' '}
+                                        <strong>
+                                            [{ssLedgerData?.account?.code}] {ssLedgerData?.account?.name}
+                                        </strong>
+                                    </div>
+                                    <div
+                                        style={{
+                                            background: '#FEF3C7',
+                                            padding: '10px 14px',
+                                            borderRadius: 10,
+                                            fontSize: '0.8125rem',
+                                        }}
+                                    >
+                                        Current balance:{' '}
+                                        <strong>
+                                            {formatAccountsPayableDisplay(ssLedgerData?.accountsPayable)}
+                                        </strong>
+                                    </div>
+                                    <span
+                                        className="status-badge"
+                                        style={{
+                                            ...apStatusBadgeStyle(ssLedgerData?.apStatus ?? 'paid'),
+                                            fontWeight: 700,
+                                            textTransform: 'none',
+                                            alignSelf: 'center',
+                                        }}
+                                    >
+                                        {apStatusLabel(ssLedgerData?.apStatus ?? 'paid')}
+                                    </span>
+                                </div>
                                 <div style={{ maxHeight: 460, overflow: 'auto' }}>
                                     <table className="ws-table" style={{ width: '100%', fontSize: '0.8125rem' }}>
                                         <thead>
                                             <tr>
                                                 <th style={{ textAlign: 'left', padding: 8 }}>Date</th>
-                                                <th style={{ textAlign: 'left', padding: 8 }}>Invoice</th>
-                                                <th style={{ textAlign: 'left', padding: 8 }}>Item</th>
-                                                <th style={{ textAlign: 'left', padding: 8 }}>SKU</th>
-                                                <th style={{ textAlign: 'right', padding: 8 }}>Qty</th>
-                                                <th style={{ textAlign: 'left', padding: 8 }}>Unit</th>
-                                                <th style={{ textAlign: 'right', padding: 8 }}>Unit price</th>
-                                                <th style={{ textAlign: 'right', padding: 8 }}>Line total</th>
+                                                <th style={{ textAlign: 'left', padding: 8 }}>Entry #</th>
+                                                <th style={{ textAlign: 'left', padding: 8 }}>Description</th>
+                                                <th style={{ textAlign: 'left', padding: 8 }}>Reference</th>
+                                                <th style={{ textAlign: 'right', padding: 8 }}>Debit</th>
+                                                <th style={{ textAlign: 'right', padding: 8 }}>Credit</th>
+                                                <th style={{ textAlign: 'right', padding: 8 }}>Balance</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {ssHistoryLines.length === 0 ? (
+                                            {(ssLedgerData?.lines || []).length === 0 ? (
                                                 <tr>
-                                                    <td colSpan={8} style={{ padding: 16, color: 'var(--color-text-muted)' }}>
-                                                        No purchases recorded for this vendor yet.
+                                                    <td
+                                                        colSpan={7}
+                                                        style={{ padding: 16, color: 'var(--color-text-muted)' }}
+                                                    >
+                                                        No journal transactions for this supplier yet.
                                                     </td>
                                                 </tr>
                                             ) : (
-                                                ssHistoryLines.map((ln) => (
-                                                    <tr key={ln.key}>
+                                                (ssLedgerData?.lines || []).map((ln, idx) => (
+                                                    <tr key={`${ln.entryNumber}-${ln.date}-${idx}`}>
                                                         <td style={{ padding: 8, whiteSpace: 'nowrap', verticalAlign: 'top' }}>
-                                                            {ln.purchaseDate || '—'}
+                                                            {ln.date || '—'}
                                                         </td>
-                                                        <td style={{ padding: 8, verticalAlign: 'top' }}>{ln.invoiceNo}</td>
-                                                        <td style={{ padding: 8, verticalAlign: 'top' }}>{ln.productName}</td>
-                                                        <td style={{ padding: 8, verticalAlign: 'top' }}>{ln.sku}</td>
+                                                        <td style={{ padding: 8, verticalAlign: 'top' }}>{ln.entryNumber || '—'}</td>
+                                                        <td style={{ padding: 8, verticalAlign: 'top' }}>{ln.description || '—'}</td>
+                                                        <td style={{ padding: 8, verticalAlign: 'top' }}>{ln.reference || '—'}</td>
                                                         <td style={{ padding: 8, textAlign: 'right', verticalAlign: 'top' }}>
-                                                            {ln.qty == null ? '—' : Number(ln.qty).toLocaleString()}
-                                                        </td>
-                                                        <td style={{ padding: 8, verticalAlign: 'top' }}>{ln.unit}</td>
-                                                        <td style={{ padding: 8, textAlign: 'right', verticalAlign: 'top' }}>
-                                                            {ln.unitPrice == null
-                                                                ? '—'
-                                                                : `SAR ${Number(ln.unitPrice).toLocaleString(undefined, {
-                                                                      minimumFractionDigits: 2,
-                                                                  })}`}
+                                                            {Number(ln.debit) > 0
+                                                                ? `SAR ${fmtApMoney(ln.debit)}`
+                                                                : '—'}
                                                         </td>
                                                         <td style={{ padding: 8, textAlign: 'right', verticalAlign: 'top' }}>
-                                                            <strong>
-                                                                SAR{' '}
-                                                                {Number(ln.lineTotal ?? 0).toLocaleString(undefined, {
-                                                                    minimumFractionDigits: 2,
-                                                                })}
-                                                            </strong>
+                                                            {Number(ln.credit) > 0
+                                                                ? `SAR ${fmtApMoney(ln.credit)}`
+                                                                : '—'}
+                                                        </td>
+                                                        <td style={{ padding: 8, textAlign: 'right', verticalAlign: 'top', fontWeight: 700 }}>
+                                                            {formatAccountsPayableDisplay(ln.runningBalance)}
                                                         </td>
                                                     </tr>
                                                 ))
@@ -1694,22 +2240,195 @@ export default function SupplierPurchaseInvoices() {
                                         </tbody>
                                     </table>
                                 </div>
-                                {ssHistoryLines.length > 0 ? (
-                                    <div
+                                {ssLedgerData?.total > (ssLedgerData?.lines?.length || 0) ? (
+                                    <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                                        Showing {ssLedgerData.lines.length} of {ssLedgerData.total} journal lines.
+                                    </p>
+                                ) : null}
+                            </div>
+                        )}
+                    </Modal>
+                )}
+
+                {ssProductsOpen && (
+                    <Modal
+                        title={
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                <Package size={20} /> Purchased products —{' '}
+                                {ssProductsData?.supplier?.name || 'Super supplier'}
+                            </span>
+                        }
+                        onClose={closeSuperSupplierProducts}
+                        width="960px"
+                        footer={
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center',
+                                    width: '100%',
+                                    flexWrap: 'wrap',
+                                    gap: 8,
+                                }}
+                            >
+                                <span style={{ fontSize: '0.9375rem', fontWeight: 700 }}>
+                                    {ssProductsData?.summary
+                                        ? `${ssProductsData.summary.lineCount} line(s) · Qty ${Number(ssProductsData.summary.totalQty || 0).toLocaleString(undefined, { maximumFractionDigits: 3 })} · Total SAR ${fmtApMoney(ssProductsData.summary.totalAmount || 0)}`
+                                        : 'Purchased products'}
+                                </span>
+                                <button
+                                    type="button"
+                                    className="btn-portal-outline"
+                                    onClick={closeSuperSupplierProducts}
+                                >
+                                    Close
+                                </button>
+                            </div>
+                        }
+                    >
+                        <div
+                            style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: 10,
+                                alignItems: 'flex-end',
+                                marginBottom: 14,
+                            }}
+                        >
+                            <div className="pi-field" style={{ minWidth: 150 }}>
+                                <label>From date</label>
+                                <input
+                                    type="date"
+                                    value={ssProductsDateFrom}
+                                    onChange={(e) => setSsProductsDateFrom(e.target.value)}
+                                />
+                            </div>
+                            <div className="pi-field" style={{ minWidth: 150 }}>
+                                <label>To date</label>
+                                <input
+                                    type="date"
+                                    value={ssProductsDateTo}
+                                    onChange={(e) => setSsProductsDateTo(e.target.value)}
+                                />
+                            </div>
+                            <div className="pi-field" style={{ flex: '1 1 220px', minWidth: 200 }}>
+                                <label>Product filter</label>
+                                <div style={{ position: 'relative' }}>
+                                    <Search
+                                        size={16}
                                         style={{
-                                            display: 'flex',
-                                            justifyContent: 'flex-end',
-                                            paddingTop: 8,
-                                            borderTop: '1px solid #e2e8f0',
-                                            fontSize: '0.9375rem',
-                                            fontWeight: 700,
+                                            position: 'absolute',
+                                            left: 10,
+                                            top: '50%',
+                                            transform: 'translateY(-50%)',
+                                            color: 'var(--color-text-muted)',
                                         }}
-                                    >
-                                        Sum of lines: SAR{' '}
-                                        {ssHistoryLines
-                                            .reduce((acc, ln) => acc + Number(ln.lineTotal ?? 0), 0)
-                                            .toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                    </div>
+                                    />
+                                    <input
+                                        type="text"
+                                        value={ssProductsProductFilter}
+                                        onChange={(e) => setSsProductsProductFilter(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') applySuperSupplierProductsFilters();
+                                        }}
+                                        placeholder="Search by product name or SKU"
+                                        style={{ paddingLeft: 34, width: '100%' }}
+                                    />
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                                <button
+                                    type="button"
+                                    className="btn-pi-create"
+                                    disabled={ssProductsLoading}
+                                    onClick={applySuperSupplierProductsFilters}
+                                >
+                                    Apply filters
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn-portal-outline"
+                                    disabled={ssProductsLoading}
+                                    onClick={clearSuperSupplierProductsFilters}
+                                >
+                                    Clear
+                                </button>
+                            </div>
+                        </div>
+
+                        {ssProductsLoading ? (
+                            <ShimmerTextBlock lines={8} />
+                        ) : ssProductsError ? (
+                            <p style={{ margin: 0, color: '#B91C1C', fontSize: '0.875rem' }}>{ssProductsError}</p>
+                        ) : (
+                                <div style={{ maxHeight: 460, overflow: 'auto' }}>
+                                    <table className="ws-table" style={{ width: '100%', fontSize: '0.8125rem' }}>
+                                        <thead>
+                                            <tr>
+                                                <th style={{ textAlign: 'left', padding: 8 }}>Date</th>
+                                                <th style={{ textAlign: 'left', padding: 8 }}>Invoice</th>
+                                            <th style={{ textAlign: 'left', padding: 8 }}>Reference</th>
+                                            <th style={{ textAlign: 'left', padding: 8 }}>Product</th>
+                                                <th style={{ textAlign: 'left', padding: 8 }}>SKU</th>
+                                                <th style={{ textAlign: 'right', padding: 8 }}>Qty</th>
+                                                <th style={{ textAlign: 'right', padding: 8 }}>Unit price</th>
+                                                <th style={{ textAlign: 'right', padding: 8 }}>Line total</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                        {(ssProductsData?.lines || []).length === 0 ? (
+                                            <tr>
+                                                <td
+                                                    colSpan={8}
+                                                    style={{ padding: 16, color: 'var(--color-text-muted)' }}
+                                                >
+                                                    No purchased products found for the selected filters.
+                                                    </td>
+                                                </tr>
+                                            ) : (
+                                            (ssProductsData?.lines || []).map((ln) => (
+                                                <tr key={ln.id}>
+                                                        <td style={{ padding: 8, whiteSpace: 'nowrap', verticalAlign: 'top' }}>
+                                                            {ln.purchaseDate || '—'}
+                                                        </td>
+                                                    <td style={{ padding: 8, verticalAlign: 'top' }}>{ln.invoiceNo || '—'}</td>
+                                                    <td style={{ padding: 8, verticalAlign: 'top' }}>{ln.referenceNo || '—'}</td>
+                                                    <td style={{ padding: 8, verticalAlign: 'top' }}>
+                                                        <div>{ln.productName || '—'}</div>
+                                                        {ln.lineDescription ? (
+                                                            <div
+                                                                style={{
+                                                                    fontSize: '0.75rem',
+                                                                    color: 'var(--color-text-muted)',
+                                                                    marginTop: 2,
+                                                                }}
+                                                            >
+                                                                {ln.lineDescription}
+                                                            </div>
+                                                        ) : null}
+                                                        </td>
+                                                    <td style={{ padding: 8, verticalAlign: 'top' }}>{ln.sku || '—'}</td>
+                                                        <td style={{ padding: 8, textAlign: 'right', verticalAlign: 'top' }}>
+                                                        {Number(ln.qty).toLocaleString(undefined, {
+                                                            maximumFractionDigits: 3,
+                                                        })}{' '}
+                                                        {ln.unit || 'pcs'}
+                                                        </td>
+                                                        <td style={{ padding: 8, textAlign: 'right', verticalAlign: 'top' }}>
+                                                        SAR {fmtApMoney(ln.unitPrice)}
+                                                    </td>
+                                                    <td style={{ padding: 8, textAlign: 'right', verticalAlign: 'top', fontWeight: 700 }}>
+                                                        SAR {fmtApMoney(ln.lineTotal)}
+                                                        </td>
+                                                    </tr>
+                                                ))
+                                            )}
+                                        </tbody>
+                                    </table>
+                                {ssProductsData?.total > (ssProductsData?.lines?.length || 0) ? (
+                                    <p style={{ margin: '8px 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                                        Showing {ssProductsData.lines.length} of {ssProductsData.total} product lines.
+                                    </p>
                                 ) : null}
                             </div>
                         )}
@@ -1766,33 +2485,6 @@ export default function SupplierPurchaseInvoices() {
                                     </tbody>
                                 </table>
                             </div>
-                        )}
-                    </Modal>
-                )}
-
-                {viewOpen && (
-                    <Modal
-                        title="Purchase invoice (payable)"
-                        onClose={() => {
-                            setViewOpen(false);
-                            setViewDetail(null);
-                            setViewError('');
-                        }}
-                        width="560px"
-                        footer={
-                            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                                <button type="button" className="btn-portal-outline" onClick={() => setViewOpen(false)}>
-                                    Close
-                                </button>
-                            </div>
-                        }
-                    >
-                        {viewLoading ? (
-                            <ShimmerTextBlock lines={6} />
-                        ) : viewError ? (
-                            <p style={{ margin: 0, color: '#B91C1C', fontSize: '0.875rem' }}>{viewError}</p>
-                        ) : (
-                            renderViewFields(viewDetail)
                         )}
                     </Modal>
                 )}
@@ -2003,10 +2695,20 @@ export default function SupplierPurchaseInvoices() {
                                     <div className="pi-col-tax">Tax Code</div>
                                     <div className="pi-col-tamt">Tax Amt</div>
                                     <div className="pi-col-total">Grand Total</div>
+                                    <div className="pi-col-total">Last Purchase Price</div>
                                     <div aria-hidden />
                                 </div>
 
-                                {lineItems.map((line, idx) => (
+                                {lineItems.map((line, idx) => {
+                                    const capsRow = findPiCapsRow(line, catalogItems);
+                                    const uomOpts = capsRow
+                                        ? linePiUomOptions(line, capsRow)
+                                        : [String(line.uom || 'Box').trim() || 'Box'];
+                                    const conversionPreview = formatPiUomConversionPreview(
+                                        line,
+                                        capsRow,
+                                    );
+                                    return (
                                     <div key={line.id} className="pi-lines-header pi-line-data-row" style={{ gridTemplateColumns: getGridColumns() }}>
                                         {showLineNum && <div className="pi-col-hash">{idx + 1}</div>}
                                         <div
@@ -2052,31 +2754,20 @@ export default function SupplierPurchaseInvoices() {
                                                             setItemPickerLineId(line.id);
                                                             setItemPickerInput(String(line.item ?? ''));
                                                             setItemPickerFilter('');
+                                                            setItemPickerSelectedIndex(0);
                                                         }}
                                                         onChange={(e) => {
                                                             const v = e.target.value;
                                                             setItemPickerLineId(line.id);
                                                             setItemPickerInput(v);
                                                             setItemPickerFilter(v);
+                                                            setItemPickerSelectedIndex(0);
                                                         }}
-                                                        onKeyDown={(e) => {
-                                                            if (
-                                                                e.key === 'Escape' ||
-                                                                e.key === 'Enter'
-                                                            ) {
-                                                                e.preventDefault();
-                                                                const text = String(
-                                                                    itemPickerInputRef.current ?? '',
-                                                                ).trim();
-                                                                setLineItems((prev) =>
-                                                                    prev.map((l) =>
-                                                                        l.id === line.id ? { ...l, item: text } : l,
-                                                                    ),
-                                                                );
-                                                                setItemPickerLineId(null);
-                                                                setItemPickerInput('');
-                                                                setItemPickerFilter('');
-                                                            }
+                                                        onKeyDown={(e) =>
+                                                            handleLineItemPickerKeyDown(e, line)
+                                                        }
+                                                        ref={(el) => {
+                                                            lineFieldRefs.current[`${line.id}:item`] = el;
                                                         }}
                                                     />
                                                     <button
@@ -2140,7 +2831,11 @@ export default function SupplierPurchaseInvoices() {
                                                                 pickerRows.map((invItem, i) => (
                                                                     <div
                                                                         key={`${line.id}-${String(invItem.id)}-${i}`}
-                                                                        className="pi-result-item"
+                                                                        className={`pi-result-item${
+                                                                            itemPickerSelectedIndex === i
+                                                                                ? ' selected'
+                                                                                : ''
+                                                                        }`}
                                                                         onMouseDown={(ev) => {
                                                                             ev.preventDefault();
                                                                             applyCatalogPurchaseItemToLine(
@@ -2148,6 +2843,9 @@ export default function SupplierPurchaseInvoices() {
                                                                                 invItem,
                                                                             );
                                                                         }}
+                                                                        onMouseEnter={() =>
+                                                                            setItemPickerSelectedIndex(i)
+                                                                        }
                                                                         role="presentation"
                                                                     >
                                                                         <div className="pi-result-info">
@@ -2218,7 +2916,13 @@ export default function SupplierPurchaseInvoices() {
                                             <select
                                                 className="pi-row-input"
                                                 value={line.account}
+                                                ref={(el) => {
+                                                    lineFieldRefs.current[`${line.id}:account`] = el;
+                                                }}
                                                 onChange={(e) => updateLineItem(line.id, 'account', e.target.value)}
+                                                onKeyDown={(e) =>
+                                                    handleLineFieldTab(e, line.id, 'account', idx)
+                                                }
                                             >
                                                 {ACCOUNT_OPTIONS.map((opt) => (
                                                     <option key={opt.code} value={`${opt.code} - ${opt.name}`}>
@@ -2241,15 +2945,56 @@ export default function SupplierPurchaseInvoices() {
                                                             e.target.value,
                                                         )
                                                     }
+                                                    onKeyDown={(e) =>
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            'description',
+                                                            idx,
+                                                        )
+                                                    }
                                                 />
                                             </div>
                                         )}
                                         <div className="pi-col-uom">
+                                            {uomOpts.length > 1 ? (
+                                                <select
+                                                    className="pi-row-input"
+                                                    value={line.uom ?? uomOpts[0]}
+                                                    ref={(el) => {
+                                                        lineFieldRefs.current[`${line.id}:uom`] = el;
+                                                    }}
+                                                    onChange={(e) =>
+                                                        updateLineItem(
+                                                            line.id,
+                                                            'uom',
+                                                            e.target.value,
+                                                        )
+                                                    }
+                                                    onKeyDown={(e) =>
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            'uom',
+                                                            idx,
+                                                        )
+                                                    }
+                                                >
+                                                    {uomOpts.map((opt) => (
+                                                        <option key={opt} value={opt}>
+                                                            {opt}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            ) : (
                                             <input
                                                 type="text"
                                                 className="pi-row-input"
                                                 placeholder="UOM"
                                                 value={line.uom ?? ''}
+                                                    ref={(el) => {
+                                                        lineFieldRefs.current[`${line.id}:uom`] = el;
+                                                    }}
                                                 onChange={(e) =>
                                                     updateLineItem(
                                                         line.id,
@@ -2257,27 +3002,63 @@ export default function SupplierPurchaseInvoices() {
                                                         e.target.value,
                                                     )
                                                 }
-                                            />
+                                                    onKeyDown={(e) =>
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            'uom',
+                                                            idx,
+                                                        )
+                                                    }
+                                                />
+                                            )}
                                         </div>
                                         <div className="pi-col-qty">
                                             <input
                                                 type="text"
-                                                defaultValue={line.qty}
-                                                key={`qty-${line.id}`}
+                                                value={line.qty}
                                                 className="pi-row-input-num pi-math-input"
+                                                ref={(el) => {
+                                                    lineFieldRefs.current[`${line.id}:qty`] = el;
+                                                }}
                                                 onChange={(e) => updateLineItem(line.id, 'qty', e.target.value)}
-                                                onKeyDown={(e) => handleMathKeyDown(e, line.id, 'qty')}
+                                                onKeyDown={(e) => {
+                                                    handleMathKeyDown(e, line.id, 'qty');
+                                                    handleLineFieldTab(e, line.id, 'qty', idx);
+                                                }}
                                                 onBlur={(e) => handleMathBlur(e, line.id, 'qty')}
                                             />
+                                            {conversionPreview ? (
+                                                <div
+                                                    style={{
+                                                        fontSize: '0.65rem',
+                                                        color: '#64748b',
+                                                        lineHeight: 1.3,
+                                                        marginTop: 2,
+                                                        whiteSpace: 'normal',
+                                                    }}
+                                                >
+                                                    {conversionPreview}
+                                                </div>
+                                            ) : null}
                                         </div>
                                         <div className="pi-col-price">
                                             <input
                                                 type="text"
-                                                defaultValue={line.price}
-                                                key={`price-${line.id}`}
+                                                value={
+                                                    line.price === undefined || line.price === null
+                                                        ? ''
+                                                        : String(line.price)
+                                                }
                                                 className="pi-row-input-num pi-math-input"
+                                                ref={(el) => {
+                                                    lineFieldRefs.current[`${line.id}:price`] = el;
+                                                }}
                                                 onChange={(e) => updateLineItem(line.id, 'price', e.target.value)}
-                                                onKeyDown={(e) => handleMathKeyDown(e, line.id, 'price')}
+                                                onKeyDown={(e) => {
+                                                    handleMathKeyDown(e, line.id, 'price');
+                                                    handleLineFieldTab(e, line.id, 'price', idx);
+                                                }}
                                                 onBlur={(e) => handleMathBlur(e, line.id, 'price')}
                                             />
                                         </div>
@@ -2308,13 +3089,19 @@ export default function SupplierPurchaseInvoices() {
                                                             e.target.value,
                                                         )
                                                     }
-                                                    onKeyDown={(e) =>
+                                                    onKeyDown={(e) => {
                                                         handleMathKeyDown(
                                                             e,
                                                             line.id,
                                                             'discount',
-                                                        )
-                                                    }
+                                                        );
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            'discount',
+                                                            idx,
+                                                        );
+                                                    }}
                                                     onBlur={(e) =>
                                                         handleMathBlur(
                                                             e,
@@ -2343,6 +3130,14 @@ export default function SupplierPurchaseInvoices() {
                                                             e.target.value,
                                                         )
                                                     }
+                                                    onKeyDown={(e) =>
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            'discountMode',
+                                                            idx,
+                                                        )
+                                                    }
                                                 >
                                                     <option value="percent">%</option>
                                                     <option value="fixed_sar">SAR</option>
@@ -2359,7 +3154,17 @@ export default function SupplierPurchaseInvoices() {
                                             }
                                         </div>
                                         <div className="pi-col-tax">
-                                            <select className="pi-row-input" value={line.taxCode} onChange={(e) => updateLineItem(line.id, 'taxCode', e.target.value)}>
+                                            <select
+                                                className="pi-row-input"
+                                                value={line.taxCode}
+                                                ref={(el) => {
+                                                    lineFieldRefs.current[`${line.id}:taxCode`] = el;
+                                                }}
+                                                onChange={(e) => updateLineItem(line.id, 'taxCode', e.target.value)}
+                                                onKeyDown={(e) =>
+                                                    handleLineFieldTab(e, line.id, 'taxCode', idx)
+                                                }
+                                            >
                                                 {TAXES.map((t) => (
                                                     <option key={t.id} value={t.code}>
                                                         {t.code}
@@ -2369,6 +3174,97 @@ export default function SupplierPurchaseInvoices() {
                                         </div>
                                         <div className="pi-col-tamt">SAR {line.taxAmt}</div>
                                         <div className="pi-col-total">SAR {line.totalFinal}</div>
+                                        <div
+                                            className="pi-col-total"
+                                            style={{
+                                                background: '#FFFBEB',
+                                                fontWeight: 600,
+                                            }}
+                                        >
+                                            {(() => {
+                                                if (
+                                                    lastPurchaseStockRefreshing &&
+                                                    line.supplierProductId
+                                                ) {
+                                                    return (
+                                                        <div
+                                                            style={{
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: 8,
+                                                                minHeight: 36,
+                                                            }}
+                                                        >
+                                                            <Loader2
+                                                                size={16}
+                                                                className="supplier-sales-last-sale-spinner"
+                                                                aria-hidden
+                                                                style={{
+                                                                    color: '#64748b',
+                                                                    flexShrink: 0,
+                                                                }}
+                                                            />
+                                                            <span
+                                                                style={{
+                                                                    fontSize: '0.75rem',
+                                                                    color: '#64748b',
+                                                                    fontWeight: 500,
+                                                                }}
+                                                            >
+                                                                Loading…
+                                                            </span>
+                                                        </div>
+                                                    );
+                                                }
+                                                const lp = lastPurchaseHintForLine(line);
+                                                const show =
+                                                    lp.hasPrev &&
+                                                    Number.isFinite(lp.price) &&
+                                                    lp.price > 0;
+                                                return show ? (
+                                                    <div
+                                                        style={{
+                                                            display: 'flex',
+                                                            flexDirection: 'column',
+                                                            gap: 2,
+                                                            lineHeight: 1.2,
+                                                        }}
+                                                    >
+                                                        <span>
+                                                            SAR{' '}
+                                                            {Number(lp.price).toLocaleString(undefined, {
+                                                                minimumFractionDigits: 2,
+                                                                maximumFractionDigits: 4,
+                                                            })}
+                                                        </span>
+                                                        {lp.meta ? (
+                                                            <span
+                                                                style={{
+                                                                    fontSize: '0.675rem',
+                                                                    color: '#475569',
+                                                                    fontWeight: 500,
+                                                                    whiteSpace: 'normal',
+                                                                }}
+                                                            >
+                                                                {lp.meta}
+                                                            </span>
+                                                        ) : null}
+                                                    </div>
+                                                ) : (
+                                                    <span
+                                                        style={{
+                                                            color: '#64748b',
+                                                            fontSize: '0.75rem',
+                                                            fontWeight: 500,
+                                                        }}
+                                                    >
+                                                        {superSupplierId
+                                                            ? 'No previous purchase from this supplier'
+                                                            : 'Select super supplier'}
+                                                    </span>
+                                                );
+                                            })()}
+                                        </div>
                                         <div
                                             style={{
                                                 display: 'flex',
@@ -2395,7 +3291,8 @@ export default function SupplierPurchaseInvoices() {
                                             </button>
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                })}
 
                                 <div className="pi-line-row">
                                     <div

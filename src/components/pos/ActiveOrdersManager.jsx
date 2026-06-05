@@ -29,7 +29,7 @@ export default function ActiveOrdersManager() {
         else setLoading(true);
         try {
             const d = await apiFetch(
-                `/cashier/orders?status=active&limit=50&offset=0&utcOffsetMinutes=${clientUtcOffsetMinutes()}`,
+                `/cashier/orders?status=active&utcOffsetMinutes=${clientUtcOffsetMinutes()}`,
             );
             const raw = d.orders || d.data || [];
             const mapped = raw.map(o => ({

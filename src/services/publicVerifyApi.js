@@ -11,6 +11,39 @@ export function getPublicWorkshopPurchaseInvoiceVerify(id) {
     return apiFetch(`/public/workshop-purchase-invoices/${encodeURIComponent(String(id))}`);
 }
 
+export function getPublicWorkshopPurchaseInvoiceReceivePreview(id) {
+    if (id == null || id === '') {
+        return Promise.reject(new Error('Missing invoice id'));
+    }
+    return apiFetch(`/public/workshop-purchase-invoices/${encodeURIComponent(String(id))}/receive-preview`);
+}
+
+/**
+ * Public QR receive for workshop purchase invoice — password required.
+ * Delegates to linked supplier sales invoice when present.
+ */
+export function publicReceiveWorkshopPurchaseInvoiceWithPassword(id, password, opts = {}) {
+    if (id == null || id === '') {
+        return Promise.reject(new Error('Missing invoice id'));
+    }
+    if (!password || String(password).trim() === '') {
+        return Promise.reject(new Error('Password is required'));
+    }
+    const body = {
+        password: String(password),
+        ...(opts.criticalStockByProductId && Object.keys(opts.criticalStockByProductId).length > 0
+            ? { criticalStockByProductId: opts.criticalStockByProductId }
+            : {}),
+    };
+    return apiFetch(
+        `/public/workshop-purchase-invoices/${encodeURIComponent(String(id))}/receive-with-password`,
+        {
+            method: 'POST',
+            body: JSON.stringify(body),
+        },
+    );
+}
+
 /** Public supplier→workshop sales invoice (AR) — no login. */
 export function getPublicSupplierSalesInvoiceVerify(id) {
     if (id == null || id === '') {

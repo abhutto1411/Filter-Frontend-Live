@@ -155,6 +155,45 @@
     z-index: 1;
 }
 
+/* Password show/hide toggle button. The blanket `.input-wrapper svg` rule
+   above absolutely-positions every SVG to the LEFT — we need this one on
+   the right. Higher specificity (button + nested svg) lets us override
+   left/right + pointer-events cleanly. */
+.input-wrapper .password-toggle-btn {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 6px;
+    color: #64748b;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    border-radius: 6px;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.input-wrapper .password-toggle-btn:hover {
+    color: #1a1a1a;
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.input-wrapper .password-toggle-btn svg {
+    /* Cancel the blanket rule for this button's icon — keep it in-flow
+       inside the button so the right-aligned button positions correctly. */
+    position: static;
+    left: auto;
+    top: auto;
+    transform: none;
+    color: inherit;
+    pointer-events: none;
+}
+
+
 /* Left padding: icon inset (14) + icon (18) + gap to text (~16) ≈ 52px */
 .input-wrapper .signin-input,
 .signin-input {

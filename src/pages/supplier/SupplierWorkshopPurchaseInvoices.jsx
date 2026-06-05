@@ -8,7 +8,9 @@ export default function SupplierWorkshopPurchaseInvoices() {
                 <div>
                     <h2 className="ws-page-title">Workshop purchases</h2>
                     <p className="ws-page-sub">
-                        Invoices workshops send you. Stock updates when you approve (lines with a product).
+                        Order requests from affiliated workshops. <strong>Approve</strong> or{' '}
+                        <strong>Reject</strong>, then <strong>Prepare sales invoice</strong> — the same
+                        stock, COA, AR, and timeline logic as Sales Invoices (AR) when you issue the invoice.
                     </p>
                 </div>
             </div>

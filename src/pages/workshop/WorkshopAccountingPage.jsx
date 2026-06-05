@@ -32,12 +32,14 @@ import {
   rejectReceipt as rejectAcctReceipt,
   listJournalEntries as listAcctJournalEntries,
   getJournalEntry as getAcctJournalEntry,
+  previewNextVouchers as previewAcctNextVouchers,
 } from '../../services/workshopAccountingApi';
 import WorkshopApprovalLimits from './accounting/WorkshopApprovalLimits';
 import WorkshopReceiptsLog from './accounting/WorkshopReceiptsLog';
 import WorkshopPaymentsLog from './accounting/WorkshopPaymentsLog';
 import WorkshopExpensesLog from './accounting/WorkshopExpensesLog';
 import WorkshopPayroll from './accounting/WorkshopPayroll';
+import WorkshopAdvances from './accounting/WorkshopAdvances';
 import WorkshopLedgerView from './accounting/WorkshopLedgerView';
 import '../../styles/admin/AccountingPage.css';
 
@@ -244,9 +246,9 @@ function ChartOfAccountsView() {
 
 const PAYEE_TYPES = ['Supplier', 'Employee', 'Customer', 'Other'];
 
-const blankPaymentRow = (i) => ({
-    id: `p-${Date.now()}-${i}`,
-    voucher: `PE${String(i + 1).padStart(4, '0')}`,
+const blankPaymentRow = (i, voucher) => ({
+    id: `p-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+    voucher: voucher ?? `PE${String(i + 1).padStart(4, '0')}`,
     date: todayIsoDate(),
     type: 'Supplier',
     payeeId: '',
@@ -257,9 +259,9 @@ const blankPaymentRow = (i) => ({
     notes: '',
 });
 
-const blankReceiptRow = (i) => ({
-    id: `r-${Date.now()}-${i}`,
-    voucher: `RV${String(i + 1).padStart(4, '0')}`,
+const blankReceiptRow = (i, voucher) => ({
+    id: `r-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+    voucher: voucher ?? `RV${String(i + 1).padStart(4, '0')}`,
     date: todayIsoDate(),
     type: 'Customer',
     payeeId: '',
@@ -278,18 +280,26 @@ const blankJournalRow = (i) => ({
     credit: '',
 });
 
-function renumberVouchers(rows, prefix) {
+/** Assign voucher labels from the server preview pool (workshop-scoped sequence). */
+function assignVouchersFromPool(rows, pool, prefix) {
     return rows.map((r, idx) => ({
         ...r,
-        voucher: `${prefix}${String(idx + 1).padStart(4, '0')}`,
+        voucher: pool[idx] ?? `${prefix}${String(idx + 1).padStart(4, '0')}`,
     }));
+}
+
+function buildRowsFromVoucherPool(makeBlank, pool, count = 2) {
+    const take = Math.max(count, 1);
+    return Array.from({ length: take }, (_, idx) => makeBlank(idx, pool[idx]));
 }
 
 function TransactionEntryView({ branches = [] }) {
     const [activeTab, setActiveTab] = useState('Payments');
-    const [paymentsRows, setPaymentsRows] = useState(() => renumberVouchers([blankPaymentRow(0), blankPaymentRow(1)], 'PE'));
-    const [receiptsRows, setReceiptsRows] = useState(() => renumberVouchers([blankReceiptRow(0), blankReceiptRow(1)], 'RV'));
+    const [paymentsRows, setPaymentsRows] = useState(() => buildRowsFromVoucherPool(blankPaymentRow, ['PE0001', 'PE0002']));
+    const [receiptsRows, setReceiptsRows] = useState(() => buildRowsFromVoucherPool(blankReceiptRow, ['RV0001', 'RV0002']));
     const [journalEntryRows, setJournalEntryRows] = useState(() => [blankJournalRow(0), blankJournalRow(1)]);
+    const [peVoucherPool, setPeVoucherPool] = useState(['PE0001', 'PE0002', 'PE0003', 'PE0004', 'PE0005']);
+    const [rvVoucherPool, setRvVoucherPool] = useState(['RV0001', 'RV0002', 'RV0003', 'RV0004', 'RV0005']);
     const [journalMemo, setJournalMemo] = useState('');
     const [headerDate, setHeaderDate] = useState(todayIsoDate());
     const [headerBranchId, setHeaderBranchId] = useState('');
@@ -332,7 +342,38 @@ function TransactionEntryView({ branches = [] }) {
         }
     }, []);
 
+    const reloadVoucherPreviews = useCallback(async (rowCount = 2) => {
+        try {
+            const need = Math.max(rowCount + 3, 5);
+            const [peRes, rvRes] = await Promise.all([
+                previewAcctNextVouchers('PE', need),
+                previewAcctNextVouchers('RV', need),
+            ]);
+            const pePool = Array.isArray(peRes?.vouchers) ? peRes.vouchers : [];
+            const rvPool = Array.isArray(rvRes?.vouchers) ? rvRes.vouchers : [];
+            if (pePool.length) setPeVoucherPool(pePool);
+            if (rvPool.length) setRvVoucherPool(rvPool);
+            setPaymentsRows((prev) => assignVouchersFromPool(prev, pePool.length ? pePool : peVoucherPool, 'PE'));
+            setReceiptsRows((prev) => assignVouchersFromPool(prev, rvPool.length ? rvPool : rvVoucherPool, 'RV'));
+            return { pePool, rvPool };
+        } catch (e) {
+            console.error('Failed to load voucher previews', e);
+            return { pePool: peVoucherPool, rvPool: rvVoucherPool };
+        }
+    }, [peVoucherPool, rvVoucherPool]);
+
     useEffect(() => { reloadLookups(); }, [reloadLookups]);
+
+    useEffect(() => {
+        reloadVoucherPreviews(2).then(({ pePool, rvPool }) => {
+            if (pePool?.length) {
+                setPaymentsRows(buildRowsFromVoucherPool(blankPaymentRow, pePool, 2));
+            }
+            if (rvPool?.length) {
+                setReceiptsRows(buildRowsFromVoucherPool(blankReceiptRow, rvPool, 2));
+            }
+        });
+    }, []);
 
     // Whenever Paid From Account changes, sync the branch field with the
     // register's branch so the user doesn't need to set it twice.
@@ -378,19 +419,31 @@ function TransactionEntryView({ branches = [] }) {
 
     const addRow = useCallback(() => {
         if (activeTab === 'Payments') {
-            setPaymentsRows((prev) => renumberVouchers([...prev, blankPaymentRow(prev.length)], 'PE'));
+            setPaymentsRows((prev) => {
+                const nextPool = peVoucherPool;
+                const nextIdx = prev.length;
+                return [...prev, blankPaymentRow(nextIdx, nextPool[nextIdx])];
+            });
         } else if (activeTab === 'Receipts') {
-            setReceiptsRows((prev) => renumberVouchers([...prev, blankReceiptRow(prev.length)], 'RV'));
+            setReceiptsRows((prev) => {
+                const nextPool = rvVoucherPool;
+                const nextIdx = prev.length;
+                return [...prev, blankReceiptRow(nextIdx, nextPool[nextIdx])];
+            });
         } else {
             setJournalEntryRows((prev) => [...prev, blankJournalRow(prev.length)]);
         }
-    }, [activeTab]);
+    }, [activeTab, peVoucherPool, rvVoucherPool]);
 
     const removeRow = (id) => {
         if (activeTab === 'Payments') {
-            setPaymentsRows((prev) => renumberVouchers(prev.filter((r) => r.id !== id), 'PE'));
+            setPaymentsRows((prev) =>
+                assignVouchersFromPool(prev.filter((r) => r.id !== id), peVoucherPool, 'PE'),
+            );
         } else if (activeTab === 'Receipts') {
-            setReceiptsRows((prev) => renumberVouchers(prev.filter((r) => r.id !== id), 'RV'));
+            setReceiptsRows((prev) =>
+                assignVouchersFromPool(prev.filter((r) => r.id !== id), rvVoucherPool, 'RV'),
+            );
         } else {
             setJournalEntryRows((prev) => prev.filter((r) => r.id !== id));
         }
@@ -450,10 +503,15 @@ function TransactionEntryView({ branches = [] }) {
                     notes: r.notes || undefined,
                 })),
             });
-            setPaymentsRows(renumberVouchers([blankPaymentRow(0)], 'PE'));
             setOkMsg(`Saved ${res?.saved ?? valid.length} payment(s) — total SAR ${(res?.total ?? 0).toFixed(2)}`);
             await reloadRecent('Payments');
             await reloadLookups();
+            const { pePool } = await reloadVoucherPreviews(1);
+            if (pePool?.length) {
+                setPaymentsRows(buildRowsFromVoucherPool(blankPaymentRow, pePool, 1));
+            } else {
+                setPaymentsRows(buildRowsFromVoucherPool(blankPaymentRow, peVoucherPool, 1));
+            }
         } catch (e) {
             setError(e?.message || 'Failed to save payments');
         } finally {
@@ -485,10 +543,15 @@ function TransactionEntryView({ branches = [] }) {
                     notes: r.notes || undefined,
                 })),
             });
-            setReceiptsRows(renumberVouchers([blankReceiptRow(0)], 'RV'));
             setOkMsg(`Saved ${res?.saved ?? valid.length} receipt(s) — total SAR ${(res?.total ?? 0).toFixed(2)}`);
             await reloadRecent('Receipts');
             await reloadLookups();
+            const { rvPool } = await reloadVoucherPreviews(1);
+            if (rvPool?.length) {
+                setReceiptsRows(buildRowsFromVoucherPool(blankReceiptRow, rvPool, 1));
+            } else {
+                setReceiptsRows(buildRowsFromVoucherPool(blankReceiptRow, rvVoucherPool, 1));
+            }
         } catch (e) {
             setError(e?.message || 'Failed to save receipts');
         } finally {
@@ -3952,7 +4015,7 @@ export default function WorkshopAccountingPage({ activeTab, branches = [], selec
             {activeSub === 'journal-entries' && <GeneralJournalView />}
             {activeSub === 'expenses' && <WorkshopExpensesLog branches={branches} selectedBranchId={selectedBranchId} />}
             {activeSub === 'receipts' && <WorkshopReceiptsLog branches={branches} selectedBranchId={selectedBranchId} />}
-            {activeSub === 'advances' && <EmployeeAdvancesView />}
+            {activeSub === 'advances' && <WorkshopAdvances branches={branches} selectedBranchId={selectedBranchId} />}
             {activeSub === 'payroll' && <WorkshopPayroll />}
             {activeSub === 'approvals' && <WorkshopApprovalLimits />}
             {activeSub === 'ledger' && <WorkshopLedgerView />}

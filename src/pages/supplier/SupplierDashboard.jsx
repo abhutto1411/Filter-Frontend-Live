@@ -9,6 +9,7 @@ import {
     Eye,
     ShoppingCart,
     ChevronRight,
+    Boxes,
 } from 'lucide-react';
 import {
     getSupplierDashboard,
@@ -16,6 +17,7 @@ import {
     listSupplierCashBankAccounts,
     listSupplierWorkshopPurchaseInvoices,
 } from '../../services/supplierApi';
+import { listStorageBrands } from '../../services/storageFacilityApi';
 import {
     normalizeWorkshopSupplierPurchaseInvoiceRow,
     unwrapWorkshopSupplierPurchaseInvoiceList,
@@ -59,6 +61,8 @@ export default function SupplierDashboard({ onTabChange }) {
     const [wpiRowsForPipeline, setWpiRowsForPipeline] = useState([]);
     const [cashTotal, setCashTotal] = useState(null);
     const [reportsPartialError, setReportsPartialError] = useState('');
+    const [storageBrandCount, setStorageBrandCount] = useState(null);
+    const [storageArTotal, setStorageArTotal] = useState(null);
 
     const formatCurrency = (amount, currency = 'SAR') =>
         `${currency} ${Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
@@ -219,6 +223,21 @@ export default function SupplierDashboard({ onTabChange }) {
                 const wpiNorm = wpiList.map(normalizeWorkshopSupplierPurchaseInvoiceRow).filter(Boolean);
                 setWpiRowsForPipeline(wpiNorm);
                 setRecentWorkshopInvoices(wpiNorm.slice(0, 10));
+
+                listStorageBrands()
+                    .then((sf) => {
+                        const brands = sf?.brands ?? [];
+                        setStorageBrandCount(brands.length);
+                        const arSum = brands.reduce(
+                            (s, b) => s + Number(b.arBalance ?? 0),
+                            0,
+                        );
+                        setStorageArTotal(arSum);
+                    })
+                    .catch(() => {
+                        setStorageBrandCount(0);
+                        setStorageArTotal(0);
+                    });
             } catch (err) {
                 if (!cancelled) {
                     console.error('Supplier dashboard load failed:', err);
@@ -325,6 +344,42 @@ export default function SupplierDashboard({ onTabChange }) {
                             </div>
                         ))}
                     </div>
+                    {storageBrandCount != null && storageBrandCount > 0 ? (
+                        <div
+                            className="ws-section"
+                            style={{
+                                marginBottom: 16,
+                                padding: '14px 18px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                flexWrap: 'wrap',
+                                gap: 12,
+                            }}
+                        >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <div className="ws-kpi-icon ws-kpi-icon--blue">
+                                    <Boxes size={22} />
+                                </div>
+                                <div>
+                                    <p style={{ margin: 0, fontWeight: 700, fontSize: '0.9375rem' }}>
+                                        Storage Facility
+                                    </p>
+                                    <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#64748b' }}>
+                                        {storageBrandCount} brand{storageBrandCount === 1 ? '' : 's'} · AR SAR{' '}
+                                        {Number(storageArTotal || 0).toLocaleString()}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                className="mgr-si-btn-new"
+                                onClick={() => onTabChange('storage_facility')}
+                            >
+                                Manage storage brands
+                            </button>
+                        </div>
+                    ) : null}
                     <div className="ws-section" style={{ marginBottom: 16 }}>
                         <div
                             style={{
@@ -460,6 +515,7 @@ export default function SupplierDashboard({ onTabChange }) {
                         // { label: 'Expenses', tab: 'expenses', icon: AlertTriangle },
                         { label: 'Staff & Roles', tab: 'employees', icon: Eye },
                         { label: 'Accounting', tab: 'accounting', icon: BarChart3 },
+                        { label: 'Storage Facility', tab: 'storage_facility', icon: Boxes },
                     ].map((a) => (
                         <button
                             key={a.tab}

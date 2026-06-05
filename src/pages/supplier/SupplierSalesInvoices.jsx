@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -33,11 +33,91 @@ import {
 } from '../../services/supplierApi';
 import { ShimmerTable, ShimmerTextBlock } from '../../components/supplier/Shimmer';
 import WorkshopPurchaseInvoiceView from '../../components/supplier/WorkshopPurchaseInvoiceView';
+import { formatAffiliatedBranchCustomerLabel } from '../../utils/affiliatedCustomerLabels';
 
 /** Session key: JSON line preset (legacy / fallback). Primary path is router state `salesInvoiceFromAlert`. */
 const SI_PRESET_LINE_KEY = 'supplier_sales_invoice_preset_line';
 
 const SALES_INVOICE_FROM_ALERT_KEY = 'salesInvoiceFromAlert';
+const FOCUS_SALES_INVOICE_ID_KEY = 'supplier_focus_sales_invoice_id';
+const WORKSHOP_PURCHASE_SI_PREFILL_KEY = 'supplier_workshop_purchase_sales_prefill';
+
+/** Router state key for Transaction Hub receipt prefill from Sales Invoices. */
+const TRANSACTION_HUB_RECEIPT_PREFILL_KEY = 'transactionHubReceiptPrefill';
+
+function normalizeSalesInvoiceCustomers(branchesRes) {
+    const raw = Array.isArray(branchesRes?.customers) ? branchesRes.customers : [];
+    if (raw.length) {
+        return raw.map((c) => ({
+            key: String(c.key),
+            group: c.group || 'Customers',
+            label: c.label || 'Customer',
+            subtitle: c.subtitle ?? null,
+            customerType: c.customerType,
+            branchId: c.branchId ?? null,
+            workshopId: c.workshopId ?? null,
+            externalPartyId: c.externalPartyId ?? null,
+            disabled: Boolean(c.disabled),
+        }));
+    }
+    const legacy = Array.isArray(branchesRes?.branches) ? branchesRes.branches : [];
+    return legacy
+        .filter((b) => !b.noBranch && (b.branchId || b.id))
+        .map((b) => {
+            const branchId = String(b.branchId ?? b.id);
+            return {
+                key: `affiliated:branch:${branchId}`,
+                group: 'Affiliated Workshops',
+                label:
+                    b.label ||
+                    formatAffiliatedBranchCustomerLabel(b.workshopName, b.name),
+                subtitle: null,
+                customerType: 'affiliated_branch',
+                branchId,
+                workshopId: b.workshopId != null ? String(b.workshopId) : null,
+                externalPartyId: null,
+                disabled: false,
+            };
+        });
+}
+
+function customerKeyFromBranchId(branchId) {
+    const bid = String(branchId ?? '').trim();
+    return bid ? `affiliated:branch:${bid}` : '';
+}
+
+function normalizePrefillCustomerOption(customer, prefillFallback = {}) {
+    if (!customer || typeof customer !== 'object' || !customer.key) return null;
+    return {
+        key: String(customer.key),
+        group: customer.group || 'Affiliated Workshops',
+        label:
+            customer.label ||
+            formatAffiliatedBranchCustomerLabel(
+                prefillFallback.workshopName,
+                prefillFallback.branchName,
+            ) ||
+            'Customer',
+        subtitle: customer.subtitle ?? null,
+        customerType: customer.customerType || 'affiliated_branch',
+        branchId: customer.branchId ?? prefillFallback.branchId ?? null,
+        workshopId: customer.workshopId ?? prefillFallback.workshopId ?? null,
+        externalPartyId: null,
+        disabled: Boolean(customer.disabled),
+    };
+}
+
+function mergeSalesInvoiceCustomerOption(options, customer, prefillFallback = {}) {
+    const c = normalizePrefillCustomerOption(customer, prefillFallback);
+    if (!c) return options;
+    const list = Array.isArray(options) ? options : [];
+    if (list.some((x) => x.key === c.key)) return list;
+    return [...list, c].sort((a, b) => {
+        const g = (a.group || '').localeCompare(b.group || '');
+        if (g !== 0) return g;
+        return (a.label || '').localeCompare(b.label || '');
+    });
+}
 
 /** Map GET `/supplier/invoices/:id` → WorkshopPurchaseInvoiceView detail (same bilingual layout as workshop PI). */
 function mapSupplierSalesInvoiceToWorkshopDetail(inv) {
@@ -65,6 +145,9 @@ function mapSupplierSalesInvoiceToWorkshopDetail(inv) {
         workshop: inv.workshop,
         vendorInvoiceRef: refLabel,
         vendorRef: refLabel,
+        supplierLegalName: inv.supplierName,
+        supplierName: inv.supplierName,
+        supplierVatNumber: inv.supplierVatNumber,
         subtotalExVat: inv.subtotal,
         subtotal: inv.subtotal,
         vatAmount: inv.vatAmount,
@@ -88,11 +171,15 @@ function mapSupplierSalesInvoiceToWorkshopDetail(inv) {
             id: it.id,
             productName: it.productName,
             product_name: it.productName,
+            productNameArabic: it.productNameArabic ?? it.product_name_arabic ?? null,
+            product_name_arabic: it.productNameArabic ?? it.product_name_arabic ?? null,
             qty: it.qty,
             quantity: it.qty,
             qtyReturned: Number(it.qtyReturned ?? it.qty_returned ?? 0),
-            unit: 'piece',
-            uom: 'piece',
+            unit: it.unit || 'pcs',
+            uom: it.unit || 'pcs',
+            qtyWorkshop: it.qtyWorkshop ?? null,
+            workshopUnit: it.workshopUnit ?? null,
             unitPrice: it.unitPrice,
             unit_price: it.unitPrice,
             unitPriceExVat: it.unitPrice,
@@ -142,6 +229,53 @@ function salesInvoiceArSettlementLabel(inv) {
     return { text: 'Unpaid', tone: 'amber' };
 }
 
+function salesInvoiceSarFmt(v) {
+    return Number(v ?? 0).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+}
+
+function formatSalesInvoiceMgrDate(iso) {
+    if (!iso || iso === '—') return '—';
+    const [y, m, d] = String(iso).slice(0, 10).split('-');
+    if (!y || !m || !d) return String(iso);
+    return `${d}/${m}/${y}`;
+}
+
+function salesInvoiceCustomerLabel(inv) {
+    if (!inv || typeof inv !== 'object') return '—';
+    return inv.workshopName
+        ? `${inv.workshopName} — ${inv.branch}`
+        : inv.branch || '—';
+}
+
+function salesInvoiceMgrStatus(inv) {
+    const balance = Number(inv?.balance ?? 0);
+    const paid = Number(inv?.paid ?? 0);
+    const due = String(inv?.dueDate ?? '').slice(0, 10);
+    const today = new Date().toISOString().slice(0, 10);
+    if (balance <= 0.005) {
+        return { label: 'Paid in full', cls: 'mgr-si-status mgr-si-status--paid' };
+    }
+    if (due && due < today && balance > 0.005) {
+        return { label: 'Overdue', cls: 'mgr-si-status mgr-si-status--overdue' };
+    }
+    if (paid > 0.005) {
+        return { label: 'Partially paid', cls: 'mgr-si-status mgr-si-status--partial' };
+    }
+    const raw = String(inv?.status || '')
+        .replace(/_/g, ' ')
+        .trim();
+    if (raw === 'draft') {
+        return { label: 'Draft', cls: 'mgr-si-status mgr-si-status--draft' };
+    }
+    return {
+        label: raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : 'Pending payment',
+        cls: 'mgr-si-status mgr-si-status--pending',
+    };
+}
+
 /** Backend `GET /supplier/cash-bank/accounts` uses `accountType` (cash | bank), not `type`. */
 function extractSupplierAccountsPayload(res) {
     if (!res || typeof res !== 'object') return [];
@@ -165,7 +299,39 @@ function mapSupplierCashBankAccountForPickers(raw) {
             ? String(nameBaseRaw).trim()
             : 'Account';
     const optionLabel = `${nameBase} (${typeLabel})`;
-    return { id: String(id), nameBase, typeLabel, optionLabel, cashBankLabel: optionLabel, raw };
+    return { id: String(id), nameBase, typeLabel, optionLabel, cashBankLabel: optionLabel, raw     };
+}
+
+/** Prefill payload for Accounting → Transaction Hub → Receipts tab. */
+function buildTransactionHubReceiptPrefill(inv) {
+    const today = new Date().toISOString().slice(0, 10);
+    const balance = Number(inv?.balance ?? 0);
+    let payeeValue = '';
+    if (inv?.branchId != null && String(inv.branchId).trim() !== '') {
+        payeeValue = `branch|${String(inv.branchId).trim()}`;
+    } else if (inv?.workshopId != null && String(inv.workshopId).trim() !== '') {
+        payeeValue = `workshop|${String(inv.workshopId).trim()}`;
+    }
+    const invoiceNo = String(inv?.invoiceNo || '').trim();
+    return {
+        tab: 'receipt',
+        variant: 'receipt',
+        headerDate: today,
+        headerRef: invoiceNo,
+        generalNote: invoiceNo ? `Payment received for sales invoice ${invoiceNo}` : '',
+        cashBankLabel: String(inv?.cashBankAccount || '').trim() || undefined,
+        salesInvoiceId: inv?.id != null ? String(inv.id) : undefined,
+        lines: [
+            {
+                lineDate: today,
+                payType: 'customer',
+                payeeValue,
+                amount: balance > 0 ? String(roundMoney2(balance)) : '',
+                lineReference: invoiceNo,
+                notes: salesInvoiceCustomerLabel(inv),
+            },
+        ],
+    };
 }
 
 function mapSupplierInvoicesListFromResponse(invRes) {
@@ -175,6 +341,7 @@ function mapSupplierInvoicesListFromResponse(invRes) {
         invoiceNo: inv.invoiceNo,
         branch: inv.branch?.name || '-',
         branchId: inv.branch?.id,
+        workshopId: inv.workshop?.id ?? null,
         workshopName: inv.workshop?.name || inv.branch?.workshopName || '',
         date: inv.invoiceDate,
         dueDate: inv.dueDate || '—',
@@ -391,23 +558,31 @@ function mergeInventoryLists(stockRows, fallback) {
 
 function normalizeStockCatalogRow(item) {
     const qtyWh = Number(item.currentBalanceWarehouse || 0);
-    const unitCost =
+    const unitCostWh =
         qtyWh > 0 ? Number(item.valueWarehouseSar || 0) / qtyWh : 0;
-    const suggested = Number(item.suggestedSaleUnitPriceWorkshop ?? NaN);
+    const conversionFactor = Number(item.conversionFactor) || 1;
+    const warehouseUnit =
+        item.warehouseUnit || item.unitCode || item.unit || 'Box';
+    const workshopUnit = item.workshopUnit || 'pcs';
+    const suggestedWs = Number(item.suggestedSaleUnitPriceWorkshop ?? NaN);
+    const suggestedWh =
+        Number.isFinite(suggestedWs) && suggestedWs > 0
+            ? suggestedWs * conversionFactor
+            : unitCostWh;
     const price =
-        Number.isFinite(suggested) && suggested > 0
-            ? suggested
-            : Number.isFinite(unitCost)
-              ? Math.max(0, unitCost)
+        Number.isFinite(suggestedWh) && suggestedWh > 0
+            ? Math.max(0, suggestedWh)
+            : Number.isFinite(unitCostWh)
+              ? Math.max(0, unitCostWh)
               : 0;
-    const uom = item.workshopUnit || item.unitCode || item.unit || 'pcs';
+    const uom = warehouseUnit;
     const costHint =
         qtyWh > 0
-            ? `Warehouse stock: ${qtyWh} • Unit cost SAR ${unitCost.toLocaleString(undefined, { maximumFractionDigits: 4 })}`
+            ? `Warehouse stock: ${qtyWh} ${warehouseUnit} • Unit cost SAR ${unitCostWh.toLocaleString(undefined, { maximumFractionDigits: 4 })} / ${warehouseUnit}`
             : 'No warehouse stock — you can still enter qty/price; save may be blocked if over stock.';
     const listHint =
-        Number.isFinite(suggested) && suggested > 0
-            ? `Suggested list SAR ${suggested.toFixed(2)} / ${uom} (invoice line default)`
+        Number.isFinite(suggestedWh) && suggestedWh > 0
+            ? `Suggested list SAR ${suggestedWh.toFixed(2)} / ${warehouseUnit} (invoice default)`
             : '';
     const stockHint = [listHint, costHint].filter(Boolean).join(' · ');
 
@@ -456,7 +631,6 @@ const lastSaleMeta =
 
 /** Workshop-side sellable qty cap (aligned with supplier stock-balances payload). */
     const stockQtyWorkshop = Number(item.currentBalanceWorkshop ?? NaN);
-    const conversionFactor = Number(item.conversionFactor) || 1;
 
     return {
     id: catalogId ?? `row-${item.productName}-${item.sku || ''}`,
@@ -464,6 +638,8 @@ const lastSaleMeta =
     sku: String(item.sku ?? item.barcode ?? '').trim(),
     price,
     unit: uom,
+    warehouseUnit,
+    workshopUnit,
 
         /** Aggregate warehouse bucket qty (supplier stock units before workshop conversion). */
         warehouseStockQty: Number(item.currentBalanceWarehouse ?? 0),
@@ -522,9 +698,77 @@ function maxSellableQtyWorkshopForLine(line, lines, inventoryItems) {
     for (const ln of lines) {
         if (ln.id === line.id) continue;
         if (salesLineStockKey(ln) !== key) continue;
+        if (isWarehouseUomLine(ln, inv)) continue;
         otherSum += parseFloat(String(ln.qty).replace(',', '.')) || 0;
     }
     return Math.max(0, roundMoney2(cap - otherSum));
+}
+
+function normUomLabel(u) {
+    return String(u ?? '').trim().toLowerCase();
+}
+
+function isWarehouseUomLine(line, inv) {
+    const wu = normUomLabel(inv?.warehouseUnit);
+    const u = normUomLabel(line?.uom);
+    return !!wu && !!u && u === wu;
+}
+
+function maxSellableQtyWarehouseForLine(line, lines, inventoryItems) {
+    const inv = findInventoryCapsRow(line, inventoryItems);
+    if (!inv || !Number.isFinite(Number(inv.warehouseStockQty))) {
+        return null;
+    }
+    const cap = Number(inv.warehouseStockQty);
+    const key = salesLineStockKey(line);
+    if (!key) return null;
+    let otherSum = 0;
+    for (const ln of lines) {
+        if (ln.id === line.id) continue;
+        if (salesLineStockKey(ln) !== key) continue;
+        if (!isWarehouseUomLine(ln, inv)) continue;
+        otherSum += parseFloat(String(ln.qty).replace(',', '.')) || 0;
+    }
+    return Math.max(0, roundMoney2(cap - otherSum));
+}
+
+function maxSellableQtyForLine(line, lines, inventoryItems) {
+    const inv = findInventoryCapsRow(line, inventoryItems);
+    if (!inv) return null;
+    return isWarehouseUomLine(line, inv)
+        ? maxSellableQtyWarehouseForLine(line, lines, inventoryItems)
+        : maxSellableQtyWorkshopForLine(line, lines, inventoryItems);
+}
+
+function lineUomOptions(line, inv) {
+    const opts = [];
+    const wu = String(inv?.warehouseUnit ?? '').trim();
+    const wsu = String(inv?.workshopUnit ?? '').trim();
+    if (wu) opts.push(wu);
+    if (wsu && normUomLabel(wsu) !== normUomLabel(wu)) opts.push(wsu);
+    if (opts.length === 0) {
+        return [String(line?.uom ?? 'pcs').trim() || 'pcs'];
+    }
+    return opts;
+}
+
+function formatLineUomConversionPreview(line, inv) {
+    if (!inv) return '';
+    const cf = Number(inv.conversionFactor) || 1;
+    if (!(cf > 1)) return '';
+    const wu = inv.warehouseUnit || 'Box';
+    const wsu = inv.workshopUnit || 'pcs';
+    const qty = parseFloat(String(line.qty).replace(',', '.')) || 0;
+    if (!(qty > 0)) return '';
+    const price = parseFloat(String(line.price).replace(',', '.')) || 0;
+    if (isWarehouseUomLine(line, inv)) {
+        const wsQty = roundMoney2(qty * cf);
+        const wsPrice = cf > 0 ? roundMoney2(price / cf) : price;
+        return `${qty} ${wu} = ${wsQty} ${wsu} at workshop · SAR ${price.toFixed(2)}/${wu} → SAR ${wsPrice.toFixed(2)}/${wsu}`;
+    }
+    const whQty = roundMoney2(qty / cf);
+    const whPrice = roundMoney2(price * cf);
+    return `${qty} ${wsu} = ${whQty} ${wu} warehouse · SAR ${price.toFixed(2)}/${wsu} → SAR ${whPrice.toFixed(2)}/${wu}`;
 }
 
 function nextLineId() {
@@ -540,6 +784,8 @@ export default function SupplierSalesInvoices() {
     const [listError, setListError] = useState('');
     const [invoiceListPage, setInvoiceListPage] = useState(1);
     const [invoiceListTotal, setInvoiceListTotal] = useState(0);
+    const [invoiceListSearch, setInvoiceListSearch] = useState('');
+    const [invoiceListFilter, setInvoiceListFilter] = useState('all');
     const [saveError, setSaveError] = useState('');
     const [saving, setSaving] = useState(false);
     const [viewOpen, setViewOpen] = useState(false);
@@ -567,13 +813,18 @@ export default function SupplierSalesInvoices() {
     const [returnNotes, setReturnNotes] = useState('');
     const [returnSubmitting, setReturnSubmitting] = useState(false);
     const [editInvoiceLoading, setEditInvoiceLoading] = useState(false);
+    const [editingInvoiceStatus, setEditingInvoiceStatus] = useState(null);
+    const saveErrorRef = useRef(null);
 
     const [issueDate, setIssueDate] = useState(() => new Date().toISOString().slice(0, 10));
     const [dueDateType, setDueDateType] = useState('Net');
     const [netDays, setNetDays] = useState(30);
     const [customDueDate, setCustomDueDate] = useState('');
     const [refNo, setRefNo] = useState('');
-    const [branch, setBranch] = useState('');
+    const [selectedCustomerKey, setSelectedCustomerKey] = useState('');
+    const [customerSearchQuery, setCustomerSearchQuery] = useState('');
+    const [customerPickerOpen, setCustomerPickerOpen] = useState(false);
+    const [customerPickerIndex, setCustomerPickerIndex] = useState(-1);
     const [cashAccount, setCashAccount] = useState('');
     const [description, setDescription] = useState('');
     const [internalNotes, setInternalNotes] = useState('');
@@ -599,10 +850,11 @@ export default function SupplierSalesInvoices() {
     /** True while stock-balances (last-sale hints) refetch runs for the open invoice modal. */
     const [lastSaleStockRefreshing, setLastSaleStockRefreshing] =
         useState(false);
-    const [branches, setBranches] = useState([]);
+    const [customerOptions, setCustomerOptions] = useState([]);
     /** Set when GET /supplier/invoices/customer-branches fails (network, auth, server). */
     const [customerBranchesLoadError, setCustomerBranchesLoadError] =
         useState('');
+    const customerSearchWrapRef = useRef(null);
     const invoiceLineSearchWrapRef = useRef(null);
     const lineItemPickerWrapRef = useRef(null);
     /** Current text in the line item field while picker is open — saved to the line on close. */
@@ -614,8 +866,85 @@ export default function SupplierSalesInvoices() {
 
     const location = useLocation();
     const navigate = useNavigate();
+
+    const selectedCustomer = useMemo(
+        () => customerOptions.find((c) => c.key === selectedCustomerKey) ?? null,
+        [customerOptions, selectedCustomerKey],
+    );
+
+    const isWalkInCustomer = selectedCustomer?.customerType === 'external_party';
+    const isEditingDraft =
+        invoiceModalMode === 'edit' && editingInvoiceStatus === 'draft';
+    const saveDisabledCommon =
+        saving ||
+        editInvoiceLoading ||
+        !selectedCustomerKey ||
+        lineItems.length === 0;
+    const issueSaveDisabled =
+        saveDisabledCommon ||
+        (invoiceModalMode === 'create' && !inventoryInitialLoadDone);
+    const draftSaveDisabled = saveDisabledCommon;
+    const issueButtonLabel = isEditingDraft
+        ? isWalkInCustomer
+            ? 'Create Sale Invoice'
+            : 'Issue Sales Invoice'
+        : invoiceModalMode === 'edit'
+          ? 'Update Invoice'
+          : isWalkInCustomer
+            ? 'Create Sale Invoice'
+            : 'Issue Sales Invoice';
+    const showDraftSaveButton =
+        invoiceModalMode === 'create' || isEditingDraft;
+
+    const getLineTabFields = useCallback(() => {
+        const fields = ['item', 'account'];
+        if (showDesc) fields.push('description');
+        fields.push('uom', 'qty', 'price');
+        if (showDiscount) {
+            fields.push('discount', 'discountMode');
+        }
+        fields.push('taxCode');
+        return fields;
+    }, [showDesc, showDiscount]);
+
+    const lineFieldRefs = useRef({});
+    const pendingFocusLineFieldRef = useRef(null);
+    const [itemPickerSelectedIndex, setItemPickerSelectedIndex] = useState(0);
+
+    const focusLineField = useCallback((lineId, fieldName) => {
+        requestAnimationFrame(() => {
+            lineFieldRefs.current[`${lineId}:${fieldName}`]?.focus?.();
+        });
+    }, []);
+
+    useEffect(() => {
+        if (saveError && saveErrorRef.current) {
+            saveErrorRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }, [saveError]);
+
+    useEffect(() => {
+        const pending = pendingFocusLineFieldRef.current;
+        if (!pending) return;
+        pendingFocusLineFieldRef.current = null;
+        focusLineField(pending.lineId, pending.fieldName);
+    }, [lineItems.length, focusLineField]);
+
+    const filteredCustomerOptions = useMemo(() => {
+        const q = customerSearchQuery.trim().toLowerCase();
+        const list = customerOptions.filter((c) => !c.disabled);
+        if (!q) return list;
+        return list.filter((c) => {
+            const hay = [c.label, c.group, c.subtitle].filter(Boolean).join(' ').toLowerCase();
+            return hay.includes(q);
+        });
+    }, [customerOptions, customerSearchQuery]);
+
     /** Line preset from Workshop Alerts; applied after inventory load (avoids session + Strict Mode races). */
     const salesInvoiceAlertLinePresetRef = useRef(null);
+    /** Workshop purchase order id when issuing AR from Prepare sales invoice. */
+    const workshopPurchaseSourceIdRef = useRef(null);
+    const workshopPurchasePrefillRef = useRef(null);
 
     const getSearchSuggestions = (query) => {
         const items = [...inventoryItems].sort((a, b) =>
@@ -647,13 +976,13 @@ export default function SupplierSalesInvoices() {
 
     const updateLineItem = useCallback(
         (id, field, value) => {
-            const recalc = new Set(['qty', 'price', 'taxCode', 'discount', 'discountMode']);
+            const recalc = new Set(['qty', 'price', 'taxCode', 'discount', 'discountMode', 'uom']);
             setLineItems((prev) =>
                 prev.map((line) => {
                     if (line.id !== id) return line;
                     let nextVal = value;
                     if (field === 'qty') {
-                        const maxW = maxSellableQtyWorkshopForLine(line, prev, inventoryItems);
+                        const maxW = maxSellableQtyForLine(line, prev, inventoryItems);
                         if (
                             maxW != null &&
                             Number.isFinite(maxW) &&
@@ -665,7 +994,20 @@ export default function SupplierSalesInvoices() {
                             }
                         }
                     }
-                    const updated = { ...line, [field]: nextVal };
+                    let updated = { ...line, [field]: nextVal };
+                    if (field === 'uom') {
+                        const inv = findInventoryCapsRow(line, inventoryItems);
+                        const cf = Number(inv?.conversionFactor) || 1;
+                        const oldIsWh = isWarehouseUomLine(line, inv);
+                        const newIsWh = isWarehouseUomLine(updated, inv);
+                        if (inv && cf > 0 && oldIsWh !== newIsWh) {
+                            const p = parseFloat(String(line.price).replace(',', '.')) || 0;
+                            updated = {
+                                ...updated,
+                                price: roundMoney2(oldIsWh ? p / cf : p * cf),
+                            };
+                        }
+                    }
                     return recalc.has(field)
                         ? applyLineTotals(updated, amountsTaxInclusive)
                         : updated;
@@ -688,7 +1030,7 @@ export default function SupplierSalesInvoices() {
         if (!modalOpen || !inventoryInitialLoadDone) return;
         setLineItems((prev) =>
             prev.map((line) => {
-                const maxW = maxSellableQtyWorkshopForLine(line, prev, inventoryItems);
+                const maxW = maxSellableQtyForLine(line, prev, inventoryItems);
                 if (maxW == null || !Number.isFinite(maxW) || maxW <= 0) return line;
                 const q = parseFloat(String(line.qty).replace(',', '.')) || 0;
                 if (q <= maxW + 1e-9) return line;
@@ -765,6 +1107,7 @@ export default function SupplierSalesInvoices() {
     const summary = getSummary();
 
     const addItemToLines = useCallback((item) => {
+        const lineId = nextLineId();
         const unitPrice = Number(item.price) || 0;
         const hasPrev = !!item.hasPreviousSale;
         const lastSaleAmt = hasPrev ? Number(item.lastPrice ?? 0) : 0;
@@ -773,12 +1116,15 @@ export default function SupplierSalesInvoices() {
                 ? String(item.id)
                 : '';
         const rawLine = {
-            id: nextLineId(),
+            id: lineId,
             sku: item.sku || '',
             item: item.name,
             account: '4100 - Sales Revenue',
             description: '',
-            uom: item.unit,
+            uom: item.unit || item.warehouseUnit || 'Box',
+            warehouseUnit: item.warehouseUnit ?? null,
+            workshopUnitCatalog: item.workshopUnit ?? null,
+            conversionFactor: item.conversionFactor ?? 1,
             qty: 1,
             price: unitPrice,
             discount: 0,
@@ -796,6 +1142,8 @@ export default function SupplierSalesInvoices() {
         setLineItems((prev) => [...prev, newLine]);
         setSearchQuery('');
         setShowDropdown(false);
+        pendingFocusLineFieldRef.current = { lineId, fieldName: 'item' };
+        return lineId;
     }, [amountsTaxInclusive]);
 
     const removeLineItem = (lineId) => {
@@ -803,8 +1151,9 @@ export default function SupplierSalesInvoices() {
     };
 
     const addEmptyLine = () => {
+        const lineId = nextLineId();
         const rawLine = {
-            id: nextLineId(),
+            id: lineId,
             sku: '',
             item: '',
             account: '4100 - Sales Revenue',
@@ -824,6 +1173,18 @@ export default function SupplierSalesInvoices() {
         };
         const newLine = applyLineTotals(rawLine, amountsTaxInclusive);
         setLineItems((prev) => [...prev, newLine]);
+        pendingFocusLineFieldRef.current = { lineId, fieldName: 'item' };
+        return lineId;
+    };
+
+    const handleLineFieldTab = (e, lineId, fieldName, lineIndex) => {
+        if (e.key !== 'Tab' || e.shiftKey) return;
+        const fields = getLineTabFields();
+        const fieldIdx = fields.indexOf(fieldName);
+        if (fieldIdx < 0 || fieldIdx !== fields.length - 1) return;
+        if (lineIndex !== lineItems.length - 1) return;
+        e.preventDefault();
+        addEmptyLine();
     };
 
     const handleKeyDown = (e) => {
@@ -833,6 +1194,7 @@ export default function SupplierSalesInvoices() {
         } else if (e.key === 'ArrowUp') {
             setSelectedIndex((i) => (i > 0 ? i - 1 : i));
         } else if (e.key === 'Enter' && selectedIndex >= 0 && searchResults[selectedIndex]) {
+            e.preventDefault();
             addItemToLines(searchResults[selectedIndex]);
         } else if (e.key === 'Escape') {
             setShowDropdown(false);
@@ -908,7 +1270,10 @@ export default function SupplierSalesInvoices() {
         setNetDays(30);
         setCustomDueDate('');
         setRefNo('');
-        setBranch('');
+        setSelectedCustomerKey('');
+        setCustomerSearchQuery('');
+        setCustomerPickerOpen(false);
+        setCustomerPickerIndex(-1);
         setCashAccount('');
         setDescription('');
         setInternalNotes('');
@@ -928,7 +1293,50 @@ export default function SupplierSalesInvoices() {
         setItemPickerLineId(null);
         setItemPickerInput('');
         setItemPickerFilter('');
+        setEditingInvoiceStatus(null);
+        workshopPurchaseSourceIdRef.current = null;
+        workshopPurchasePrefillRef.current = null;
     };
+
+    const applyWorkshopPurchasePrefill = useCallback(
+        (prefill) => {
+            if (!prefill || typeof prefill !== 'object') return;
+            workshopPurchasePrefillRef.current = prefill;
+            workshopPurchaseSourceIdRef.current =
+                prefill.workshopPurchaseInvoiceId != null
+                    ? String(prefill.workshopPurchaseInvoiceId)
+                    : null;
+            if (prefill.issueDate) setIssueDate(String(prefill.issueDate).slice(0, 10));
+            if (prefill.dueDateType) setDueDateType(prefill.dueDateType);
+            if (prefill.netDays != null) setNetDays(String(prefill.netDays));
+            if (prefill.customDueDate) setCustomDueDate(String(prefill.customDueDate).slice(0, 10));
+            if (prefill.refNo) setRefNo(String(prefill.refNo));
+            if (prefill.internalNotes) setInternalNotes(String(prefill.internalNotes));
+            if (prefill.freightIn != null) setFreightCharges(String(prefill.freightIn));
+            if (prefill.invoiceDiscount != null) {
+                setInvoiceDiscountValue(String(prefill.invoiceDiscount));
+            }
+            if (prefill.invoiceDiscountMode === 'percent') {
+                setInvoiceDiscountMode('percent');
+            }
+            if (prefill.customerKey) {
+                setSelectedCustomerKey(String(prefill.customerKey));
+            } else if (prefill.branchId) {
+                setSelectedCustomerKey(customerKeyFromBranchId(prefill.branchId));
+            }
+            if (prefill.customer) {
+                setCustomerOptions((prev) =>
+                    mergeSalesInvoiceCustomerOption(prev, prefill.customer, prefill),
+                );
+            }
+            setDescription(
+                prefill.workshopPurchaseInvoiceNumber
+                    ? `Workshop order ${prefill.workshopPurchaseInvoiceNumber}`
+                    : '',
+            );
+        },
+        [],
+    );
 
     const openNewInvoiceModal = () => {
         setInvoiceModalMode('create');
@@ -989,21 +1397,23 @@ export default function SupplierSalesInvoices() {
         }
     };
 
-    const handleSaveInvoice = async () => {
+    const handleSaveInvoice = async (saveMode = 'issue') => {
+        const isDraftSave = saveMode === 'draft';
+        const isEditingDraft =
+            invoiceModalMode === 'edit' && editingInvoiceStatus === 'draft';
+        const isFinalizingDraft = !isDraftSave && isEditingDraft;
+
         setSaveError('');
-        if (!branch) {
-            setSaveError('Select a workshop branch (customer).');
+        if (!selectedCustomerKey || !selectedCustomer) {
+            setSaveError('Select a customer.');
+            return;
+        }
+        if (selectedCustomer.disabled) {
+            setSaveError('Selected customer is inactive.');
             return;
         }
         if (lineItems.length === 0) {
             setSaveError('Add at least one line item.');
-            return;
-        }
-        const branchRef = branches.find(
-            (b) => !b.noBranch && String(b.value || b.id) === String(branch),
-        );
-        if (!branchRef?.id) {
-            setSaveError('Invalid branch selection. Refresh the page if branches are missing.');
             return;
         }
         const normalizedLines = lineItems.map((line, idx) => {
@@ -1021,25 +1431,33 @@ export default function SupplierSalesInvoices() {
                 sku: String(line.sku || '').trim(),
             };
         });
-        const invalidLine = normalizedLines.find(
-            (line) => !line.productName || !(line.qty > 0) || line.unitPrice < 0,
-        );
-        if (invalidLine) {
-            setSaveError(
-                `Line ${invalidLine.index + 1}: item name required, qty must be > 0, and price cannot be negative.`,
+        if (isDraftSave) {
+            const namedLine = normalizedLines.find((line) => line.productName);
+            if (!namedLine) {
+                setSaveError('Add at least one product name to save a draft.');
+                return;
+            }
+        } else {
+            const invalidLine = normalizedLines.find(
+                (line) => !line.productName || !(line.qty > 0) || line.unitPrice < 0,
             );
-            return;
-        }
-        for (let i = 0; i < lineItems.length; i++) {
-            const row = lineItems[i];
-            const maxWs = maxSellableQtyWorkshopForLine(row, lineItems, inventoryItems);
-            if (maxWs == null || !Number.isFinite(maxWs)) continue;
-            const qNum = normalizedLines[i].qty;
-            if (qNum > maxWs + 1e-6) {
+            if (invalidLine) {
                 setSaveError(
-                    `Line ${i + 1}: quantity ${qNum} exceeds available supplier stock (${maxWs} ${normalizedLines[i].unit} max across this invoice).`,
+                    `Line ${invalidLine.index + 1}: item name required, qty must be > 0, and price cannot be negative.`,
                 );
                 return;
+            }
+            for (let i = 0; i < lineItems.length; i++) {
+                const row = lineItems[i];
+                const maxCap = maxSellableQtyForLine(row, lineItems, inventoryItems);
+                if (maxCap == null || !Number.isFinite(maxCap)) continue;
+                const qNum = normalizedLines[i].qty;
+                if (qNum > maxCap + 1e-6) {
+                    setSaveError(
+                        `Line ${i + 1}: quantity ${qNum} exceeds available supplier stock (${maxCap} ${normalizedLines[i].unit} max across this invoice).`,
+                    );
+                    return;
+                }
             }
         }
         setSaving(true);
@@ -1049,28 +1467,25 @@ export default function SupplierSalesInvoices() {
             const row = lineItems[idx];
             const discRaw =
                 parseFloat(String(row?.discount ?? 0).replace(',', '.')) || 0;
-    const body = {
-        productName: line.productName,
-        qty: line.qty,
-        unitPrice: line.unitPrice,
-        vatRate: line.vatRate,
-        unit: line.unit,
-        ...(line.sku ? { sku: line.sku } : {}),
-
-        ...(String(row?.supplierStockProductId ?? '').trim()
-            ? { supplierProductId: String(row.supplierStockProductId).trim() }
-            : String(row?.supplierProductId ?? '').trim()
-              ? { supplierProductId: String(row.supplierProductId).trim() }
-              : {}),
-
-        ...(row?.workshopCatalogProductId
-            ? { productId: String(row.workshopCatalogProductId) }
-            : {}),
-
-        lineDiscount: discRaw,
-        lineDiscountMode:
-            row?.discountMode === 'fixed_sar' ? 'fixed_sar' : 'percent',
-    };    
+            const body = {
+                productName: line.productName,
+                qty: line.qty,
+                unitPrice: line.unitPrice,
+                vatRate: line.vatRate,
+                unit: line.unit,
+                ...(line.sku ? { sku: line.sku } : {}),
+                ...(String(row?.supplierStockProductId ?? '').trim()
+                    ? { supplierProductId: String(row.supplierStockProductId).trim() }
+                    : String(row?.supplierProductId ?? '').trim()
+                      ? { supplierProductId: String(row.supplierProductId).trim() }
+                      : {}),
+                ...(row?.workshopCatalogProductId
+                    ? { productId: String(row.workshopCatalogProductId) }
+                    : {}),
+                lineDiscount: discRaw,
+                lineDiscountMode:
+                    row?.discountMode === 'fixed_sar' ? 'fixed_sar' : 'percent',
+            };
             const desc = String(row?.description ?? '').trim();
             if (desc) {
                 body.lineDescription = desc;
@@ -1089,6 +1504,21 @@ export default function SupplierSalesInvoices() {
             invoiceDiscountMode,
             invoiceDiscountInput:
                 parseFloat(String(invoiceDiscountValue).replace(',', '.')) || 0,
+            ...(selectedCustomer.customerType === 'external_party' &&
+            selectedCustomer.externalPartyId
+                ? { externalPartyId: String(selectedCustomer.externalPartyId) }
+                : {}),
+            ...(selectedCustomer.customerType === 'affiliated_workshop' &&
+            selectedCustomer.workshopId
+                ? { affiliatedWorkshopId: String(selectedCustomer.workshopId) }
+                : {}),
+            ...(workshopPurchaseSourceIdRef.current
+                ? {
+                      workshopPurchaseInvoiceId: workshopPurchaseSourceIdRef.current,
+                      origin: 'workshop_purchase_request',
+                      invoiceCategory: 'sales_invoice',
+                  }
+                : {}),
         };
         try {
             if (invoiceModalMode === 'edit' && editingInvoiceId) {
@@ -1103,22 +1533,28 @@ export default function SupplierSalesInvoices() {
                     freightIn: fin.freightIn,
                     invoiceDiscount: fin.invoiceDiscount,
                     salesInvoiceMeta,
+                    ...(isFinalizingDraft ? { status: 'pending_payment' } : {}),
                     items: itemsPayload,
                 });
+                if (isDraftSave) {
+                    await loadInvoiceList({ silent: true });
+                    return;
+                }
+                if (isFinalizingDraft) {
+                    setEditingInvoiceStatus('pending_payment');
+                }
             } else {
-                /**
-                 * Default invoice number is short and matches the workshop PI
-                 * prefix so every invoice in Filter starts with `WPI-SI-`.
-                 * Base36 timestamp keeps it ~9 chars instead of 13-digit ms.
-                 */
+                const prefix = isDraftSave ? 'DRAFT' : 'WPI-SI';
                 const invoiceNo =
                     (refNo && String(refNo).trim()) ||
-                    `WPI-SI-${Date.now().toString(36).toUpperCase()}`;
-                await createSupplierInvoice({
+                    `${prefix}-${Date.now().toString(36).toUpperCase()}`;
+                const res = await createSupplierInvoice({
                     invoiceNo,
                     invoiceDate: issueDate,
                     dueDate: due,
-                    branchId: String(branchRef.id),
+                    ...(selectedCustomer.branchId
+                        ? { branchId: String(selectedCustomer.branchId) }
+                        : {}),
                     paymentTerms: dueDateType === 'Net' ? `Net ${netDays}` : dueDateType,
                     deliveryNoteUrl: description?.trim() || undefined,
                     ...(internalNotes.trim()
@@ -1127,12 +1563,22 @@ export default function SupplierSalesInvoices() {
                     freightIn: fin.freightIn,
                     invoiceDiscount: fin.invoiceDiscount,
                     salesInvoiceMeta,
+                    status: isDraftSave ? 'draft' : 'pending_payment',
                     items: itemsPayload,
                 });
+                if (isDraftSave) {
+                    setInvoiceModalMode('edit');
+                    setEditingInvoiceId(res?.invoiceId || null);
+                    setEditingInvoiceStatus('draft');
+                    if (res?.invoiceNo) setRefNo(res.invoiceNo);
+                    await loadInvoiceList({ silent: true });
+                    return;
+                }
             }
             setModalOpen(false);
             setInvoiceModalMode('create');
             setEditingInvoiceId(null);
+            setEditingInvoiceStatus(null);
             resetInvoiceForm();
             await loadInvoiceList();
         } catch (err) {
@@ -1156,8 +1602,21 @@ export default function SupplierSalesInvoices() {
                 setSaveError('Invoice not found.');
                 return;
             }
+            setEditingInvoiceStatus(inv.status || 'pending_payment');
             setIssueDate(inv.invoiceDate || issueDate);
-            setBranch(inv.branch?.id != null ? String(inv.branch.id) : '');
+            const m =
+                inv.salesInvoiceMeta != null && typeof inv.salesInvoiceMeta === 'object'
+                    ? inv.salesInvoiceMeta
+                    : {};
+            if (m.externalPartyId) {
+                setSelectedCustomerKey(`external:${String(m.externalPartyId)}`);
+            } else if (m.affiliatedWorkshopId) {
+                setSelectedCustomerKey(`affiliated:workshop:${String(m.affiliatedWorkshopId)}`);
+            } else if (inv.branch?.id != null) {
+                setSelectedCustomerKey(customerKeyFromBranchId(inv.branch.id));
+            } else {
+                setSelectedCustomerKey('');
+            }
             setDescription(inv.deliveryNoteUrl || '');
             setInternalNotes(inv.internalNotes ?? inv.internal_notes ?? inv.notes ?? '');
             setRefNo(inv.invoiceNo || '');
@@ -1169,10 +1628,6 @@ export default function SupplierSalesInvoices() {
                 setNetDays(diffDays || 30);
             }
 
-            const m =
-                inv.salesInvoiceMeta != null && typeof inv.salesInvoiceMeta === 'object'
-                    ? inv.salesInvoiceMeta
-                    : {};
             const taxIncl = !!m.amountsTaxInclusive;
             setCashAccount(typeof m.cashBankAccount === 'string' ? m.cashBankAccount : '');
             setShowLineNum(!!m.showLineNum);
@@ -1217,7 +1672,15 @@ export default function SupplierSalesInvoices() {
                             item: it.productName,
                             account: '4100 - Sales Revenue',
                             description: String(it.lineDescription ?? '').trim(),
-                            uom: it.unit || 'pcs',
+                            uom: it.unit || it.supplierProduct?.warehouseUnit || 'pcs',
+                            qtyWorkshop: it.qtyWorkshop ?? null,
+                            workshopUnit: it.workshopUnit ?? it.supplierProduct?.workshopUnit ?? null,
+                            warehouseUnit: it.supplierProduct?.warehouseUnit ?? null,
+                            workshopUnitCatalog: it.supplierProduct?.workshopUnit ?? null,
+                            conversionFactor:
+                                it.supplierProduct?.conversionFactor != null
+                                    ? Number(it.supplierProduct.conversionFactor)
+                                    : 1,
                             qty: String(it.qty),
                             price: priceStr,
                             discount: discVal,
@@ -1265,6 +1728,18 @@ export default function SupplierSalesInvoices() {
             setViewLoading(false);
         }
     };
+
+    useEffect(() => {
+        try {
+            const focusId = sessionStorage.getItem(FOCUS_SALES_INVOICE_ID_KEY);
+            if (!focusId || !String(focusId).trim()) return;
+            sessionStorage.removeItem(FOCUS_SALES_INVOICE_ID_KEY);
+            handleViewInvoice({ id: String(focusId).trim() });
+        } catch {
+            /* ignore */
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount (workshop order → sales invoice link)
+    }, []);
 
     const handleDownloadInvoice = async (row) => {
         if (salesInvoicePdfBusy) return;
@@ -1423,6 +1898,21 @@ export default function SupplierSalesInvoices() {
         }
     };
 
+    const goRecordPaymentInHub = (inv) => {
+        const prefill = buildTransactionHubReceiptPrefill(inv);
+        try {
+            sessionStorage.setItem(
+                TRANSACTION_HUB_RECEIPT_PREFILL_KEY,
+                JSON.stringify(prefill),
+            );
+        } catch {
+            /* ignore quota / private mode */
+        }
+        navigate('/supplier/accounting/hub', {
+            state: { [TRANSACTION_HUB_RECEIPT_PREFILL_KEY]: prefill },
+        });
+    };
+
     const openMarkPaidModal = async (row) => {
         setMarkPaidModalRow(row);
         setMarkPaidMethod('bank_transfer');
@@ -1543,6 +2033,36 @@ export default function SupplierSalesInvoices() {
     );
 
     const list = invoices || [];
+    const filteredList = useMemo(() => {
+        let rows = list;
+        const q = invoiceListSearch.trim().toLowerCase();
+        if (q) {
+            rows = rows.filter((inv) => {
+                const hay = [
+                    inv.invoiceNo,
+                    inv.vendorRef,
+                    inv.productLabel,
+                    salesInvoiceCustomerLabel(inv),
+                ]
+                    .filter(Boolean)
+                    .join(' ')
+                    .toLowerCase();
+                return hay.includes(q);
+            });
+        }
+        const today = new Date().toISOString().slice(0, 10);
+        if (invoiceListFilter === 'unpaid') {
+            rows = rows.filter((inv) => Number(inv.balance ?? 0) > 0.005);
+        } else if (invoiceListFilter === 'paid') {
+            rows = rows.filter((inv) => Number(inv.balance ?? 0) <= 0.005);
+        } else if (invoiceListFilter === 'overdue') {
+            rows = rows.filter((inv) => {
+                const due = String(inv.dueDate ?? '').slice(0, 10);
+                return Number(inv.balance ?? 0) > 0.005 && due && due < today;
+            });
+        }
+        return rows;
+    }, [list, invoiceListSearch, invoiceListFilter]);
     const invoiceListTotalPages = Math.max(
         1,
         Math.ceil(invoiceListTotal / SALES_INVOICE_PAGE_SIZE) || 1,
@@ -1591,6 +2111,59 @@ export default function SupplierSalesInvoices() {
         return () => document.removeEventListener('mousedown', onDocMouseDown);
     }, [modalOpen, itemPickerLineId]);
 
+    const selectCustomerOption = (customer) => {
+        if (!customer || customer.disabled) return;
+        setSelectedCustomerKey(customer.key);
+        setCustomerSearchQuery('');
+        setCustomerPickerOpen(false);
+        setCustomerPickerIndex(-1);
+    };
+
+    const handleCustomerSearchKeyDown = (e) => {
+        if (invoiceModalMode === 'edit') return;
+        if (!customerPickerOpen) {
+            if (e.key === 'ArrowDown' || e.key === 'Enter') {
+                setCustomerPickerOpen(true);
+                e.preventDefault();
+            }
+            return;
+        }
+        if (e.key === 'Escape') {
+            setCustomerPickerOpen(false);
+            setCustomerPickerIndex(-1);
+            return;
+        }
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setCustomerPickerIndex((i) =>
+                Math.min(i + 1, Math.max(0, filteredCustomerOptions.length - 1)),
+            );
+            return;
+        }
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setCustomerPickerIndex((i) => Math.max(i - 1, 0));
+            return;
+        }
+        if (e.key === 'Enter' && customerPickerIndex >= 0) {
+            e.preventDefault();
+            selectCustomerOption(filteredCustomerOptions[customerPickerIndex]);
+        }
+    };
+
+    useEffect(() => {
+        if (!modalOpen || !customerPickerOpen) return undefined;
+        const onDocMouseDown = (e) => {
+            const el = customerSearchWrapRef.current;
+            if (el && !el.contains(e.target)) {
+                setCustomerPickerOpen(false);
+                setCustomerPickerIndex(-1);
+            }
+        };
+        document.addEventListener('mousedown', onDocMouseDown);
+        return () => document.removeEventListener('mousedown', onDocMouseDown);
+    }, [modalOpen, customerPickerOpen]);
+
     const applyCatalogItemToLine = (lineId, catalogItem) => {
         const unitPrice = Number(catalogItem.price) || 0;
         const hasPrev = !!catalogItem.hasPreviousSale;
@@ -1609,7 +2182,10 @@ export default function SupplierSalesInvoices() {
                     ...line,
                     sku: catalogItem.sku || '',
                     item: catalogItem.name,
-                    uom: catalogItem.unit || line.uom || 'pcs',
+                    uom: catalogItem.unit || catalogItem.warehouseUnit || line.uom || 'pcs',
+                    warehouseUnit: catalogItem.warehouseUnit ?? line.warehouseUnit ?? null,
+                    workshopUnitCatalog: catalogItem.workshopUnit ?? line.workshopUnitCatalog ?? null,
+                    conversionFactor: catalogItem.conversionFactor ?? line.conversionFactor ?? 1,
                     price: unitPrice,
 
                     supplierStockProductId:
@@ -1638,7 +2214,55 @@ export default function SupplierSalesInvoices() {
         setItemPickerLineId(null);
         setItemPickerInput('');
         setItemPickerFilter('');
+        focusLineField(lineId, 'item');
     };
+
+    const handleLineItemPickerKeyDown = (e, line) => {
+        const suggestions = getSearchSuggestions(itemPickerFilter);
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            setItemPickerSelectedIndex((i) =>
+                Math.min(i + 1, Math.max(0, suggestions.length - 1)),
+            );
+            return;
+        }
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            setItemPickerSelectedIndex((i) => Math.max(i - 1, 0));
+            return;
+        }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            if (
+                itemPickerLineId === line.id &&
+                suggestions[itemPickerSelectedIndex]
+            ) {
+                applyCatalogItemToLine(line.id, suggestions[itemPickerSelectedIndex]);
+                return;
+            }
+            const text = String(itemPickerInputRef.current ?? '').trim();
+            setLineItems((prev) =>
+                prev.map((l) =>
+                    l.id === line.id ? { ...l, item: text } : l,
+                ),
+            );
+            setItemPickerLineId(null);
+            setItemPickerInput('');
+            setItemPickerFilter('');
+            focusLineField(line.id, 'item');
+            return;
+        }
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            setItemPickerLineId(null);
+            setItemPickerInput('');
+            setItemPickerFilter('');
+        }
+    };
+
+    useEffect(() => {
+        setItemPickerSelectedIndex(0);
+    }, [itemPickerFilter, itemPickerLineId]);
 
     useEffect(() => {
         let cancelled = false;
@@ -1671,48 +2295,26 @@ export default function SupplierSalesInvoices() {
                     : [];
 
                 let branchesErr = '';
-                let custBranches = [];
                 if (branchesRes && branchesRes.__error) {
                     branchesErr =
                         branchesRes.__error?.message ||
                         (typeof branchesRes.__error === 'string'
                             ? branchesRes.__error
                             : branchesErrDefault);
-                    custBranches = [];
-                } else {
-                    custBranches = Array.isArray(branchesRes?.branches) ? branchesRes.branches : [];
                 }
 
                 setCustomerBranchesLoadError(branchesErr);
                 setInventoryItems(mergeInventoryLists(stockItems, INVENTORY_ITEMS));
-                if (custBranches.length) {
-                    setBranches(
-                        custBranches.map((b) => {
-                            const noBranch = !!b.noBranch;
-                            const bid = b.branchId ?? b.branch_id ?? b.id;
-                            const branchVal =
-                                bid != null && bid !== '' ? String(bid) : '';
-                            const workshopIdStr =
-                                b.workshopId != null && b.workshopId !== ''
-                                    ? String(b.workshopId)
-                                    : '';
-                            return {
-                                /** Stable React key; real branch id when selectable */
-                                id: noBranch
-                                    ? `no-branch-${workshopIdStr || 'x'}`
-                                    : branchVal,
-                                value: noBranch ? '' : branchVal,
-                                name: b.name,
-                                label:
-                                    b.label ||
-                                    `${b.workshopName || ''} — ${b.name || ''}`.trim(),
-                                noBranch,
-                            };
-                        }),
+                let customers = normalizeSalesInvoiceCustomers(branchesRes);
+                const wpiPrefill = workshopPurchasePrefillRef.current;
+                if (wpiPrefill?.customer) {
+                    customers = mergeSalesInvoiceCustomerOption(
+                        customers,
+                        wpiPrefill.customer,
+                        wpiPrefill,
                     );
-                } else {
-                    setBranches([]);
                 }
+                setCustomerOptions(customers);
 
                 if (invRes && invRes.__error) {
                     setListError(invRes.__error?.message || 'Failed to load invoices.');
@@ -1751,7 +2353,7 @@ export default function SupplierSalesInvoices() {
         if (!modalOpen || !inventoryInitialLoadDone) return undefined;
         let cancelled = false;
         const params = { limit: 200 };
-        const bid = String(branch ?? '').trim();
+        const bid = selectedCustomer?.branchId ? String(selectedCustomer.branchId) : '';
         if (bid) {
             params.branchId = bid;
         }
@@ -1775,6 +2377,10 @@ export default function SupplierSalesInvoices() {
                         return applyLineTotals(
                             {
                                 ...line,
+                                uom: line.uom || inv.unit,
+                                warehouseUnit: inv.warehouseUnit ?? line.warehouseUnit,
+                                workshopUnitCatalog: inv.workshopUnit ?? line.workshopUnitCatalog,
+                                conversionFactor: inv.conversionFactor ?? line.conversionFactor,
                                 hasPreviousSale: hasPrev,
                                 lastSalePrice: hasPrev ? Number(inv.lastPrice ?? 0) : 0,
                                 lastSaleMeta: hasPrev
@@ -1799,7 +2405,7 @@ export default function SupplierSalesInvoices() {
         return () => {
             cancelled = true;
         };
-    }, [modalOpen, inventoryInitialLoadDone, branch]);
+    }, [modalOpen, inventoryInitialLoadDone, selectedCustomerKey, selectedCustomer?.branchId]);
 
     useEffect(() => {
         if (!modalOpen) {
@@ -1808,6 +2414,23 @@ export default function SupplierSalesInvoices() {
     }, [modalOpen]);
 
     useEffect(() => {
+        try {
+            const raw = sessionStorage.getItem(WORKSHOP_PURCHASE_SI_PREFILL_KEY);
+            if (raw) {
+                sessionStorage.removeItem(WORKSHOP_PURCHASE_SI_PREFILL_KEY);
+                const prefill = JSON.parse(raw);
+                if (prefill && typeof prefill === 'object') {
+                    setInvoiceModalMode('create');
+                    setEditingInvoiceId(null);
+                    resetInvoiceForm();
+                    applyWorkshopPurchasePrefill(prefill);
+                    setModalOpen(true);
+                    return;
+                }
+            }
+        } catch {
+            /* ignore */
+        }
         const fromAlert = location.state?.[SALES_INVOICE_FROM_ALERT_KEY];
         if (fromAlert && typeof fromAlert === 'object') {
             navigate(location.pathname + location.search, { replace: true, state: {} });
@@ -1819,7 +2442,7 @@ export default function SupplierSalesInvoices() {
             resetInvoiceForm();
             const bid = fromAlert.branchId;
             if (bid != null && String(bid).trim() !== '') {
-                setBranch(String(bid));
+                setSelectedCustomerKey(customerKeyFromBranchId(bid));
             }
             setModalOpen(true);
             return;
@@ -1849,18 +2472,91 @@ export default function SupplierSalesInvoices() {
                 setEditingInvoiceId(null);
                 resetInvoiceForm();
                 if (presetBranch) {
-                    setBranch(String(presetBranch));
+                    setSelectedCustomerKey(customerKeyFromBranchId(presetBranch));
                 }
                 setModalOpen(true);
             }
         } catch {
             /* ignore */
         }
-    }, [location.state, location.pathname, location.search, navigate]);
+    }, [location.state, location.pathname, location.search, navigate, applyWorkshopPurchasePrefill]);
 
     useEffect(() => {
         if (!modalOpen || !inventoryInitialLoadDone) return;
         if (invoiceModalMode !== 'create' || editingInvoiceId != null) return;
+
+        const wpiPrefill = workshopPurchasePrefillRef.current;
+        if (wpiPrefill && Array.isArray(wpiPrefill.lines) && wpiPrefill.lines.length > 0) {
+            workshopPurchasePrefillRef.current = null;
+            const built = [];
+            for (const ln of wpiPrefill.lines) {
+                const nameTrim = String(ln.productName ?? '').trim();
+                if (!nameTrim) continue;
+                const sid =
+                    ln.supplierProductId != null && String(ln.supplierProductId).trim() !== ''
+                        ? String(ln.supplierProductId).trim()
+                        : '';
+                let match = sid
+                    ? inventoryItems.find((i) => String(i.id) === sid)
+                    : null;
+                if (!match) {
+                    match = inventoryItems.find(
+                        (i) =>
+                            String(i.name || '').trim().toLowerCase() ===
+                            nameTrim.toLowerCase(),
+                    );
+                }
+                const vatRate = Number(ln.vatRate ?? 15);
+                const taxCode =
+                    TAXES.find((t) => Math.abs(t.percent - vatRate) < 0.01)?.code || 'VAT 15%';
+                const qty = Number(ln.qty) > 0 ? Number(ln.qty) : 1;
+                const unitPrice = Number(ln.unitPrice) || 0;
+                const lineId = nextLineId();
+                const rawLine = {
+                    id: lineId,
+                    sku: String(ln.sku ?? '').trim(),
+                    item: nameTrim,
+                    account: '4100 - Sales Revenue',
+                    description: String(ln.lineDescription ?? '').trim(),
+                    uom: String(ln.unit || 'pcs').trim() || 'pcs',
+                    qty: String(qty),
+                    price: String(unitPrice),
+                    discount: Number(ln.lineDiscount ?? 0),
+                    discountMode:
+                        ln.lineDiscountMode === 'percent' ? 'percent' : 'fixed_sar',
+                    taxCode,
+                    taxAmt: '0.00',
+                    totalFinal: '0.00',
+                    supplierStockProductId: sid || null,
+                    supplierProductId: sid,
+                    workshopCatalogProductId: ln.workshopCatalogProductId
+                        ? String(ln.workshopCatalogProductId)
+                        : null,
+                    hasPreviousSale: false,
+                    lastSalePrice: 0,
+                    lastSaleMeta: '',
+                };
+                if (match) {
+                    rawLine.sku = match.sku || rawLine.sku;
+                    rawLine.uom = ln.unit || match.unit || match.warehouseUnit || 'pcs';
+                    rawLine.warehouseUnit = match.warehouseUnit ?? null;
+                    rawLine.workshopUnitCatalog = match.workshopUnit ?? null;
+                    rawLine.conversionFactor = match.conversionFactor ?? 1;
+                    rawLine.supplierStockProductId = match.supplierStockProductId ?? sid;
+                    rawLine.supplierProductId = String(match.id);
+                    rawLine.hasPreviousSale = !!match.hasPreviousSale;
+                    rawLine.lastSalePrice = match.hasPreviousSale
+                        ? Number(match.lastPrice ?? 0)
+                        : 0;
+                    rawLine.lastSaleMeta = match.hasPreviousSale
+                        ? String(match.lastSaleMeta || '').trim()
+                        : '';
+                }
+                built.push(applyLineTotals(rawLine, amountsTaxInclusive));
+            }
+            if (built.length) setLineItems(built);
+            return;
+        }
 
         let preset = null;
         if (salesInvoiceAlertLinePresetRef.current) {
@@ -1933,394 +2629,272 @@ export default function SupplierSalesInvoices() {
     ]);
 
     return (
-        <div>
-            <div
-                style={{
-                    padding: 14,
-                    background: '#EFF6FF',
-                    border: '1px solid #BFDBFE',
-                    borderRadius: 12,
-                    marginBottom: 20,
-                    fontSize: '0.875rem',
-                    color: '#1E40AF',
-                }}
-            >
-                <strong>Sales Invoices</strong> — issued when warehouse/supplier sends products TO a workshop. This
-                creates an <strong>Accounts Receivable</strong> for you and auto-creates a{' '}
-                <strong>Purchase Invoice</strong> on the workshop side. Stock is updated on both ends.
-            </div>
-            <div
-                style={{
-                    margin: '0 0 12px',
-                    padding: 10,
-                    fontSize: '0.75rem',
-                    background: '#ECFDF5',
-                    border: '1px solid #A7F3D0',
-                    color: '#065F46',
-                    borderRadius: 8,
-                    fontWeight: 600,
-                }}
-            >
-                Auto-posted to the supplier <strong>General Ledger</strong> on save: AR/Sales/VAT plus moving-average
-                COGS. View entries under Accounting → Journal Log or the per-account ledger.
-            </div>
-            <div className="ws-page-header">
-                <div>
-                    <h2 className="ws-page-title">Sales Invoices (AR)</h2>
-                    <p className="ws-page-sub">Warehouse → Workshop invoices</p>
+        <div className="mgr-si-page">
+            <header className="mgr-si-header">
+                <div className="mgr-si-header-top">
+                    <div className="mgr-si-breadcrumb">Sales Invoices (AR)</div>
+                    <div className="mgr-si-toolbar-actions">
+                        <button
+                            type="button"
+                            className="mgr-si-btn-new"
+                            onClick={openNewInvoiceModal}
+                        >
+                            <Plus size={16} /> New Invoice
+                        </button>
+                    </div>
                 </div>
-                <button
-                    className="btn-portal"
-                    style={{ background: '#2563EB', color: '#fff', border: 'none' }}
-                    onClick={openNewInvoiceModal}
-                >
-                    <Plus size={15} /> New Invoice
-                </button>
+                <h2 className="mgr-si-title">Sales Invoices (AR)</h2>
+                <p className="mgr-si-subtitle">
+                    Warehouse → workshop invoices. Creates <strong>Accounts Receivable</strong> for you and a{' '}
+                    <strong>Purchase Invoice</strong> on the workshop side. Auto-posted to GL on save
+                    (AR/Sales/VAT/COGS).
+                </p>
+            </header>
+
+            <div className="mgr-si-toolbar">
+                <div className="mgr-si-filter-bar">
+                    <span className="mgr-si-filter-label">Where</span>
+                    <select
+                        className="mgr-si-filter-select"
+                        value={invoiceListFilter}
+                        onChange={(e) => setInvoiceListFilter(e.target.value)}
+                        aria-label="Filter invoices"
+                    >
+                        <option value="all">All invoices</option>
+                        <option value="unpaid">Balance due is greater than 0</option>
+                        <option value="overdue">Balance due is overdue</option>
+                        <option value="paid">Balance due is 0 (paid in full)</option>
+                    </select>
+                </div>
+                <div className="mgr-si-search-wrap">
+                    <div className="mgr-si-search-input-wrap">
+                        <Search size={16} className="mgr-si-search-icon" aria-hidden />
+                        <input
+                            type="search"
+                            className="mgr-si-search-input"
+                            placeholder="Search reference, customer, description…"
+                            value={invoiceListSearch}
+                            onChange={(e) => setInvoiceListSearch(e.target.value)}
+                            aria-label="Search sales invoices"
+                        />
+                    </div>
+                    <button
+                        type="button"
+                        className="mgr-si-search-btn"
+                        onClick={() => void loadInvoiceList()}
+                    >
+                        Search
+                    </button>
+                </div>
             </div>
+
             {listError ? (
-                <div
-                    className="ws-section"
-                    style={{
-                        marginBottom: 12,
-                        padding: 12,
-                        fontSize: '0.8125rem',
-                        color: '#B91C1C',
-                        border: '1px solid #FECACA',
-                        background: '#FEF2F2',
-                    }}
-                >
-                    {listError}
-                </div>
+                <div className="mgr-si-error">{listError}</div>
             ) : null}
-            <div className="ws-section">
+
+            <div className="premium-table mgr-si-table-wrap">
                 <div style={{ overflowX: 'auto' }}>
                     {listLoading && list.length === 0 ? (
-                        <ShimmerTable rows={8} columns={13} />
+                        <div style={{ padding: 16 }}>
+                            <ShimmerTable rows={8} columns={9} />
+                        </div>
                     ) : (
                         <>
-                        <table className="ws-table">
-                            <thead>
-                                <tr>
-                                    <th>Invoice #</th>
-                                    <th>Workshop / Branch</th>
-                                    <th>Date</th>
-                                    <th>Due Date</th>
-                                    <th>Total</th>
-                                    <th>Paid</th>
-                                    <th>Balance</th>
-                                    <th>Status</th>
-                                    <th>AR</th>
-                                    <th>Cash / Bank</th>
-                                    <th>Freight</th>
-                                    <th>Discount</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {!listLoading && list.length === 0 ? (
-                                    <tr>
-                                        <td
-                                            colSpan={13}
-                                            style={{
-                                                textAlign: 'center',
-                                                padding: 40,
-                                                color: 'var(--color-text-muted)',
-                                            }}
-                                        >
-                                            <FileText
-                                                size={40}
-                                                style={{
-                                                    opacity: 0.25,
-                                                    margin: '0 auto 12px',
-                                                    display: 'block',
-                                                }}
-                                            />
-                                            <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                                                No sales invoices yet
-                                            </div>
-                                            <div style={{ fontSize: '0.8125rem', marginBottom: 16 }}>
-                                                Issue a warehouse → workshop invoice; it will appear in this table.
-                                            </div>
-                                            <button
-                                                type="button"
-                                                className="btn-portal"
-                                                style={{
-                                                    background: '#2563EB',
-                                                    color: '#fff',
-                                                    border: 'none',
-                                                }}
-                                                onClick={openNewInvoiceModal}
-                                            >
-                                                <Plus size={15} /> Create first invoice
-                                            </button>
-                                        </td>
+                            <table className="mgr-si-table">
+                                <thead>
+                                    <tr className="table-header-row">
+                                        <th className="table-th">Issue date</th>
+                                        <th className="table-th">Due date</th>
+                                        <th className="table-th">Reference</th>
+                                        <th className="table-th">Customer</th>
+                                        <th className="table-th">Description</th>
+                                        <th className="table-th">Invoice Amount</th>
+                                        <th className="table-th">Balance due</th>
+                                        <th className="table-th">Status</th>
+                                        <th className="table-th mgr-si-th-actions">Actions</th>
                                     </tr>
-                                ) : (
-                                    list.map((inv) => {
-                                        const canMutate = inv.status === 'pending_payment';
-                                        const statusLabel = String(inv.status || '')
-                                            .replace(/_/g, ' ')
-                                            .trim();
-                                        const arSettle = salesInvoiceArSettlementLabel(inv);
-                                        return (
-                                            <tr key={inv.id}>
-                                                <td>
-                                                    <strong style={{ color: '#2563EB' }}>
-                                                        {inv.invoiceNo || inv.id}
-                                                    </strong>
-                                                </td>
-                                                <td
+                                </thead>
+                                <tbody>
+                                    {!listLoading && filteredList.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={9} className="table-cell table-empty">
+                                                <FileText
+                                                    size={36}
                                                     style={{
-                                                        fontSize: '0.8125rem',
-                                                        color: 'var(--color-text-muted)',
-                                                        maxWidth: 220,
+                                                        opacity: 0.25,
+                                                        margin: '0 auto 12px',
+                                                        display: 'block',
                                                     }}
-                                                    title={
-                                                        inv.workshopName
-                                                            ? `${inv.workshopName} — ${inv.branch}`
-                                                            : inv.branch
-                                                    }
-                                                >
-                                                    {inv.workshopName
-                                                        ? `${inv.workshopName} — ${inv.branch}`
-                                                        : inv.branch || '—'}
-                                                </td>
-                                                <td style={{ fontSize: '0.8125rem' }}>{inv.date || '—'}</td>
-                                                <td style={{ fontSize: '0.8125rem' }}>{inv.dueDate || '—'}</td>
-                                                <td
-                                                    style={{
-                                                        fontWeight: 700,
-                                                    }}
-                                                >
-                                                    SAR {(inv.amount || 0).toLocaleString()}
-                                                </td>
-                                                <td style={{ color: '#0f766e', fontWeight: 600 }}>
-                                                    SAR {(inv.paid || 0).toLocaleString()}
-                                                </td>
-                                                <td style={{ color: '#b91c1c', fontWeight: 700 }}>
-                                                    <span>
-                                                        SAR {(inv.balance || 0).toLocaleString()}
-                                                    </span>
-                                                    {Number(inv.returnsTotal || 0) > 0 ? (
+                                                />
+                                                <div style={{ fontWeight: 700, marginBottom: 8 }}>
+                                                    {list.length === 0
+                                                        ? 'No sales invoices yet'
+                                                        : 'No invoices match your search or filter'}
+                                                </div>
+                                                {list.length === 0 ? (
+                                                    <>
                                                         <div
                                                             style={{
-                                                                fontSize: '0.65rem',
-                                                                fontWeight: 600,
-                                                                color: '#C2410C',
-                                                                marginTop: 2,
+                                                                fontSize: '0.8125rem',
+                                                                marginBottom: 16,
                                                             }}
                                                         >
-                                                            − SAR{' '}
-                                                            {Number(inv.returnsTotal || 0).toLocaleString()} returns
+                                                            Issue a warehouse → workshop invoice; it will appear here.
                                                         </div>
-                                                    ) : null}
-                                                </td>
-                                                <td>
-                                                    <span
-                                                        className={`ws-badge ws-badge--${
-                                                            inv.status === 'paid'
-                                                                ? 'green'
-                                                                : inv.status === 'overdue'
-                                                                  ? 'red'
-                                                                  : inv.status === 'partially_paid'
-                                                                    ? 'yellow'
-                                                                    : 'yellow'
-                                                        }`}
-                                                    >
-                                                        {statusLabel || 'pending payment'}
-                                                    </span>
-                                                </td>
-                                                <td style={{ fontSize: '0.8125rem', minWidth: 120 }}>
-                                                    <span
-                                                        className={`ws-badge ws-badge--${
-                                                            arSettle.tone === 'green' ? 'green' : 'yellow'
-                                                        }`}
-                                                    >
-                                                        {arSettle.text}
-                                                    </span>
-                                                    {arSettle.text !== 'Paid' && canMutate ? (
                                                         <button
                                                             type="button"
-                                                            className="btn-portal-outline"
-                                                            style={{
-                                                                display: 'block',
-                                                                marginTop: 6,
-                                                                fontSize: 11,
-                                                                padding: '4px 8px',
-                                                            }}
-                                                            onClick={() => void openMarkPaidModal(inv)}
+                                                            className="mgr-si-btn-new"
+                                                            onClick={openNewInvoiceModal}
                                                         >
-                                                            Record payment
+                                                            <Plus size={15} /> Create first invoice
                                                         </button>
-                                                    ) : null}
-                                                </td>
-                                                <td
-                                                    style={{
-                                                        fontSize: '0.8125rem',
-                                                        maxWidth: 140,
-                                                        color: 'var(--color-text-body)',
-                                                    }}
-                                                    title={inv.cashBankAccount || ''}
-                                                >
-                                                    {inv.cashBankAccount ? (
-                                                        <span
-                                                            style={{
-                                                                display: 'block',
-                                                                overflow: 'hidden',
-                                                                textOverflow: 'ellipsis',
-                                                                whiteSpace: 'nowrap',
-                                                            }}
-                                                        >
-                                                            {inv.cashBankAccount}
-                                                        </span>
-                                                    ) : (
-                                                        <span style={{ color: 'var(--color-text-muted)' }}>—</span>
-                                                    )}
-                                                </td>
-                                                <td style={{ fontSize: '0.8125rem' }}>
-                                                    SAR {(inv.freightIn || 0).toLocaleString()}
-                                                </td>
-                                                <td style={{ fontSize: '0.8125rem' }}>
-                                                    SAR {(inv.invoiceDiscount || 0).toLocaleString()}
-                                                </td>
-                                                <td>
-                                                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                                                    </>
+                                                ) : null}
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filteredList.map((inv) => {
+                                            const isDraft = inv.status === 'draft';
+                                            const canMutate = inv.status === 'pending_payment';
+                                            const canEdit = isDraft || canMutate;
+                                            const mgrStatus = salesInvoiceMgrStatus(inv);
+                                            const arSettle = salesInvoiceArSettlementLabel(inv);
+                                            const refLabel = inv.invoiceNo || inv.id;
+                                            return (
+                                                <tr key={inv.id} className="table-row">
+                                                    <td className="table-cell mgr-si-cell-date">
+                                                        {formatSalesInvoiceMgrDate(inv.date)}
+                                                    </td>
+                                                    <td className="table-cell mgr-si-cell-date">
+                                                        {formatSalesInvoiceMgrDate(inv.dueDate)}
+                                                    </td>
+                                                    <td className="table-cell">
                                                         <button
                                                             type="button"
+                                                            className="mgr-si-ref-link"
                                                             onClick={() => handleViewInvoice(inv)}
-                                                            style={{
-                                                                padding: 6,
-                                                                borderRadius: 6,
-                                                                border: 'none',
-                                                                background: '#F3F4F6',
-                                                                cursor: 'pointer',
-                                                            }}
-                                                            title="View"
+                                                            title="View invoice"
                                                         >
-                                                            <Eye size={14} />
+                                                            {refLabel}
                                                         </button>
-                                                        <button
-                                                            type="button"
-                                                            disabled={salesInvoicePdfBusy}
-                                                            onClick={() => handleDownloadInvoice(inv)}
-                                                            style={{
-                                                                padding: 6,
-                                                                borderRadius: 6,
-                                                                border: 'none',
-                                                                background:
-                                                                    salesInvoicePdfBusy ? '#E5E7EB' : '#F3F4F6',
-                                                                cursor:
-                                                                    salesInvoicePdfBusy ? 'not-allowed' : 'pointer',
-                                                            }}
-                                                            title="Download PDF"
-                                                        >
-                                                            <Download size={14} />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => openReturnModal(inv)}
-                                                            style={{
-                                                                padding: 6,
-                                                                borderRadius: 6,
-                                                                border: 'none',
-                                                                background: '#FFF7ED',
-                                                                color: '#C2410C',
-                                                                cursor: 'pointer',
-                                                            }}
-                                                            title="Record return / credit"
-                                                        >
-                                                            <RotateCcw size={14} />
-                                                        </button>
-                                                        {/* <button
-                                                            type="button"
-                                                            disabled={!canMutate}
-                                                            onClick={() => openEditInvoice(inv)}
-                                                            style={{
-                                                                padding: 6,
-                                                                borderRadius: 6,
-                                                                border: 'none',
-                                                                background: canMutate ? '#E0E7FF' : '#F3F4F6',
-                                                                color: canMutate ? '#4338CA' : '#94A3B8',
-                                                                cursor: canMutate ? 'pointer' : 'not-allowed',
-                                                                opacity: canMutate ? 1 : 0.6,
-                                                            }}
-                                                            title="Edit"
-                                                        >
-                                                            <Pencil size={14} />
-                                                        </button> */}
-                                                        {/* <button
-                                                            type="button"
-                                                            disabled={!canMutate}
-                                                            onClick={() => handleDeleteInvoice(inv)}
-                                                            style={{
-                                                                padding: 6,
-                                                                borderRadius: 6,
-                                                                border: 'none',
-                                                                background: canMutate ? '#FEE2E2' : '#F3F4F6',
-                                                                color: canMutate ? '#DC2626' : '#94A3B8',
-                                                                cursor: canMutate ? 'pointer' : 'not-allowed',
-                                                                opacity: canMutate ? 1 : 0.6,
-                                                            }}
-                                                            title="Delete"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button> */}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })
-                                )}
-                            </tbody>
-                        </table>
-                        {!listLoading && invoiceListTotal > 0 && invoiceListTotalPages > 1 ? (
-                            <div
-                                style={{
-                                    display: 'flex',
-                                    flexWrap: 'wrap',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: 12,
-                                    marginTop: 16,
-                                    paddingBottom: 4,
-                                }}
-                            >
-                                <button
-                                    type="button"
-                                    className="btn-portal-outline"
-                                    disabled={listLoading || invoiceListPage <= 1}
-                                    onClick={() =>
-                                        loadInvoiceList({ page: invoiceListPage - 1 })
-                                    }
-                                >
-                                    Previous
-                                </button>
-                                <span
-                                    style={{
-                                        fontSize: '0.8125rem',
-                                        color: 'var(--color-text-muted)',
-                                    }}
-                                >
-                                    Page {invoiceListPage} of {invoiceListTotalPages}
-                                    {invoiceListTotal > 0
-                                        ? ` · ${invoiceRangeStart}–${invoiceRangeEnd} of ${invoiceListTotal}`
-                                        : ''}
-                                </span>
-                                <button
-                                    type="button"
-                                    className="btn-portal-outline"
-                                    disabled={
-                                        listLoading ||
-                                        invoiceListPage >= invoiceListTotalPages
-                                    }
-                                    onClick={() =>
-                                        loadInvoiceList({ page: invoiceListPage + 1 })
-                                    }
-                                >
-                                    Next
-                                </button>
-                            </div>
-                        ) : null}
+                                                    </td>
+                                                    <td
+                                                        className="table-cell mgr-si-cell-customer"
+                                                        title={salesInvoiceCustomerLabel(inv)}
+                                                    >
+                                                        {salesInvoiceCustomerLabel(inv)}
+                                                    </td>
+                                                    <td
+                                                        className="table-cell mgr-si-cell-desc"
+                                                        title={inv.productLabel || ''}
+                                                    >
+                                                        {inv.productLabel && inv.productLabel !== '—'
+                                                            ? inv.productLabel
+                                                            : '—'}
+                                                    </td>
+                                                    <td className="table-cell mgr-si-cell-amount">
+                                                        SAR {salesInvoiceSarFmt(inv.amount)}
+                                                    </td>
+                                                    <td className="table-cell mgr-si-cell-balance">
+                                                        <span>SAR {salesInvoiceSarFmt(inv.balance)}</span>
+                                                        {Number(inv.returnsTotal || 0) > 0 ? (
+                                                            <div className="mgr-si-returns-note">
+                                                                − SAR{' '}
+                                                                {salesInvoiceSarFmt(inv.returnsTotal)} returns
+                                                            </div>
+                                                        ) : null}
+                                                        {arSettle.text !== 'Paid' && canMutate ? (
+                                                            <button
+                                                                type="button"
+                                                                className="mgr-si-record-pay"
+                                                                onClick={() => goRecordPaymentInHub(inv)}
+                                                            >
+                                                                Record payment
+                                                            </button>
+                                                        ) : null}
+                                                    </td>
+                                                    <td className="table-cell">
+                                                        <span className={mgrStatus.cls}>{mgrStatus.label}</span>
+                                                    </td>
+                                                    <td className="table-cell mgr-si-cell-actions">
+                                                        <div className="mgr-si-action-icons">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleViewInvoice(inv)}
+                                                                className="mgr-si-icon-btn"
+                                                                title="View"
+                                                            >
+                                                                <Eye size={14} />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                disabled={salesInvoicePdfBusy}
+                                                                onClick={() => handleDownloadInvoice(inv)}
+                                                                className="mgr-si-icon-btn"
+                                                                title="Download PDF"
+                                                            >
+                                                                <Download size={14} />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => openReturnModal(inv)}
+                                                                className="mgr-si-icon-btn mgr-si-icon-btn--return"
+                                                                title="Record return / credit"
+                                                            >
+                                                                <RotateCcw size={14} />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                disabled={!canEdit}
+                                                                onClick={() => openEditInvoice(inv)}
+                                                                className={`mgr-si-icon-btn mgr-si-icon-btn--edit${
+                                                                    canEdit ? '' : ' mgr-si-icon-btn--disabled'
+                                                                }`}
+                                                                title={isDraft ? 'Edit draft' : 'Edit'}
+                                                            >
+                                                                <Pencil size={14} />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                            {!listLoading && invoiceListTotal > 0 && invoiceListTotalPages > 1 ? (
+                                <div className="mgr-si-pagination">
+                                    <button
+                                        type="button"
+                                        className="btn-portal-outline"
+                                        disabled={listLoading || invoiceListPage <= 1}
+                                        onClick={() =>
+                                            loadInvoiceList({ page: invoiceListPage - 1 })
+                                        }
+                                    >
+                                        Previous
+                                    </button>
+                                    <span className="mgr-si-pagination-meta">
+                                        Page {invoiceListPage} of {invoiceListTotalPages}
+                                        {invoiceListTotal > 0
+                                            ? ` · ${invoiceRangeStart}–${invoiceRangeEnd} of ${invoiceListTotal}`
+                                            : ''}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="btn-portal-outline"
+                                        disabled={
+                                            listLoading ||
+                                            invoiceListPage >= invoiceListTotalPages
+                                        }
+                                        onClick={() =>
+                                            loadInvoiceList({ page: invoiceListPage + 1 })
+                                        }
+                                    >
+                                        Next
+                                    </button>
+                                </div>
+                            ) : null}
                         </>
                     )}
                 </div>
@@ -2333,7 +2907,11 @@ export default function SupplierSalesInvoices() {
                                 <span className="pi-breadcrumb">
                                     Sales Invoices ›{' '}
                                     <span className="pi-b-active">
-                                        {invoiceModalMode === 'edit' ? 'Edit' : 'New'}
+                                        {invoiceModalMode === 'edit'
+                                            ? editingInvoiceStatus === 'draft'
+                                                ? 'Draft'
+                                                : 'Edit'
+                                            : 'New'}
                                     </span>
                                 </span>
                                 <div className="pi-title-main">
@@ -2349,6 +2927,7 @@ export default function SupplierSalesInvoices() {
                             <div className="pi-modal-footer">
                                 <div className="pi-footer-left">
                                     <button
+                                        type="button"
                                         className="btn-pi-cancel"
                                         onClick={closeInvoiceModal}
                                     >
@@ -2356,23 +2935,40 @@ export default function SupplierSalesInvoices() {
                                     </button>
                                 </div>
                                 <div className="pi-footer-right">
+                                    {saveError ? (
+                                        <div
+                                            ref={saveErrorRef}
+                                            style={{
+                                                flex: '1 1 100%',
+                                                marginBottom: 8,
+                                                padding: '8px 12px',
+                                                borderRadius: 8,
+                                                fontSize: '0.8125rem',
+                                                color: '#B91C1C',
+                                                border: '1px solid #FECACA',
+                                                background: '#FEF2F2',
+                                            }}
+                                        >
+                                            {saveError}
+                                        </div>
+                                    ) : null}
+                                    {showDraftSaveButton ? (
+                                        <button
+                                            type="button"
+                                            className="btn-pi-draft"
+                                            onClick={() => void handleSaveInvoice('draft')}
+                                            disabled={draftSaveDisabled}
+                                        >
+                                            {saving ? 'Saving…' : 'Save as Draft'}
+                                        </button>
+                                    ) : null}
                                     <button
+                                        type="button"
                                         className="btn-pi-create"
-                                        onClick={handleSaveInvoice}
-                                        disabled={
-                                            saving ||
-                                            editInvoiceLoading ||
-                                            !branch ||
-                                            lineItems.length === 0 ||
-                                            (invoiceModalMode === 'create' &&
-                                                !inventoryInitialLoadDone)
-                                        }
+                                        onClick={() => void handleSaveInvoice('issue')}
+                                        disabled={issueSaveDisabled}
                                     >
-                                        {saving
-                                            ? 'Saving…'
-                                            : invoiceModalMode === 'edit'
-                                              ? 'Update Invoice'
-                                              : 'Issue Sales Invoice'}
+                                        {saving ? 'Saving…' : issueButtonLabel}
                                     </button>
                                 </div>
                             </div>
@@ -2420,16 +3016,31 @@ export default function SupplierSalesInvoices() {
                                 style={{
                                     padding: '10px 14px',
                                     borderRadius: 10,
-                                    background: '#ECFEFF',
-                                    border: '1px solid #A5F3FC',
+                                    background: isWalkInCustomer ? '#FFFBEB' : '#ECFEFF',
+                                    border: isWalkInCustomer
+                                        ? '1px solid #FDE68A'
+                                        : '1px solid #A5F3FC',
                                     fontSize: '0.8125rem',
-                                    color: '#0369A1',
+                                    color: isWalkInCustomer ? '#92400E' : '#0369A1',
                                     marginBottom: 16,
                                 }}
                             >
-                                This creates an <strong>Accounts Receivable</strong> for you (supplier). It will also
-                                create a matching <strong>Purchase Invoice</strong> on the workshop side and update stock
-                                levels on both ends.
+                                {isWalkInCustomer ? (
+                                    <>
+                                        Walk-in / off-platform customer — this invoice stays in{' '}
+                                        <strong>your supplier portal only</strong> (no workshop portal
+                                        or purchase invoice on the customer side). AR posts to the{' '}
+                                        <strong>Non-Affiliated Customers</strong> control account in
+                                        Chart of Accounts.
+                                    </>
+                                ) : (
+                                    <>
+                                        This creates an <strong>Accounts Receivable</strong> for you
+                                        (supplier). It will also create a matching{' '}
+                                        <strong>Purchase Invoice</strong> on the workshop side and
+                                        update stock levels on both ends.
+                                    </>
+                                )}
                             </div>
 
                             <div className="pi-header-grid">
@@ -2497,23 +3108,125 @@ export default function SupplierSalesInvoices() {
 
                             <div className="pi-header-grid">
                                 <div className="pi-field">
-                                    <label>Workshop Branch (Customer) *</label>
-                                    <select
-                                        value={branch}
-                                        disabled={invoiceModalMode === 'edit'}
-                                        onChange={(e) => setBranch(e.target.value)}
+                                    <label>Customer *</label>
+                                    <div
+                                        ref={customerSearchWrapRef}
+                                        className="pi-search-box-wrapper"
+                                        style={{ position: 'relative' }}
                                     >
-                                        <option value="">Select workshop / branch</option>
-                                        {(branches || []).map((b) => (
-                                            <option
-                                                key={b.id}
-                                                value={b.noBranch ? '' : String(b.value ?? b.id)}
-                                                disabled={!!b.noBranch}
-                                            >
-                                                {b.label || b.name}
-                                            </option>
-                                        ))}
-                                    </select>
+                                        <div className="pi-search-box">
+                                            <Search size={16} />
+                                            <input
+                                                type="text"
+                                                placeholder="Search affiliated or non-affiliated customer…"
+                                                value={
+                                                    customerPickerOpen
+                                                        ? customerSearchQuery
+                                                        : selectedCustomer?.label || ''
+                                                }
+                                                readOnly={invoiceModalMode === 'edit'}
+                                                onChange={(e) => {
+                                                    setCustomerSearchQuery(e.target.value);
+                                                    setCustomerPickerOpen(true);
+                                                    setCustomerPickerIndex(0);
+                                                }}
+                                                onFocus={() => {
+                                                    if (invoiceModalMode !== 'edit') {
+                                                        setCustomerPickerOpen(true);
+                                                        setCustomerSearchQuery('');
+                                                        setCustomerPickerIndex(0);
+                                                    }
+                                                }}
+                                                onKeyDown={handleCustomerSearchKeyDown}
+                                            />
+                                        </div>
+                                        {customerPickerOpen && invoiceModalMode !== 'edit' ? (
+                                            <div className="pi-search-results">
+                                                {filteredCustomerOptions.length > 0 ? (
+                                                    filteredCustomerOptions.map(
+                                                        (customer, index) => {
+                                                            const showGroupHeader =
+                                                                index === 0 ||
+                                                                filteredCustomerOptions[index - 1]
+                                                                    .group !== customer.group;
+                                                            return (
+                                                                <React.Fragment key={customer.key}>
+                                                                    {showGroupHeader ? (
+                                                                        <div
+                                                                            style={{
+                                                                                padding:
+                                                                                    '8px 12px 4px',
+                                                                                fontSize: '0.6875rem',
+                                                                                fontWeight: 700,
+                                                                                color: '#64748b',
+                                                                                textTransform:
+                                                                                    'uppercase',
+                                                                                letterSpacing:
+                                                                                    '0.04em',
+                                                                                background:
+                                                                                    '#f8fafc',
+                                                                            }}
+                                                                        >
+                                                                            {customer.group}
+                                                                        </div>
+                                                                    ) : null}
+                                                                    <div
+                                                                        className={`pi-result-item ${
+                                                                            customerPickerIndex ===
+                                                                            index
+                                                                                ? 'selected'
+                                                                                : ''
+                                                                        }`}
+                                                                        onClick={() =>
+                                                                            selectCustomerOption(
+                                                                                customer,
+                                                                            )
+                                                                        }
+                                                                        onMouseEnter={() =>
+                                                                            setCustomerPickerIndex(
+                                                                                index,
+                                                                            )
+                                                                        }
+                                                                    >
+                                                                        <div className="pi-result-info">
+                                                                            <div className="pi-item-name">
+                                                                                {customer.label}
+                                                                            </div>
+                                                                            {customer.subtitle ? (
+                                                                                <div
+                                                                                    className="pi-item-meta"
+                                                                                    style={{
+                                                                                        fontSize: 11,
+                                                                                        color: '#64748b',
+                                                                                    }}
+                                                                                >
+                                                                                    {
+                                                                                        customer.subtitle
+                                                                                    }
+                                                                                </div>
+                                                                            ) : null}
+                                                                        </div>
+                                                                    </div>
+                                                                </React.Fragment>
+                                                            );
+                                                        },
+                                                    )
+                                                ) : (
+                                                    <div
+                                                        style={{
+                                                            padding: 14,
+                                                            fontSize: 13,
+                                                            color: '#64748b',
+                                                        }}
+                                                    >
+                                                        {customerOptions.length === 0
+                                                            ? 'No customers loaded. Add affiliated workshops or non-affiliated customers first.'
+                                                            : 'No matching customers.'}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : null}
+                                    </div>
                                     {!listLoading && customerBranchesLoadError ? (
                                         <span
                                             className="pi-sub-label"
@@ -2524,14 +3237,14 @@ export default function SupplierSalesInvoices() {
                                     ) : null}
                                     {!listLoading &&
                                     !customerBranchesLoadError &&
-                                    branches.length === 0 ? (
+                                    customerOptions.length === 0 ? (
                                         <span
                                             className="pi-sub-label"
                                             style={{ color: '#B45309', marginTop: 6, display: 'block' }}
                                         >
-                                            No workshop branches returned. Ensure workshops exist and each has at least
-                                            one branch that is not rejected. If this persists, check your connection and
-                                            backend logs.
+                                            No customers found. Add workshops under Affiliated Filter
+                                            workshops or customers under Non-affiliated customers /
+                                            workshops.
                                         </span>
                                     ) : null}
                                 </div>
@@ -2597,15 +3310,27 @@ export default function SupplierSalesInvoices() {
                                 </div>
 
                                 {lineItems.map((line, idx) => {
-                                    const maxQtyWs = maxSellableQtyWorkshopForLine(
+                                    const capsRow = findInventoryCapsRow(line, inventoryItems);
+                                    const maxQtyCap = maxSellableQtyForLine(
                                         line,
                                         lineItems,
                                         inventoryItems,
                                     );
+                                    const uomOpts = capsRow
+                                        ? lineUomOptions(line, capsRow)
+                                        : [String(line.uom || 'pcs').trim() || 'pcs'];
+                                    const conversionPreview = formatLineUomConversionPreview(
+                                        line,
+                                        capsRow,
+                                    );
                                     return (
                                     <div
                                         key={line.id}
-                                        className="pi-lines-header pi-line-data-row"
+                                        className={`pi-lines-header pi-line-data-row${
+                                            itemPickerLineId === line.id
+                                                ? ' pi-line-row-picker-open'
+                                                : ''
+                                        }`}
                                         style={{ gridTemplateColumns: getGridColumns() }}
                                     >
                                         {showLineNum && (
@@ -2644,6 +3369,10 @@ export default function SupplierSalesInvoices() {
                                                             flex: 1,
                                                             minWidth: 0,
                                                         }}
+                                                        ref={(el) => {
+                                                            lineFieldRefs.current[`${line.id}:item`] =
+                                                                el;
+                                                        }}
                                                         value={
                                                             itemPickerLineId ===
                                                             line.id
@@ -2665,6 +3394,9 @@ export default function SupplierSalesInvoices() {
                                                             setItemPickerFilter(
                                                                 '',
                                                             );
+                                                            setItemPickerSelectedIndex(
+                                                                0,
+                                                            );
                                                         }}
                                                         onChange={(e) => {
                                                             const v =
@@ -2678,34 +3410,18 @@ export default function SupplierSalesInvoices() {
                                                             setItemPickerFilter(
                                                                 v,
                                                             );
+                                                            setItemPickerSelectedIndex(
+                                                                0,
+                                                            );
                                                         }}
                                                         onKeyDown={(e) => {
                                                             if (
                                                                 e.key ===
-                                                                    'Escape' ||
-                                                                e.key === 'Enter'
+                                                                    'Tab' &&
+                                                                !e.shiftKey &&
+                                                                itemPickerLineId ===
+                                                                    line.id
                                                             ) {
-                                                                e.preventDefault();
-                                                                const text =
-                                                                    String(
-                                                                        itemPickerInputRef.current ??
-                                                                            '',
-                                                                    ).trim();
-                                                                setLineItems(
-                                                                    (prev) =>
-                                                                        prev.map(
-                                                                            (
-                                                                                l,
-                                                                            ) =>
-                                                                                l.id ===
-                                                                                line.id
-                                                                                    ? {
-                                                                                          ...l,
-                                                                                          item: text,
-                                                                                      }
-                                                                                    : l,
-                                                                        ),
-                                                                );
                                                                 setItemPickerLineId(
                                                                     null,
                                                                 );
@@ -2716,6 +3432,16 @@ export default function SupplierSalesInvoices() {
                                                                     '',
                                                                 );
                                                             }
+                                                            handleLineItemPickerKeyDown(
+                                                                e,
+                                                                line,
+                                                            );
+                                                            handleLineFieldTab(
+                                                                e,
+                                                                line.id,
+                                                                'item',
+                                                                idx,
+                                                            );
                                                         }}
                                                     />
                                                     <button
@@ -2797,21 +3523,7 @@ export default function SupplierSalesInvoices() {
                                                 </div>
                                                 {itemPickerLineId ===
                                                 line.id ? (
-                                                    <div
-                                                        className="pi-search-results"
-                                                        style={{
-                                                            position:
-                                                                'absolute',
-                                                            left: 0,
-                                                            right: 0,
-                                                            top: 'calc(100% + 4px)',
-                                                            zIndex: 50,
-                                                            maxHeight: 240,
-                                                            overflowY: 'auto',
-                                                            boxShadow:
-                                                                '0 10px 25px rgba(15,23,42,0.12)',
-                                                        }}
-                                                    >
+                                                    <div className="pi-search-results pi-line-item-picker-results">
                                                         {(() => {
                                                             const pickerRows =
                                                                 getSearchSuggestions(
@@ -2825,7 +3537,12 @@ export default function SupplierSalesInvoices() {
                                                                     ) => (
                                                                         <div
                                                                             key={`${line.id}-${String(invItem.id)}-${i}`}
-                                                                            className="pi-result-item"
+                                                                            className={`pi-result-item ${
+                                                                                itemPickerSelectedIndex ===
+                                                                                i
+                                                                                    ? 'selected'
+                                                                                    : ''
+                                                                            }`}
                                                                             onMouseDown={(
                                                                                 ev,
                                                                             ) => {
@@ -2835,6 +3552,11 @@ export default function SupplierSalesInvoices() {
                                                                                     invItem,
                                                                                 );
                                                                             }}
+                                                                            onMouseEnter={() =>
+                                                                                setItemPickerSelectedIndex(
+                                                                                    i,
+                                                                                )
+                                                                            }
                                                                         >
                                                                             <div className="pi-result-info">
                                                                                 <div className="pi-item-name">
@@ -2924,11 +3646,24 @@ export default function SupplierSalesInvoices() {
                                             <select
                                                 className="pi-row-input"
                                                 value={line.account}
+                                                ref={(el) => {
+                                                    lineFieldRefs.current[
+                                                        `${line.id}:account`
+                                                    ] = el;
+                                                }}
                                                 onChange={(e) =>
                                                     updateLineItem(
                                                         line.id,
                                                         'account',
                                                         e.target.value
+                                                    )
+                                                }
+                                                onKeyDown={(e) =>
+                                                    handleLineFieldTab(
+                                                        e,
+                                                        line.id,
+                                                        'account',
+                                                        idx,
                                                     )
                                                 }
                                             >
@@ -2949,6 +3684,11 @@ export default function SupplierSalesInvoices() {
                                                     value={line.description ?? ''}
                                                     className="pi-row-input"
                                                     placeholder="Description"
+                                                    ref={(el) => {
+                                                        lineFieldRefs.current[
+                                                            `${line.id}:description`
+                                                        ] = el;
+                                                    }}
                                                     onChange={(e) =>
                                                         updateLineItem(
                                                             line.id,
@@ -2956,41 +3696,94 @@ export default function SupplierSalesInvoices() {
                                                             e.target.value,
                                                         )
                                                     }
+                                                    onKeyDown={(e) =>
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            'description',
+                                                            idx,
+                                                        )
+                                                    }
                                                 />
                                             </div>
                                         )}
                                         <div className="pi-col-uom">
-                                            <input
-                                                type="text"
-                                                className="pi-row-input"
-                                                placeholder="UOM"
-                                                value={line.uom ?? ''}
-                                                onChange={(e) =>
-                                                    updateLineItem(
-                                                        line.id,
-                                                        'uom',
-                                                        e.target.value,
-                                                    )
-                                                }
-                                            />
+                                            {uomOpts.length > 1 ? (
+                                                <select
+                                                    className="pi-row-input"
+                                                    value={line.uom ?? uomOpts[0]}
+                                                    ref={(el) => {
+                                                        lineFieldRefs.current[`${line.id}:uom`] = el;
+                                                    }}
+                                                    onChange={(e) =>
+                                                        updateLineItem(
+                                                            line.id,
+                                                            'uom',
+                                                            e.target.value,
+                                                        )
+                                                    }
+                                                    onKeyDown={(e) =>
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            'uom',
+                                                            idx,
+                                                        )
+                                                    }
+                                                >
+                                                    {uomOpts.map((opt) => (
+                                                        <option key={opt} value={opt}>
+                                                            {opt}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                <input
+                                                    type="text"
+                                                    className="pi-row-input"
+                                                    placeholder="UOM"
+                                                    value={line.uom ?? ''}
+                                                    ref={(el) => {
+                                                        lineFieldRefs.current[`${line.id}:uom`] = el;
+                                                    }}
+                                                    onChange={(e) =>
+                                                        updateLineItem(
+                                                            line.id,
+                                                            'uom',
+                                                            e.target.value,
+                                                        )
+                                                    }
+                                                    onKeyDown={(e) =>
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            'uom',
+                                                            idx,
+                                                        )
+                                                    }
+                                                />
+                                            )}
                                         </div>
                                         <div className="pi-col-qty">
                                             <input
                                                 type="text"
                                                 aria-label={
-                                                    maxQtyWs != null &&
-                                                    Number.isFinite(maxQtyWs)
-                                                        ? `Quantity. Maximum ${maxQtyWs} ${line.uom || 'pcs'} (supplier stock balance).`
+                                                    maxQtyCap != null &&
+                                                    Number.isFinite(maxQtyCap)
+                                                        ? `Quantity. Maximum ${maxQtyCap} ${line.uom || 'pcs'} (supplier stock balance).`
                                                         : 'Quantity'
                                                 }
                                                 value={line.qty}
                                                 title={
-                                                    maxQtyWs != null &&
-                                                    Number.isFinite(maxQtyWs)
-                                                        ? `Max ${maxQtyWs} ${line.uom || 'pcs'} — supplier warehouse stock`
+                                                    maxQtyCap != null &&
+                                                    Number.isFinite(maxQtyCap)
+                                                        ? `Max ${maxQtyCap} ${line.uom || 'pcs'} — supplier stock`
                                                         : undefined
                                                 }
                                                 className="pi-row-input-num pi-math-input"
+                                                ref={(el) => {
+                                                    lineFieldRefs.current[`${line.id}:qty`] = el;
+                                                }}
                                                 onChange={(e) =>
                                                     updateLineItem(
                                                         line.id,
@@ -2998,13 +3791,32 @@ export default function SupplierSalesInvoices() {
                                                         e.target.value,
                                                     )
                                                 }
-                                                onKeyDown={(e) =>
-                                                    handleMathKeyDown(e, line.id, 'qty')
-                                                }
+                                                onKeyDown={(e) => {
+                                                    handleMathKeyDown(e, line.id, 'qty');
+                                                    handleLineFieldTab(
+                                                        e,
+                                                        line.id,
+                                                        'qty',
+                                                        idx,
+                                                    );
+                                                }}
                                                 onBlur={(e) =>
                                                     handleMathBlur(e, line.id, 'qty')
                                                 }
                                             />
+                                            {conversionPreview ? (
+                                                <div
+                                                    style={{
+                                                        fontSize: '0.65rem',
+                                                        color: '#64748b',
+                                                        lineHeight: 1.3,
+                                                        marginTop: 2,
+                                                        whiteSpace: 'normal',
+                                                    }}
+                                                >
+                                                    {conversionPreview}
+                                                </div>
+                                            ) : null}
                                         </div>
                                         <div className="pi-col-price">
                                             <input
@@ -3015,6 +3827,9 @@ export default function SupplierSalesInvoices() {
                                                         : String(line.price)
                                                 }
                                                 className="pi-row-input-num pi-math-input"
+                                                ref={(el) => {
+                                                    lineFieldRefs.current[`${line.id}:price`] = el;
+                                                }}
                                                 onChange={(e) =>
                                                     updateLineItem(
                                                         line.id,
@@ -3022,13 +3837,19 @@ export default function SupplierSalesInvoices() {
                                                         e.target.value,
                                                     )
                                                 }
-                                                onKeyDown={(e) =>
+                                                onKeyDown={(e) => {
                                                     handleMathKeyDown(
                                                         e,
                                                         line.id,
                                                         'price',
-                                                    )
-                                                }
+                                                    );
+                                                    handleLineFieldTab(
+                                                        e,
+                                                        line.id,
+                                                        'price',
+                                                        idx,
+                                                    );
+                                                }}
                                                 onBlur={(e) =>
                                                     handleMathBlur(e, line.id, 'price')
                                                 }
@@ -3054,6 +3875,11 @@ export default function SupplierSalesInvoices() {
                                                             ? ''
                                                             : String(line.discount)
                                                     }
+                                                    ref={(el) => {
+                                                        lineFieldRefs.current[
+                                                            `${line.id}:discount`
+                                                        ] = el;
+                                                    }}
                                                     onChange={(e) =>
                                                         updateLineItem(
                                                             line.id,
@@ -3061,13 +3887,19 @@ export default function SupplierSalesInvoices() {
                                                             e.target.value,
                                                         )
                                                     }
-                                                    onKeyDown={(e) =>
+                                                    onKeyDown={(e) => {
                                                         handleMathKeyDown(
                                                             e,
                                                             line.id,
                                                             'discount',
-                                                        )
-                                                    }
+                                                        );
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            'discount',
+                                                            idx,
+                                                        );
+                                                    }}
                                                     onBlur={(e) =>
                                                         handleMathBlur(
                                                             e,
@@ -3090,11 +3922,24 @@ export default function SupplierSalesInvoices() {
                                                             ? 'fixed_sar'
                                                             : 'percent'
                                                     }
+                                                    ref={(el) => {
+                                                        lineFieldRefs.current[
+                                                            `${line.id}:discountMode`
+                                                        ] = el;
+                                                    }}
                                                     onChange={(e) =>
                                                         updateLineItem(
                                                             line.id,
                                                             'discountMode',
                                                             e.target.value,
+                                                        )
+                                                    }
+                                                    onKeyDown={(e) =>
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            'discountMode',
+                                                            idx,
                                                         )
                                                     }
                                                 >
@@ -3120,11 +3965,24 @@ export default function SupplierSalesInvoices() {
                                             <select
                                                 className="pi-row-input"
                                                 value={line.taxCode}
+                                                ref={(el) => {
+                                                    lineFieldRefs.current[
+                                                        `${line.id}:taxCode`
+                                                    ] = el;
+                                                }}
                                                 onChange={(e) =>
                                                     updateLineItem(
                                                         line.id,
                                                         'taxCode',
                                                         e.target.value
+                                                    )
+                                                }
+                                                onKeyDown={(e) =>
+                                                    handleLineFieldTab(
+                                                        e,
+                                                        line.id,
+                                                        'taxCode',
+                                                        idx,
                                                     )
                                                 }
                                             >
@@ -3385,8 +4243,9 @@ export default function SupplierSalesInvoices() {
                                     </button>
                                 </div>
                                 <div className="pi-hint">
-                                    <Zap size={14} /> Tip: ↑ ↓ arrows, Enter to select from
-                                    search. Price fields support math (e.g. 120*2).
+                                    <Zap size={14} /> Tip: ↑ ↓ arrows, Enter to select product on the
+                                    same line. Tab moves across fields; Tab on the last field adds a
+                                    new line. Price fields support math (e.g. 120*2).
                                 </div>
                             </div>
 
@@ -3520,10 +4379,22 @@ export default function SupplierSalesInvoices() {
                                         style={{ marginTop: 12 }}
                                     >
                                         <span>
-                                            Creates <strong>Accounts Receivable</strong> for
-                                            this workshop branch. A linked{' '}
-                                            <strong>Purchase Invoice</strong> will appear in
-                                            the workshop&apos;s Accounting module.
+                                            {isWalkInCustomer ? (
+                                                <>
+                                                    Creates <strong>Accounts Receivable</strong> for
+                                                    this walk-in customer and links the journal to{' '}
+                                                    <strong>AR — Non-Affiliated Customers</strong> in
+                                                    Chart of Accounts. Stock is reduced from your
+                                                    warehouse; nothing is sent to a customer portal.
+                                                </>
+                                            ) : (
+                                                <>
+                                                    Creates <strong>Accounts Receivable</strong> for
+                                                    this workshop branch. A linked{' '}
+                                                    <strong>Purchase Invoice</strong> will appear in
+                                                    the workshop&apos;s Accounting module.
+                                                </>
+                                            )}
                                         </span>
                                     </div>
                                 </div>

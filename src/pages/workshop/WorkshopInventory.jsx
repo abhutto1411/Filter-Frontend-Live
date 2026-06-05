@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Search, Package, AlertCircle, Wallet, RefreshCw, History, X } from 'lucide-react';
+import { Search, Package, AlertCircle, Wallet, RefreshCw, History, X, ArrowRightLeft } from 'lucide-react';
 import './Workshop.css';
 
 import { AnimatePresence } from 'framer-motion';
@@ -18,6 +18,12 @@ import {
     getBranchProductInventoryAdjustments,
 } from '../../services/workshopInventoryApi';
 import { useAuth } from '../../context/AuthContext';
+import WorkshopProductUomEditModal, {
+    WorkshopBulkUomModal,
+    formatWorkshopConversionRule,
+} from './WorkshopProductUomEditModal';
+import WorkshopUomProfilesTab from './WorkshopUomProfilesTab';
+import { formatStockOnHandDisplay, productEffectiveUom } from './workshopUomUtils';
 
 /** Match WorkshopDashboard / WorkshopDepartments response shapes. */
 function extractProducts(res) {
@@ -138,9 +144,11 @@ function firstFiniteNumber(values) {
 }
 
 export const INVENTORY_ADJUSTMENT_REASON_OPENING_QTY = 'Opening qty';
+export const INVENTORY_ADJUSTMENT_REASON_INFINITE_QTY = 'Infinite qty';
 
 const INVENTORY_ADJUST_REASON_OPTIONS = [
     { value: INVENTORY_ADJUSTMENT_REASON_OPENING_QTY, label: 'Opening qty' },
+    { value: INVENTORY_ADJUSTMENT_REASON_INFINITE_QTY, label: 'Infinite qty' },
     { value: 'Damaged Stock', label: 'Damaged Stock' },
     { value: 'Inventory Count Correction', label: 'Inventory Count Correction' },
     { value: 'Expired Item', label: 'Expired Item' },
@@ -148,7 +156,32 @@ const INVENTORY_ADJUST_REASON_OPTIONS = [
     { value: 'Other', label: 'Other (Manual Entry)' },
 ];
 
-function computeBulkAdjustmentRow(item, amount, isOpeningReason) {
+function formatInventoryQty(value, isInfiniteQty = false) {
+    if (isInfiniteQty) return '∞';
+    if (value == null || value === '') return '—';
+    const n = Number(value);
+    return Number.isFinite(n) ? n : '—';
+}
+
+function computeBulkAdjustmentRow(item, amount, reasonKind) {
+    if (reasonKind === 'infinite') {
+        const prevCurrent = Number(item.qty) || 0;
+        return {
+            id: String(item.id),
+            name: item.name || '—',
+            sku: item.sku || '—',
+            isOpening: false,
+            isInfinite: true,
+            prevQty: prevCurrent,
+            prevOpening: item.openingQty != null ? Number(item.openingQty) : null,
+            prevCurrent,
+            newQty: prevCurrent,
+            newOpening: null,
+            newCurrent: prevCurrent,
+            unchanged: Boolean(item.isInfiniteQty),
+        };
+    }
+    const isOpeningReason = reasonKind === 'opening';
     const amt = Math.max(0, Math.round(Number(amount) || 0));
     if (isOpeningReason) {
         const prevOpening =
@@ -186,6 +219,18 @@ function computeBulkAdjustmentRow(item, amount, isOpeningReason) {
     };
 }
 
+function isInfiniteQtyAdjustmentEntry(entry) {
+    if (!entry) return false;
+    const reason = String(entry.reason ?? '').trim();
+    const source = String(entry.source ?? '').toLowerCase();
+    return (
+        reason === INVENTORY_ADJUSTMENT_REASON_INFINITE_QTY ||
+        source === 'manual_infinite_qty' ||
+        entry.isInfiniteQty === true ||
+        entry.affectsInfinite === true
+    );
+}
+
 function isOpeningQtyAdjustmentEntry(entry) {
     if (!entry) return false;
     const reason = String(entry.reason ?? '').trim();
@@ -200,6 +245,7 @@ function isOpeningQtyAdjustmentEntry(entry) {
 function humanizeInventoryLogSource(source) {
     const s = String(source || 'manual').toLowerCase();
     if (s === 'manual_opening_qty') return 'Manual (opening qty)';
+    if (s === 'manual_infinite_qty') return 'Manual (infinite qty)';
     if (s === 'supplier_purchase_invoice') return 'Supplier purchase (approved)';
     if (s === 'local_supplier_purchase_invoice') return 'Non-affiliated supplier purchase';
     if (s === 'super_admin_starting_stock') return 'Super admin (opening stock)';
@@ -279,6 +325,7 @@ function normalizeAdjustmentEntry(raw) {
         reference,
         movementType: movementType || undefined,
         affectsOpening: isOpeningQtyAdjustmentEntry({ reason, source }),
+        affectsInfinite: isInfiniteQtyAdjustmentEntry({ reason, source, isInfiniteQty: raw.isInfiniteQty }),
     };
 }
 
@@ -317,8 +364,24 @@ function extractTimelineMeta(res) {
 function mergeLogEntries(localList, serverList) {
     const byId = new Map();
     for (const e of serverList || []) byId.set(e.id, e);
+
+    const serverInfiniteNear = (local) => {
+        if (!isInfiniteQtyAdjustmentEntry(local)) return false;
+        const localAt = new Date(local.at).getTime();
+        if (!Number.isFinite(localAt)) return false;
+        return (serverList || []).some((s) => {
+            if (!isInfiniteQtyAdjustmentEntry(s)) return false;
+            if (s.previousQty !== local.previousQty) return false;
+            if (String(s.reason || '') !== String(local.reason || '')) return false;
+            const serverAt = new Date(s.at).getTime();
+            return Number.isFinite(serverAt) && Math.abs(serverAt - localAt) < 120_000;
+        });
+    };
+
     for (const e of localList || []) {
-        if (!byId.has(e.id)) byId.set(e.id, e);
+        if (byId.has(e.id)) continue;
+        if (serverInfiniteNear(e)) continue;
+        byId.set(e.id, e);
     }
     return [...byId.values()].sort((a, b) => String(b.at).localeCompare(String(a.at)));
 }
@@ -336,9 +399,16 @@ function latestOpeningQtyFromLogEntries(entries) {
 
 /** Same low-stock rule as the dashboard & Dept & Products. */
 function isLowStockRow(p) {
+    if (p?.isInfiniteQty) return false;
     const crit = Number(p.critical_level) || 0;
     const qty = Number(p.qty) || 0;
     return crit > 0 && qty <= crit;
+}
+
+function formatTimelineQty(entry, which) {
+    if (isInfiniteQtyAdjustmentEntry(entry) && which === 'new') return '∞';
+    const val = which === 'new' ? entry.newQty : entry.previousQty;
+    return val == null ? '—' : val;
 }
 
 function pickDisplayName(master, row) {
@@ -534,7 +604,16 @@ function mapApiRowToInventory(row) {
         merged.inventory?.currentQty,
         merged.inventory?.current_qty,
     ]);
-    const qty = onHand !== null ? onHand : openingQty;
+    const isInfiniteQty = Boolean(
+        row.isInfiniteQty ?? merged.isInfiniteQty ?? row.is_infinite_qty ?? merged.is_infinite_qty,
+    );
+    const lastPhysicalQty = firstFiniteNumber([
+        row.lastQtyOnHand,
+        row.last_qty_on_hand,
+        merged.lastQtyOnHand,
+        merged.last_qty_on_hand,
+    ]);
+    const qty = isInfiniteQty ? null : onHand !== null ? onHand : openingQty;
 
     const critical_level = pickNumber(
         merged.criticalStockPoint,
@@ -562,6 +641,32 @@ function mapApiRowToInventory(row) {
         master?.purchase_price,
     );
 
+    const unit =
+        master?.unit ??
+        row?.unit ??
+        merged?.unit ??
+        'pcs';
+    const warehouseUnit =
+        merged.warehouseUnit ??
+        row?.warehouseUnit ??
+        master?.warehouseUnit ??
+        null;
+    const workshopUnit =
+        merged.workshopUnit ??
+        row?.workshopUnit ??
+        master?.workshopUnit ??
+        unit;
+    const conversionFactor = pickNumber(
+        merged.conversionFactor,
+        row?.conversionFactor,
+        master?.conversionFactor,
+    ) ?? 1;
+    const conversionRule =
+        merged.conversionRule ??
+        row?.conversionRule ??
+        master?.conversionRule ??
+        formatWorkshopConversionRule(warehouseUnit, workshopUnit, conversionFactor);
+
     return {
         id: String(id),
         name: pickDisplayName(master, row),
@@ -584,8 +689,22 @@ function mapApiRowToInventory(row) {
         basePrice,
         purchasePrice,
         openingQty,
+        isInfiniteQty,
+        lastPhysicalQty: isInfiniteQty ? lastPhysicalQty : null,
         qty,
         critical_level,
+        unit,
+        warehouseUnit,
+        workshopUnit,
+        conversionFactor,
+        conversionRule,
+        uomProfileId: merged.uomProfileId ?? row?.uomProfileId ?? master?.uomProfileId ?? null,
+        uomProfileName:
+            merged.uomProfileName ?? row?.uomProfileName ?? master?.uomProfileName ?? null,
+        stockDisplayPrimary:
+            row?.stockDisplayPrimary ?? merged?.stockDisplayPrimary ?? null,
+        stockDisplaySecondary:
+            row?.stockDisplaySecondary ?? merged?.stockDisplaySecondary ?? null,
         branchId: branchId != null && String(branchId).trim() !== '' ? String(branchId) : null,
         branchName: branchName != null && String(branchName).trim() !== '' ? String(branchName) : null,
         _rowKey: [
@@ -595,6 +714,28 @@ function mapApiRowToInventory(row) {
             row?.sku ?? master?.sku ?? '',
         ].map((v) => (v == null ? '' : String(v))).join(':'),
         _searchText: buildRawInventorySearchText(row, master, merged, nested),
+    };
+}
+
+function inventoryUomDisplay(item) {
+    if (item?.uomProfileName) {
+        return {
+            primary: item.uomProfileName,
+            secondary: item.conversionRule || 'Linked profile',
+        };
+    }
+    const cf = Number(item?.conversionFactor) || 1;
+    const wu = String(item?.warehouseUnit || '').trim();
+    const ws = String(item?.workshopUnit || item?.unit || 'pcs').trim();
+    const rule = String(item?.conversionRule || '').trim();
+    const hasConversion =
+        cf > 1 && wu && ws && wu.toLowerCase() !== ws.toLowerCase();
+    if (hasConversion && rule && rule !== '—') {
+        return { primary: rule, secondary: 'Click to edit' };
+    }
+    return {
+        primary: ws || 'pcs',
+        secondary: hasConversion ? 'Set conversion' : null,
     };
 }
 
@@ -610,6 +751,7 @@ function applyStatusesFromParent(rows, selectedProducts) {
 
 function stockStatus(item) {
     if (item.status === 'Requested') return { label: 'Requested', tone: 'blue' };
+    if (item.isInfiniteQty) return { label: 'Unlimited', tone: 'green' };
     if ((Number(item.qty) || 0) <= 0) return { label: 'Out of Stock', tone: 'red' };
     if (isLowStockRow(item)) return { label: 'Low Stock', tone: 'amber' };
     return { label: 'In Stock', tone: 'green' };
@@ -868,17 +1010,17 @@ export default function WorkshopInventory({
             } else {
                 const bid = String(selectedBranchId);
                 try {
-                    const prodRes = await getWorkshopStaffBranchProducts(bid);
-                    products = flattenWorkshopStaffBranchProductsResponse(prodRes);
-                    if (products.length === 0) {
-                        products = extractProducts(prodRes);
-                    }
+                    products = extractProducts(await getBranchProducts(bid));
                 } catch {
                     products = [];
                 }
                 if (products.length === 0) {
                     try {
-                        products = extractProducts(await getBranchProducts(bid));
+                        const prodRes = await getWorkshopStaffBranchProducts(bid);
+                        products = flattenWorkshopStaffBranchProductsResponse(prodRes);
+                        if (products.length === 0) {
+                            products = extractProducts(prodRes);
+                        }
                     } catch {
                         products = [];
                     }
@@ -950,6 +1092,51 @@ export default function WorkshopInventory({
     const [criticalSaving, setCriticalSaving] = useState(false);
     const [isInvValueProofOpen, setIsInvValueProofOpen] = useState(false);
     const [isLowStockProofOpen, setIsLowStockProofOpen] = useState(false);
+
+    const [uomEditProduct, setUomEditProduct] = useState(null);
+    const [isBulkUomModalOpen, setIsBulkUomModalOpen] = useState(false);
+    const [inventoryView, setInventoryView] = useState('stock');
+
+    const handleUomSaved = (saved) => {
+        if (!uomEditProduct) return;
+        const pid = String(uomEditProduct.id);
+        setProductRows((prev) =>
+            prev.map((row) =>
+                String(row.id) === pid
+                    ? {
+                          ...row,
+                          warehouseUnit: saved.warehouseUnit,
+                          workshopUnit: saved.workshopUnit,
+                          conversionFactor: saved.conversionFactor,
+                          conversionRule: saved.conversionRule,
+                      }
+                    : row,
+            ),
+        );
+        setUomEditProduct(null);
+    };
+
+    const handleBulkUomSaved = ({ warehouseUnit, workshopUnit, conversionFactor, conversionRule, failures = [] }) => {
+        const failedIds = new Set(failures.map((f) => String(f.productId)));
+        const selectedSet = new Set(selectedProductIds.map(String));
+        setProductRows((prev) =>
+            prev.map((row) => {
+                const id = String(row.id);
+                if (!selectedSet.has(id) || failedIds.has(id)) return row;
+                return {
+                    ...row,
+                    warehouseUnit,
+                    workshopUnit,
+                    conversionFactor,
+                    conversionRule,
+                };
+            }),
+        );
+        setIsBulkUomModalOpen(false);
+        if (failures.length > 0) {
+            window.alert(`${failures.length} product(s) could not be updated. Others were saved.`);
+        }
+    };
 
     const inventoryValueBreakdown = useMemo(() => {
         const lines = productRows
@@ -1104,11 +1291,11 @@ export default function WorkshopInventory({
     };
 
     const isAdjustOpeningQty = adjustReason === INVENTORY_ADJUSTMENT_REASON_OPENING_QTY;
+    const isAdjustInfiniteQty = adjustReason === INVENTORY_ADJUSTMENT_REASON_INFINITE_QTY;
 
     const handleAdjustReasonChange = (value) => {
         setAdjustReason(value);
         if (!adjustItem) return;
-        // Keep the quantity the user typed; only refresh adoption metadata for opening-qty mode.
         if (value === INVENTORY_ADJUSTMENT_REASON_OPENING_QTY) {
             const resolved = resolveEffectiveOpeningForItem(adjustItem);
             if (resolved !== adjustItem) setAdjustItem(resolved);
@@ -1172,13 +1359,22 @@ export default function WorkshopInventory({
     const handleAdjustSubmit = async () => {
         if (!adjustItem || !adjustReason.trim()) return;
         const openingQtyAdjust = adjustReason.trim() === INVENTORY_ADJUSTMENT_REASON_OPENING_QTY;
+        const infiniteQtyAdjust = adjustReason.trim() === INVENTORY_ADJUSTMENT_REASON_INFINITE_QTY;
         const prevQty = openingQtyAdjust
             ? Number(adjustItem.openingQty ?? adjustItem.qty) || 0
-            : Number(adjustItem.qty) || 0;
-        const parsed = Number.parseFloat(String(newQty).trim().replace(/,/g, ''));
-        if (!Number.isFinite(parsed) || parsed < 0) return;
-        const qtyNum = Math.round(parsed);
-        if (!openingQtyAdjust && qtyNum === prevQty) return;
+            : adjustItem.isInfiniteQty
+              ? Number(adjustItem.lastPhysicalQty) || 0
+              : Number(adjustItem.qty) || 0;
+
+        if (infiniteQtyAdjust && adjustItem.isInfiniteQty) return;
+
+        let qtyNum = prevQty;
+        if (!infiniteQtyAdjust) {
+            const parsed = Number.parseFloat(String(newQty).trim().replace(/,/g, ''));
+            if (!Number.isFinite(parsed) || parsed < 0) return;
+            qtyNum = Math.round(parsed);
+            if (!openingQtyAdjust && !infiniteQtyAdjust && !adjustItem.isInfiniteQty && qtyNum === prevQty) return;
+        }
 
         const pid = String(adjustItem.id);
         const reasonTrim = adjustReason.trim();
@@ -1188,11 +1384,12 @@ export default function WorkshopInventory({
             setAdjustSubmitError('');
             try {
                 const adjustBody = {
-                    newQty: qtyNum,
+                    newQty: infiniteQtyAdjust ? 0 : qtyNum,
                     reason: reasonTrim,
                 };
-                // Opening qty: server reads workshop_products.opening_qty (list row can be stale).
-                if (!openingQtyAdjust) {
+                if (!openingQtyAdjust && !infiniteQtyAdjust && !adjustItem.isInfiniteQty) {
+                    adjustBody.previousQty = prevQty;
+                } else if (infiniteQtyAdjust) {
                     adjustBody.previousQty = prevQty;
                 }
                 const res = await postBranchProductInventoryAdjustment(
@@ -1213,19 +1410,17 @@ export default function WorkshopInventory({
                     delta: d.delta != null ? Number(d.delta) : qtyNum - prevQty,
                     reason: d.reason || reasonTrim,
                     adjustedBy: d.adjustedBy || null,
-                    source: d.source || (openingQtyAdjust ? 'manual_opening_qty' : 'manual'),
+                    source: d.source || (openingQtyAdjust ? 'manual_opening_qty' : infiniteQtyAdjust ? 'manual_infinite_qty' : 'manual'),
                     affectsOpening:
                         d.adjustmentTarget === 'opening' ||
                         openingQtyAdjust ||
                         d.source === 'manual_opening_qty',
+                    affectsInfinite:
+                        d.adjustmentTarget === 'infinite' ||
+                        infiniteQtyAdjust ||
+                        d.source === 'manual_infinite_qty' ||
+                        d.isInfiniteQty === true,
                 };
-
-                setAdjustmentLogs((prevMap) => {
-                    const list = [...(prevMap[pid] || []), serverEntry];
-                    const next = { ...prevMap, [pid]: list };
-                    saveAdjustmentLogsToStorage(logStorageKey, next);
-                    return next;
-                });
 
                 const nextOpening =
                     openingQtyAdjust || d.adjustmentTarget === 'opening'
@@ -1234,26 +1429,37 @@ export default function WorkshopInventory({
                             : serverEntry.newQty
                         : null;
                 const nextStock =
-                    openingQtyAdjust || d.adjustmentTarget === 'opening'
-                        ? d.qtyOnHand != null
-                            ? Number(d.qtyOnHand)
-                            : d.qty_on_hand != null
-                              ? Number(d.qty_on_hand)
-                              : nextOpening
-                        : serverEntry.newQty;
+                    infiniteQtyAdjust || d.adjustmentTarget === 'infinite' || d.isInfiniteQty
+                        ? null
+                        : openingQtyAdjust || d.adjustmentTarget === 'opening'
+                          ? d.qtyOnHand != null
+                              ? Number(d.qtyOnHand)
+                              : d.qty_on_hand != null
+                                ? Number(d.qty_on_hand)
+                                : nextOpening
+                          : serverEntry.newQty;
 
                 setProductRows((prev) =>
                     prev.map((p) => {
                         if (p.id !== adjustItem.id) return p;
+                        if (infiniteQtyAdjust || d.adjustmentTarget === 'infinite' || d.isInfiniteQty) {
+                            return {
+                                ...p,
+                                isInfiniteQty: true,
+                                qty: null,
+                                status: undefined,
+                            };
+                        }
                         if (openingQtyAdjust || d.adjustmentTarget === 'opening') {
                             return {
                                 ...p,
                                 openingQty: nextOpening,
                                 qty: nextStock,
+                                isInfiniteQty: false,
                                 status: undefined,
                             };
                         }
-                        return { ...p, qty: nextStock, status: undefined };
+                        return { ...p, qty: nextStock, isInfiniteQty: false, status: undefined };
                     }),
                 );
 
@@ -1278,7 +1484,9 @@ export default function WorkshopInventory({
                 }
 
                 closeAdjustModal();
-                if (!openingQtyAdjust) {
+                if (!openingQtyAdjust && !infiniteQtyAdjust) {
+                    void loadInventory();
+                } else {
                     void loadInventory();
                 }
             } catch (err) {
@@ -1337,13 +1545,17 @@ export default function WorkshopInventory({
 
     const isBulkOpeningQty =
         bulkAdjustReason.trim() === INVENTORY_ADJUSTMENT_REASON_OPENING_QTY;
+    const isBulkInfiniteQty =
+        bulkAdjustReason.trim() === INVENTORY_ADJUSTMENT_REASON_INFINITE_QTY;
+
+    const bulkReasonKind = isBulkInfiniteQty ? 'infinite' : isBulkOpeningQty ? 'opening' : 'stock';
 
     const bulkAdjustPreview = useMemo(() => {
         const amt = bulkAdjustAmount;
         return selectedProductsForBulk.map((item) =>
-            computeBulkAdjustmentRow(item, amt, isBulkOpeningQty),
+            computeBulkAdjustmentRow(item, amt, bulkReasonKind),
         );
-    }, [selectedProductsForBulk, bulkAdjustAmount, isBulkOpeningQty]);
+    }, [selectedProductsForBulk, bulkAdjustAmount, bulkReasonKind]);
 
     const bulkAdjustWillChangeCount = bulkAdjustPreview.filter((row) => !row.unchanged).length;
 
@@ -1393,23 +1605,31 @@ export default function WorkshopInventory({
     const handleBulkAdjustSubmit = async () => {
         if (selectedProductsForBulk.length === 0) return;
         if (!bulkAdjustReason.trim()) return;
-        const parsedAmt = Number.parseFloat(String(bulkAdjustAmount).trim().replace(/,/g, ''));
-        if (!Number.isFinite(parsedAmt) || parsedAmt < 0) {
-            setBulkAdjustError('Enter a valid amount ≥ 0.');
-            return;
+        const reasonTrim = bulkAdjustReason.trim();
+        const infiniteBulk = reasonTrim === INVENTORY_ADJUSTMENT_REASON_INFINITE_QTY;
+
+        if (!infiniteBulk) {
+            const parsedAmt = Number.parseFloat(String(bulkAdjustAmount).trim().replace(/,/g, ''));
+            if (!Number.isFinite(parsedAmt) || parsedAmt < 0) {
+                setBulkAdjustError('Enter a valid amount ≥ 0.');
+                return;
+            }
         }
         if (bulkAdjustWillChangeCount === 0) {
-            setBulkAdjustError('No selected products would change with this amount.');
+            setBulkAdjustError(
+                infiniteBulk
+                    ? 'All selected products already have unlimited stock.'
+                    : 'No selected products would change with this amount.',
+            );
             return;
         }
-        if (isBulkOpeningQty && parsedAmt === 0) {
+        if (isBulkOpeningQty && Number.parseFloat(String(bulkAdjustAmount).trim().replace(/,/g, '')) === 0) {
             setBulkAdjustError(
                 'Bulk opening adoption cannot be set to 0 when products would change. That overwrites stored adoption with zero.',
             );
             return;
         }
 
-        const reasonTrim = bulkAdjustReason.trim();
         const targets = bulkAdjustPreview.filter((row) => !row.unchanged);
         const total = targets.length;
 
@@ -1424,8 +1644,9 @@ export default function WorkshopInventory({
                         reason: reasonTrim,
                         items: targets.map((row) => ({
                             productId: row.id,
-                            newQty: row.newQty,
-                            ...(row.isOpening ? {} : { previousQty: row.prevQty }),
+                            newQty: row.isInfinite ? 0 : row.newQty,
+                            ...(row.isOpening || row.isInfinite ? {} : { previousQty: row.prevQty }),
+                            ...(row.isInfinite ? { previousQty: row.prevQty } : {}),
                         })),
                     },
                     { workshopId: workshopIdQuery },
@@ -1439,6 +1660,8 @@ export default function WorkshopInventory({
                 const failedIds = new Set(apiFailures.map((f) => String(f.productId)));
                 const openingQtyAdjust =
                     reasonTrim === INVENTORY_ADJUSTMENT_REASON_OPENING_QTY;
+                const infiniteQtyAdjust =
+                    reasonTrim === INVENTORY_ADJUSTMENT_REASON_INFINITE_QTY;
 
                 const succeededRows = targets.filter((row) => !failedIds.has(String(row.id)));
                 if (succeededRows.length > 0) {
@@ -1446,9 +1669,18 @@ export default function WorkshopInventory({
                         prev.map((p) => {
                             const row = succeededRows.find((t) => String(t.id) === String(p.id));
                             if (!row) return p;
+                            if (row.isInfinite || infiniteQtyAdjust) {
+                                return {
+                                    ...p,
+                                    isInfiniteQty: true,
+                                    qty: null,
+                                    status: undefined,
+                                };
+                            }
                             const next = {
                                 ...p,
                                 qty: row.newCurrent ?? row.newQty,
+                                isInfiniteQty: false,
                                 status: undefined,
                             };
                             if (openingQtyAdjust) {
@@ -1457,28 +1689,7 @@ export default function WorkshopInventory({
                             return next;
                         }),
                     );
-                    const at = new Date().toISOString();
-                    setAdjustmentLogs((prevMap) => {
-                        const next = { ...prevMap };
-                        for (const row of succeededRows) {
-                            const entry = {
-                                id: `bulk-${at}-${row.id}`,
-                                at,
-                                previousQty: row.prevQty,
-                                newQty: row.newQty,
-                                delta: row.newQty - row.prevQty,
-                                reason: reasonTrim,
-                                source: openingQtyAdjust ? 'manual_opening_qty' : 'manual',
-                                affectsOpening: openingQtyAdjust,
-                            };
-                            next[row.id] = [...(next[row.id] || []), entry];
-                        }
-                        saveAdjustmentLogsToStorage(logStorageKey, next);
-                        return next;
-                    });
-                    if (!openingQtyAdjust) {
-                        void loadInventory();
-                    }
+                    void loadInventory();
                 }
 
                 setBulkAdjustProgress({ done: total, total });
@@ -1749,6 +1960,32 @@ export default function WorkshopInventory({
                 })}
             </div>
 
+            <div className="ws-inv-view-tabs">
+                <button
+                    type="button"
+                    className={`ws-inv-view-tab${inventoryView === 'stock' ? ' is-active' : ''}`}
+                    onClick={() => setInventoryView('stock')}
+                >
+                    Stock
+                </button>
+                <button
+                    type="button"
+                    className={`ws-inv-view-tab${inventoryView === 'profiles' ? ' is-active' : ''}`}
+                    onClick={() => setInventoryView('profiles')}
+                >
+                    UOM profiles
+                </button>
+            </div>
+
+            {inventoryView === 'profiles' ? (
+                <WorkshopUomProfilesTab
+                    workshopId={workshopIdQuery}
+                    branchId={isAllBranches ? null : String(selectedBranchId)}
+                    products={productRows}
+                    onReloadProducts={loadInventory}
+                    isAllBranches={isAllBranches}
+                />
+            ) : (
             <div className="mc-selection-layout">
                 <div className="mc-selection-main" style={{ gridColumn: 'span 2' }}>
                     <div
@@ -1894,15 +2131,7 @@ export default function WorkshopInventory({
                                 <strong>{productRows.length}</strong> products
                                 {searchQuery ? ` for "${searchQuery}"` : ''}.
                             </p>
-                            <div
-                                style={{
-                                    display: 'flex',
-                                    flexWrap: 'wrap',
-                                    alignItems: 'center',
-                                    gap: 10,
-                                    marginTop: 4,
-                                }}
-                            >
+                            <div className="ws-inv-bulk-toolbar">
                                 <button
                                     type="button"
                                     className="mc-btn-ghost"
@@ -1916,9 +2145,19 @@ export default function WorkshopInventory({
                                 </button>
                                 {selectedProductIds.length > 0 ? (
                                     <>
-                                        <span style={{ fontSize: '0.8125rem', fontWeight: 700, color: 'var(--color-text-dark)' }}>
+                                        <span className="ws-inv-bulk-count">
                                             {selectedProductIds.length} selected
                                         </span>
+                                        <button
+                                            type="button"
+                                            className="mc-btn-ghost"
+                                            style={{ padding: '8px 14px', fontSize: '0.8125rem', border: '1px solid var(--color-border)', borderRadius: 10 }}
+                                            onClick={() => setIsBulkUomModalOpen(true)}
+                                            disabled={isAllBranches}
+                                            title={isAllBranches ? 'Select a single branch to set UOM rules' : undefined}
+                                        >
+                                            Set UOM
+                                        </button>
                                         <button
                                             type="button"
                                             className="mc-btn-primary"
@@ -1933,18 +2172,19 @@ export default function WorkshopInventory({
                                             style={{ padding: '8px 14px', fontSize: '0.8125rem', border: '1px solid var(--color-border)', borderRadius: 10 }}
                                             onClick={clearProductSelection}
                                         >
-                                            Clear selection
+                                            Clear
                                         </button>
                                     </>
                                 ) : null}
                                 {isAllBranches && selectedProductIds.length > 0 ? (
                                     <span style={{ fontSize: '0.75rem', color: '#B45309' }}>
-                                        Select a single branch to save bulk adjustments on the server.
+                                        Select a single branch to save bulk changes on the server.
                                     </span>
                                 ) : null}
                             </div>
                             <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                                Use checkboxes to select products for <strong>bulk adjust</strong>, or <strong>Select all on page</strong>.
+                                Use checkboxes to select products for <strong>bulk adjust</strong> or <strong>bulk UOM</strong>, or{' '}
+                                <strong>Select all on page</strong>.
                                 Click a <strong>row</strong> for adjustment history. Use <strong>↑</strong> <strong>↓</strong> and{' '}
                                 <strong>Enter</strong> to pick a search suggestion.
                                 {isAllBranches
@@ -2064,6 +2304,19 @@ export default function WorkshopInventory({
                                         <th
                                             style={{
                                                 padding: '16px 24px',
+                                                textAlign: 'left',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 800,
+                                                color: 'var(--color-text-muted)',
+                                                textTransform: 'uppercase',
+                                            }}
+                                            title="Warehouse vs workshop unit conversion for this branch"
+                                        >
+                                            UOM / conversion
+                                        </th>
+                                        <th
+                                            style={{
+                                                padding: '16px 24px',
                                                 textAlign: 'center',
                                                 fontSize: '0.75rem',
                                                 fontWeight: 800,
@@ -2101,10 +2354,10 @@ export default function WorkshopInventory({
                                 </thead>
                                 <tbody>
                                     {isLoading ? (
-                                        <ShimmerTableBodyRows rows={8} columns={11} />
+                                        <ShimmerTableBodyRows rows={8} columns={12} />
                                     ) : filteredProducts.length === 0 ? (
                                         <tr>
-                                            <td colSpan={11} style={{ padding: '60px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                                            <td colSpan={12} style={{ padding: '60px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
                                                 <div style={{ marginBottom: '16px', opacity: 0.3 }}>
                                                     <Package size={48} style={{ margin: '0 auto' }} />
                                                 </div>
@@ -2116,13 +2369,17 @@ export default function WorkshopInventory({
                                             const st = stockStatus(item);
                                             const low = isLowStockRow(item);
                                             const qtyBg =
-                                                item.qty <= 0
+                                                item.isInfiniteQty
+                                                    ? '#F5F3FF'
+                                                    : item.qty <= 0
                                                     ? '#FEF2F2'
                                                     : low
                                                       ? '#FFFBEB'
                                                       : '#ECFDF5';
                                             const qtyColor =
-                                                item.qty <= 0 ? '#EF4444' : low ? '#D97706' : '#047857';
+                                                item.isInfiniteQty
+                                                    ? '#6D28D9'
+                                                    : item.qty <= 0 ? '#EF4444' : low ? '#D97706' : '#047857';
 
                                             const statusBg =
                                                 st.tone === 'blue'
@@ -2216,21 +2473,80 @@ export default function WorkshopInventory({
                                                         </span>
                                                     </td>
                                                     <td style={{ padding: '16px 24px', textAlign: 'center' }}>
-                                                        <span
-                                                            style={{
-                                                                padding: '4px 10px',
-                                                                background: qtyBg,
-                                                                color: qtyColor,
-                                                                borderRadius: '6px',
-                                                                fontSize: '0.8125rem',
-                                                                fontWeight: 700,
-                                                            }}
-                                                        >
-                                                            {item.qty}
-                                                        </span>
+                                                        {(() => {
+                                                            const eff = productEffectiveUom(item);
+                                                            const stock =
+                                                                item.stockDisplayPrimary && item.stockDisplaySecondary != null
+                                                                    ? {
+                                                                          primary: item.stockDisplayPrimary,
+                                                                          secondary: item.stockDisplaySecondary,
+                                                                      }
+                                                                    : item.isInfiniteQty
+                                                                      ? { primary: 'Unlimited', secondary: null }
+                                                                      : formatStockOnHandDisplay(item.qty, eff);
+                                                            const qtyBg =
+                                                                item.isInfiniteQty || (Number(item.qty) || 0) > 0
+                                                                    ? '#ECFDF5'
+                                                                    : '#FEF2F2';
+                                                            const qtyColor =
+                                                                item.isInfiniteQty || (Number(item.qty) || 0) > 0
+                                                                    ? '#059669'
+                                                                    : '#DC2626';
+                                                            return (
+                                                                <span
+                                                                    style={{
+                                                                        display: 'inline-block',
+                                                                        padding: '6px 10px',
+                                                                        background: qtyBg,
+                                                                        color: qtyColor,
+                                                                        borderRadius: '6px',
+                                                                        fontSize: '0.8125rem',
+                                                                        textAlign: 'center',
+                                                                    }}
+                                                                >
+                                                                    <span className="ws-inv-stock-primary">{stock.primary}</span>
+                                                                    {stock.secondary ? (
+                                                                        <span className="ws-inv-stock-secondary">{stock.secondary}</span>
+                                                                    ) : null}
+                                                                </span>
+                                                            );
+                                                        })()}
                                                     </td>
                                                     <td style={{ padding: '16px 24px', textAlign: 'center', fontSize: '0.875rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>
                                                         {Number(item.critical_level) > 0 ? item.critical_level : '—'}
+                                                    </td>
+                                                    <td className="ws-inv-uom-cell">
+                                                        {(() => {
+                                                            const uom = inventoryUomDisplay(item);
+                                                            return (
+                                                                <button
+                                                                    type="button"
+                                                                    className="ws-inv-uom-pill"
+                                                                    title={
+                                                                        isAllBranches
+                                                                            ? 'Select a single branch to edit UOM'
+                                                                            : 'Edit warehouse / workshop conversion'
+                                                                    }
+                                                                    disabled={isAllBranches}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setUomEditProduct(item);
+                                                                    }}
+                                                                >
+                                                                    <ArrowRightLeft
+                                                                        size={14}
+                                                                        className="ws-inv-uom-pill-icon"
+                                                                        aria-hidden
+                                                                    />
+                                                                    <span className="ws-inv-uom-pill-text">
+                                                                        {uom.primary}
+                                                                        {uom.secondary ? (
+                                                                            <span className="ws-inv-uom-pill-sub">{uom.secondary}</span>
+                                                                        ) : null}
+                                                                    </span>
+                                                                </button>
+                                                            );
+                                                        })()}
                                                     </td>
                                                     <td style={{ padding: '16px 24px', textAlign: 'center', fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-text-dark)' }}>
                                                         SAR {item.basePrice?.toLocaleString() || '0'}
@@ -2306,6 +2622,7 @@ export default function WorkshopInventory({
                     </div>
                 </div>
             </div>
+            )}
 
             <AnimatePresence>
                 {isRequestModalOpen && (
@@ -2387,7 +2704,7 @@ export default function WorkshopInventory({
                                     ) : null}
                                     {' '}
                                     · Current stock:{' '}
-                                    <strong>{productRows.find((p) => String(p.id) === String(logProduct.id))?.qty ?? logProduct.qty}</strong>
+                                    <strong>{formatInventoryQty(productRows.find((p) => String(p.id) === String(logProduct.id))?.qty, productRows.find((p) => String(p.id) === String(logProduct.id))?.isInfiniteQty ?? logProduct.isInfiniteQty)}</strong>
                                     {isAllBranches ? ' · All branches: offline log only' : ` · ${selectedBranchName}`}
                                 </p>
                                 {logOpeningContext?.storedDrift && !isAllBranches ? (
@@ -2461,15 +2778,16 @@ export default function WorkshopInventory({
                                             <tbody>
                                                 {merged.map((e) => {
                                                     const openingRow = isOpeningQtyAdjustmentEntry(e);
+                                                    const infiniteRow = isInfiniteQtyAdjustmentEntry(e);
                                                     return (
                                                     <tr
                                                         key={e.id}
                                                         style={{
                                                             borderBottom: '1px solid var(--color-border-light)',
-                                                            background: openingRow ? '#FEF9C3' : undefined,
+                                                            background: openingRow ? '#FEF9C3' : infiniteRow ? '#F5F3FF' : undefined,
                                                         }}
                                                     >
-                                                        <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', color: openingRow ? '#92400E' : 'var(--color-text-muted)' }}>
+                                                        <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', color: openingRow ? '#92400E' : infiniteRow ? '#6D28D9' : 'var(--color-text-muted)' }}>
                                                             {new Date(e.at).toLocaleString()}
                                                             {openingRow ? (
                                                                 <span
@@ -2484,11 +2802,24 @@ export default function WorkshopInventory({
                                                                     Opening (adoption)
                                                                 </span>
                                                             ) : null}
+                                                            {infiniteRow ? (
+                                                                <span
+                                                                    style={{
+                                                                        display: 'block',
+                                                                        fontSize: '0.65rem',
+                                                                        fontWeight: 800,
+                                                                        textTransform: 'uppercase',
+                                                                        marginTop: 4,
+                                                                    }}
+                                                                >
+                                                                    Unlimited stock
+                                                                </span>
+                                                            ) : null}
                                                         </td>
-                                                        <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700 }}>{e.previousQty == null ? '—' : e.previousQty}</td>
-                                                        <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700 }}>{e.newQty == null ? '—' : e.newQty}</td>
-                                                        <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: e.delta >= 0 ? '#047857' : '#B91C1C' }}>
-                                                            {e.delta > 0 ? `+${e.delta}` : e.delta}
+                                                        <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700 }}>{formatTimelineQty(e, 'previous')}</td>
+                                                        <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700 }}>{formatTimelineQty(e, 'new')}</td>
+                                                        <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: infiniteRow ? '#6D28D9' : e.delta >= 0 ? '#047857' : '#B91C1C' }}>
+                                                            {infiniteRow ? '—' : e.delta > 0 ? `+${e.delta}` : e.delta}
                                                         </td>
                                                         <td style={{ padding: '12px 14px' }}>{e.reason}</td>
                                                         {showRefCol ? (
@@ -2533,7 +2864,7 @@ export default function WorkshopInventory({
                                 <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Product Details</p>
                                 <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>{adjustItem?.name}</h4>
                                 <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                                    Current stock: <strong>{adjustItem?.qty ?? 0}</strong>
+                                    Current stock: <strong>{formatInventoryQty(adjustItem?.qty, adjustItem?.isInfiniteQty)}</strong>
                                     {adjustItem?.openingQty != null ? (
                                         <>
                                             {' '}
@@ -2554,10 +2885,24 @@ export default function WorkshopInventory({
                             </div>
 
                             <p style={{ margin: '0 0 16px', fontSize: '0.8125rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
-                                {isAdjustOpeningQty ? (
+                                {isAdjustInfiniteQty ? (
+                                    <>
+                                        Marks this product as <strong>unlimited stock</strong> at this branch. POS sales will not
+                                        deplete quantity. The last known stock level is kept for reference and shown in the timeline.
+                                    </>
+                                ) : isAdjustOpeningQty ? (
                                     <>
                                         Sets <strong>Opening (adoption)</strong> and <strong>Current stock</strong> to the same
                                         value (initial / reset). Enter the new total (≥ 0).
+                                    </>
+                                ) : adjustItem?.isInfiniteQty ? (
+                                    <>
+                                        This product has <strong>unlimited stock</strong>. Entering a new quantity turns unlimited
+                                        mode off and sets on-hand stock to that value
+                                        {adjustItem.lastPhysicalQty != null ? (
+                                            <> (last physical count: <strong>{adjustItem.lastPhysicalQty}</strong>)</>
+                                        ) : null}
+                                        .
                                     </>
                                 ) : (
                                     <>
@@ -2566,29 +2911,18 @@ export default function WorkshopInventory({
                                 )}
                                 {isAllBranches
                                     ? ' Select a single branch to save on the server.'
-                                    : isAdjustOpeningQty
+                                    : isAdjustInfiniteQty
+                                      ? adjustItem?.isInfiniteQty
+                                        ? ' This product already has unlimited stock.'
+                                        : ' Recorded in the product timeline as Infinite qty.'
+                                      : isAdjustOpeningQty
                                       ? ' Uses the stored opening adoption on the server (the list can show 0 while the real value is higher).'
-                                      : ' The server checks previousQty matches current stock — refresh if it changed elsewhere.'}
+                                      : adjustItem?.isInfiniteQty
+                                        ? ' No previous-qty check while leaving unlimited mode.'
+                                        : ' The server checks previousQty matches current stock — refresh if it changed elsewhere.'}
                             </p>
 
                             <div className="mc-form-group" style={{ marginBottom: '16px' }}>
-                                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>
-                                    {isAdjustOpeningQty ? 'NEW OPENING QTY (ADOPTION)' : 'NEW QUANTITY (CURRENT STOCK)'}
-                                </label>
-                                <input
-                                    type="number"
-                                    className="mc-filter-select"
-                                    style={{ width: '100%', height: '45px' }}
-                                    placeholder={isAdjustOpeningQty ? 'Enter new opening qty…' : 'Enter new stock level…'}
-                                    min={0}
-                                    step={1}
-                                    value={newQty}
-                                    onChange={(e) => setNewQty(e.target.value)}
-                                    disabled={adjustSaving}
-                                />
-                            </div>
-
-                            <div className="mc-form-group" style={{ marginBottom: '24px' }}>
                                 <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>REASON FOR ADJUSTMENT</label>
                                 <select
                                     className="mc-filter-select"
@@ -2605,6 +2939,25 @@ export default function WorkshopInventory({
                                     ))}
                                 </select>
                             </div>
+
+                            {!isAdjustInfiniteQty ? (
+                            <div className="mc-form-group" style={{ marginBottom: '16px' }}>
+                                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>
+                                    {isAdjustOpeningQty ? 'NEW OPENING QTY (ADOPTION)' : 'NEW QUANTITY (CURRENT STOCK)'}
+                                </label>
+                                <input
+                                    type="number"
+                                    className="mc-filter-select"
+                                    style={{ width: '100%', height: '45px' }}
+                                    placeholder={isAdjustOpeningQty ? 'Enter new opening qty…' : 'Enter new stock level…'}
+                                    min={0}
+                                    step={1}
+                                    value={newQty}
+                                    onChange={(e) => setNewQty(e.target.value)}
+                                    disabled={adjustSaving}
+                                />
+                            </div>
+                            ) : null}
 
                             {adjustSubmitError && (
                                 <p style={{ margin: '0 0 16px', padding: '12px', background: '#FEE2E2', borderRadius: 8, color: '#991B1B', fontSize: '0.8125rem' }}>
@@ -2623,8 +2976,12 @@ export default function WorkshopInventory({
                                     onClick={handleAdjustSubmit}
                                     disabled={(() => {
                                         if (adjustSaving || !adjustItem || !adjustReason.trim()) return true;
+                                        if (isAdjustInfiniteQty) {
+                                            return Boolean(adjustItem.isInfiniteQty);
+                                        }
                                         const parsed = Number.parseFloat(String(newQty).trim().replace(/,/g, ''));
                                         if (!Number.isFinite(parsed) || parsed < 0) return true;
+                                        if (adjustItem.isInfiniteQty) return false;
                                         const baseline = isAdjustOpeningQty
                                             ? Number(adjustItem.openingQty ?? adjustItem.qty) || 0
                                             : Number(adjustItem.qty) || 0;
@@ -2648,7 +3005,12 @@ export default function WorkshopInventory({
                     >
                         <div className="mc-modal-form" style={{ padding: '24px' }}>
                             <p style={{ margin: '0 0 16px', fontSize: '0.8125rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
-                                {isBulkOpeningQty ? (
+                                {isBulkInfiniteQty ? (
+                                    <>
+                                        <strong>Infinite qty</strong> marks selected products as <strong>unlimited stock</strong>.
+                                        No quantity entry is needed. Each change is recorded in the product timeline.
+                                    </>
+                                ) : isBulkOpeningQty ? (
                                     <>
                                         <strong>Opening qty</strong> sets <strong>Opening (adoption)</strong> and{' '}
                                         <strong>current stock</strong> to the value you enter.
@@ -2684,6 +3046,7 @@ export default function WorkshopInventory({
                                 </select>
                             </div>
 
+                            {!isBulkInfiniteQty ? (
                             <div className="mc-form-group" style={{ marginBottom: '16px' }}>
                                 <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>
                                     {isBulkOpeningQty
@@ -2702,6 +3065,7 @@ export default function WorkshopInventory({
                                     disabled={bulkAdjustSaving || !bulkAdjustReason.trim()}
                                 />
                             </div>
+                            ) : null}
 
                             {bulkAdjustPreview.length > 0 && (
                                 <div
@@ -2742,7 +3106,23 @@ export default function WorkshopInventory({
                                                             <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>{row.sku}</span>
                                                         ) : null}
                                                     </td>
-                                                    {isBulkOpeningQty ? (
+                                                    {isBulkInfiniteQty ? (
+                                                        <>
+                                                            <td style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                                                                {formatInventoryQty(row.prevCurrent, false)}
+                                                            </td>
+                                                            <td
+                                                                style={{
+                                                                    padding: '8px 12px',
+                                                                    textAlign: 'center',
+                                                                    fontWeight: 700,
+                                                                    color: row.unchanged ? 'var(--color-text-muted)' : '#6D28D9',
+                                                                }}
+                                                            >
+                                                                {row.unchanged ? '∞ (skip)' : '∞'}
+                                                            </td>
+                                                        </>
+                                                    ) : isBulkOpeningQty ? (
                                                         <>
                                                             <td
                                                                 style={{
@@ -2837,7 +3217,10 @@ export default function WorkshopInventory({
                                         bulkAdjustSaving ||
                                         !bulkAdjustReason.trim() ||
                                         bulkAdjustWillChangeCount === 0 ||
-                                        !Number.isFinite(Number.parseFloat(String(bulkAdjustAmount).trim().replace(/,/g, '')))
+                                        (!isBulkInfiniteQty &&
+                                            !Number.isFinite(
+                                                Number.parseFloat(String(bulkAdjustAmount).trim().replace(/,/g, '')),
+                                            ))
                                     }
                                 >
                                     {bulkAdjustSaving ? 'Applying…' : `Apply to ${bulkAdjustWillChangeCount} product${bulkAdjustWillChangeCount !== 1 ? 's' : ''}`}
@@ -2847,6 +3230,25 @@ export default function WorkshopInventory({
                     </Modal>
                 )}
             </AnimatePresence>
+
+            {uomEditProduct && !isAllBranches ? (
+                <WorkshopProductUomEditModal
+                    product={uomEditProduct}
+                    branchId={String(selectedBranchId)}
+                    workshopId={workshopIdQuery}
+                    onClose={() => setUomEditProduct(null)}
+                    onSaved={handleUomSaved}
+                />
+            ) : null}
+            {isBulkUomModalOpen && !isAllBranches ? (
+                <WorkshopBulkUomModal
+                    products={selectedProductsForBulk}
+                    branchId={String(selectedBranchId)}
+                    workshopId={workshopIdQuery}
+                    onClose={() => setIsBulkUomModalOpen(false)}
+                    onSaved={handleBulkUomSaved}
+                />
+            ) : null}
 
             <AnimatePresence>
                 {isCriticalModalOpen && (

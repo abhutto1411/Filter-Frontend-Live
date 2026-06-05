@@ -87,3 +87,25 @@ export async function rejectCorporateWalkInOrder(orderId, reason) {
         body: JSON.stringify({ reason }),
     });
 }
+
+/**
+ * GET /corporate/walk-in-orders/settings — returns `{ autoApproveWalkIns }`.
+ * When `true`, future cashier walk-in submissions are auto-approved on the
+ * corporate user's behalf (skipping the manual booking-approvals queue).
+ */
+export async function getCorporateWalkInSettings({ signal } = {}) {
+    const data = await apiFetch('/corporate/walk-in-orders/settings', { signal });
+    return {
+        autoApproveWalkIns: Boolean(
+            data?.autoApproveWalkIns ?? data?.data?.autoApproveWalkIns,
+        ),
+    };
+}
+
+/** PATCH /corporate/walk-in-orders/settings */
+export async function updateCorporateWalkInSettings({ autoApproveWalkIns }) {
+    return apiFetch('/corporate/walk-in-orders/settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ autoApproveWalkIns: !!autoApproveWalkIns }),
+    });
+}

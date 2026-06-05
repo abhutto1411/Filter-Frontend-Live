@@ -19,6 +19,9 @@ import {
     approveCorporatePaymentApproval,
     rejectCorporatePaymentApproval,
     getSuperAdminInvoiceView,
+    getSuperAdminSalesReturns,
+    approveSuperAdminSalesReturn,
+    rejectSuperAdminSalesReturn,
 } from '../../services/superAdminApi';
 import Modal from '../../components/Modal';
 import ApprovalDetailsModal from './ApprovalDetailsModal';
@@ -40,6 +43,7 @@ const APPROVAL_TYPE_TO_PERMISSION_SUFFIX = {
     corporate_price_quotation: 'corporate-price-quotation',
     corporate_walk_in_booking: 'corporate-walk-in-booking',
     corporate_payment_approval: 'corporate-payment-proof',
+    sales_return: 'sales-return',
 };
 
 function approvalPermission(entityType, action) {
@@ -59,6 +63,7 @@ const ENTITY_TYPES = [
     { value: 'corporate_price_quotation', label: 'Corporate price quotation' },
     { value: 'corporate_walk_in_booking', label: 'Corporate walk-in booking' },
     { value: 'corporate_payment_approval', label: 'Corporate payment proof' },
+    { value: 'sales_return', label: 'POS sales return' },
     { value: 'technician_registration', label: 'Technician' },
 ];
 
@@ -886,10 +891,12 @@ export default function ApprovalsPage({ isTab = false, onlySettings = false }) {
         // entityType filter to something else.
         const wantPaymentApprovals =
             !entityTypeFilter || entityTypeFilter === 'corporate_payment_approval';
+        const wantSalesReturns =
+            !entityTypeFilter || entityTypeFilter === 'sales_return';
 
         // When the filter is narrowed to corporate_payment_approval, skip the
         // standard approvals endpoint entirely (it doesn't know that entityType).
-        const stdReq = entityTypeFilter === 'corporate_payment_approval'
+        const stdReq = entityTypeFilter === 'corporate_payment_approval' || entityTypeFilter === 'sales_return'
             ? Promise.resolve([])
             : listApprovals({ status, entityType: entityTypeFilter }).then(
                 (data) => unwrapApprovalsListResponse(data).map(normalizeItem),
@@ -940,11 +947,46 @@ export default function ApprovalsPage({ isTab = false, onlySettings = false }) {
                   .catch(() => [])
             : Promise.resolve([]);
 
-        Promise.all([stdReq, cpaReq])
-            .then(([stdItems, cpaItems]) => {
+        const salesReturnStatus =
+            status === 'approved' ? 'completed' : status;
+        const srReq = wantSalesReturns && canViewType('sales_return')
+            ? getSuperAdminSalesReturns({
+                  status: salesReturnStatus ?? undefined,
+                  limit: 100,
+                  offset: 0,
+              })
+                  .then((res) => {
+                      const list = Array.isArray(res?.items) ? res.items : [];
+                      return list.map((sr) => ({
+                          id: String(sr.id),
+                          entityType: 'sales_return',
+                          type: 'sales_return',
+                          typeLabel: 'POS sales return',
+                          status: sr.status === 'completed' ? 'approved' : sr.status,
+                          title: `Sales return · ${sr.returnNo ?? sr.id}`,
+                          meta: {
+                              returnNo: sr.returnNo,
+                              creditNoteNo: sr.creditNoteNo,
+                              invoiceNo: sr.invoice?.invoiceNo,
+                              workshopName: sr.workshop?.name,
+                              branchName: sr.branch?.name,
+                              amount: sr.totalAmount,
+                              reason: sr.reason,
+                              rejectionReason: sr.rejectionReason,
+                          },
+                          submittedBy: sr.createdBy,
+                          date: sr.createdAt ?? sr.returnDate,
+                          reference: sr.invoice?.invoiceNo ?? sr.returnNo ?? '',
+                          raw: sr,
+                      }));
+                  })
+                  .catch(() => [])
+            : Promise.resolve([]);
+
+        Promise.all([stdReq, cpaReq, srReq])
+            .then(([stdItems, cpaItems, srItems]) => {
                 if (cancelled) return;
-                // Merge — payment proofs first (most actionable) then standard.
-                const merged = [...cpaItems, ...stdItems];
+                const merged = [...srItems, ...cpaItems, ...stdItems];
                 setItems(merged);
             })
             .catch((err) => {
@@ -955,7 +997,7 @@ export default function ApprovalsPage({ isTab = false, onlySettings = false }) {
             });
 
         return () => { cancelled = true; };
-    }, [currentTab, entityTypeFilter, reloadTick]);
+    }, [currentTab, entityTypeFilter, reloadTick, canViewType]);
 
     const removeFromList = useCallback((id) => {
         setItems((prev) => prev.filter((i) => i.id !== id));
@@ -964,6 +1006,7 @@ export default function ApprovalsPage({ isTab = false, onlySettings = false }) {
     const isCorporatePriceQuotation = (et) =>
         et === 'corporate_price_quotation' || et === 'corporate_price_quotations';
     const isCorporatePaymentApproval = (et) => et === 'corporate_payment_approval';
+    const isSalesReturnApproval = (et) => et === 'sales_return';
 
     const handleApproveConfirm = async (item, remarksOrPayload) => {
         setActionLoading(item.id);
@@ -974,6 +1017,8 @@ export default function ApprovalsPage({ isTab = false, onlySettings = false }) {
                     : (remarksOrPayload && typeof remarksOrPayload === 'object' ? remarksOrPayload : {});
             if (isCorporatePaymentApproval(item.entityType)) {
                 await approveCorporatePaymentApproval(item.id);
+            } else if (isSalesReturnApproval(item.entityType)) {
+                await approveSuperAdminSalesReturn(item.id);
             } else if (isCorporatePriceQuotation(item.entityType)) {
                 await approveSuperAdminCorporatePriceQuotation(item.id);
             } else {
@@ -995,6 +1040,8 @@ export default function ApprovalsPage({ isTab = false, onlySettings = false }) {
         try {
             if (isCorporatePaymentApproval(item.entityType)) {
                 await rejectCorporatePaymentApproval(item.id, reason);
+            } else if (isSalesReturnApproval(item.entityType)) {
+                await rejectSuperAdminSalesReturn(item.id, reason);
             } else if (isCorporatePriceQuotation(item.entityType)) {
                 await rejectSuperAdminCorporatePriceQuotation(item.id, { reason });
             } else {
@@ -1048,6 +1095,8 @@ export default function ApprovalsPage({ isTab = false, onlySettings = false }) {
                 return <Users size={14} />;
             case 'corporate_payment_approval':
                 return <DollarSign size={14} />;
+            case 'sales_return':
+                return <RefreshCcw size={14} />;
             default:
                 return <FileText size={14} />;
         }

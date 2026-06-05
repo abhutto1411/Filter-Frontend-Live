@@ -6,6 +6,7 @@ import DashboardPage from './pages/admin/DashboardPage';
 import ApprovalsPage from './pages/admin/ApprovalsPage';
 import ZoneManagementPage from './pages/admin/ZoneManagementPage';
 import PermissionsPage from './pages/admin/PermissionsPage';
+import DemoInvoicesPage from './pages/admin/DemoInvoicesPage';
 import TierManagementPage from './pages/admin/TierManagementPage';
 import TaxCodePage from './pages/admin/TaxCodePage';
 import InventoryPage from './pages/admin/InventoryPage';
@@ -120,6 +121,7 @@ function App() {
 
               <Route path="tax-codes" element={<TaxCodePage />} />
               <Route path="permissions" element={<PermissionsPage />} />
+              <Route path="demo-invoices" element={<DemoInvoicesPage />} />
 
               <Route
                 path="inventory"

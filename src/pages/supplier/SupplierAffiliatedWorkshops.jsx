@@ -76,52 +76,20 @@ async function fetchAffiliatedLog(row, params = {}) {
     return getSupplierAffiliatedWorkshopTransactions(row.workshopId, params);
 }
 
-/** Sales-side AR movements we can split into debtor / credit columns (+ running balance). */
-function classifySalesArMovement(t) {
-    const type = String(t.transactionType || '');
-    const raw = t.amount;
-    const n =
-        raw != null && Number.isFinite(Number(raw)) ? Math.abs(Number(raw)) : null;
-    if (n == null || n < 0.0005) return { debit: null, credit: null };
-
-    if (type === 'invoice_created') {
-        return { debit: n, credit: null };
-    }
-    if (type === 'payment_received' || type === 'invoice_return_created') {
-        return { debit: null, credit: n };
-    }
-    return { debit: null, credit: null };
-}
+import {
+    buildSalesArLedgerRows,
+    isSupplierCustomerFinancialTx,
+} from './supplierFinanceTransactionUtils';
+import {
+    formatAffiliatedBranchCustomerLabel,
+    formatAffiliatedWorkshopCustomerLabel,
+} from '../../utils/affiliatedCustomerLabels';
 
 function fmtLedgerAmt(value) {
     if (value == null || Number.isNaN(value)) return '—';
     return Number(value).toLocaleString(undefined, {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
-    });
-}
-
-function buildAffiliatedLedgerRows(transactions) {
-    const ascending = [...transactions].sort((a, b) => {
-        const ta = new Date(a.createdAt).getTime();
-        const tb = new Date(b.createdAt).getTime();
-        if (ta !== tb) return ta - tb;
-        return String(a.id).localeCompare(String(b.id), undefined, {
-            numeric: true,
-        });
-    });
-    let balance = 0;
-    return ascending.map((t) => {
-        const { debit, credit } = classifySalesArMovement(t);
-        if (debit != null) balance += debit;
-        if (credit != null) balance -= credit;
-        return {
-            raw: t,
-            debit,
-            credit,
-            balance,
-            currencyCode: t.currencyCode || 'SAR',
-        };
     });
 }
 
@@ -148,15 +116,20 @@ export default function SupplierAffiliatedWorkshops() {
     const [activePatchBusyKeys, setActivePatchBusyKeys] = useState(() => new Set());
 
     const affiliatedLedgerLines = useMemo(
-        () => buildAffiliatedLedgerRows(logTx),
+        () => buildSalesArLedgerRows(logTx),
         [logTx],
     );
 
     const logExportSubtitle = useMemo(() => {
         if (!logRow) return '';
         const scopeLabel = rowIsBranch(logRow)
-            ? `${logRow.branchName || logRow.branchId} · ${logRow.workshopName || ''}`
-            : `${logRow.workshopName || logRow.workshopId} (workshop)`;
+            ? formatAffiliatedBranchCustomerLabel(
+                  logRow.workshopName,
+                  logRow.branchName || logRow.branchId,
+              )
+            : formatAffiliatedWorkshopCustomerLabel(
+                  logRow.workshopName || logRow.workshopId,
+              );
         let rangeBit = 'All dates';
         if (logFrom && logTo) rangeBit = `${logFrom} → ${logTo}`;
         else if (logFrom) rangeBit = `From ${logFrom}`;
@@ -340,7 +313,8 @@ export default function SupplierAffiliatedWorkshops() {
         setLogLoading(true);
         try {
             const res = await fetchAffiliatedLog(row, {});
-            setLogTx(Array.isArray(res?.transactions) ? res.transactions : []);
+            const txs = Array.isArray(res?.transactions) ? res.transactions : [];
+            setLogTx(txs.filter(isSupplierCustomerFinancialTx));
         } catch (e) {
             console.error(e);
             setErr(e?.message || 'Failed to load transactions');
@@ -357,7 +331,8 @@ export default function SupplierAffiliatedWorkshops() {
             if (logFrom.trim()) params.from = logFrom.trim();
             if (logTo.trim()) params.to = logTo.trim();
             const res = await fetchAffiliatedLog(logRow, params);
-            setLogTx(Array.isArray(res?.transactions) ? res.transactions : []);
+            const txs = Array.isArray(res?.transactions) ? res.transactions : [];
+            setLogTx(txs.filter(isSupplierCustomerFinancialTx));
         } catch (e) {
             console.error(e);
             setErr(e?.message || 'Failed to filter');
@@ -792,8 +767,13 @@ export default function SupplierAffiliatedWorkshops() {
                 <Modal
                     title={
                         rowIsBranch(logRow)
-                            ? `Transaction log — ${logRow.branchName || logRow.branchId} · ${logRow.workshopName || ''}`
-                            : `Transaction log — ${logRow.workshopName || logRow.workshopId} (workshop)`
+                            ? `Transaction log — ${formatAffiliatedBranchCustomerLabel(
+                                  logRow.workshopName,
+                                  logRow.branchName || logRow.branchId,
+                              )}`
+                            : `Transaction log — ${formatAffiliatedWorkshopCustomerLabel(
+                                  logRow.workshopName || logRow.workshopId,
+                              )}`
                     }
                     onClose={() => setLogRow(null)}
                     width={980}
@@ -843,9 +823,8 @@ export default function SupplierAffiliatedWorkshops() {
                                 setLogLoading(true);
                                 try {
                                     const res = await fetchAffiliatedLog(logRow, {});
-                                    setLogTx(
-                                        Array.isArray(res?.transactions) ? res.transactions : [],
-                                    );
+                                    const txs = Array.isArray(res?.transactions) ? res.transactions : [];
+                                    setLogTx(txs.filter(isSupplierCustomerFinancialTx));
                                 } finally {
                                     setLogLoading(false);
                                 }
@@ -858,19 +837,27 @@ export default function SupplierAffiliatedWorkshops() {
                             type="button"
                             className="btn-portal-outline"
                             onClick={() => {
-                                const ws = String(logRow?.workshopId ?? '').trim();
-                                if (!ws) return;
-                                navigate(
-                                    `/supplier/accounting/coa?${new URLSearchParams({
-                                        openLedgerSeed: 'AR_AFFILIATED',
-                                        partyType: 'workshop',
-                                        partyId: ws,
-                                    }).toString()}`,
-                                );
+                                const params = new URLSearchParams({
+                                    openLedgerSeed: 'AR_AFFILIATED',
+                                });
+                                if (rowIsBranch(logRow) && logRow.branchId) {
+                                    params.set('partyType', 'branch');
+                                    params.set('partyId', String(logRow.branchId));
+                                } else {
+                                    const ws = String(logRow?.workshopId ?? '').trim();
+                                    if (!ws) return;
+                                    params.set('partyType', 'workshop');
+                                    params.set('partyId', ws);
+                                }
+                                navigate(`/supplier/accounting/coa?${params.toString()}`);
                                 setLogRow(null);
                             }}
-                            disabled={!logRow?.workshopId}
-                            title="Opens Chart of Accounts with AR Affiliated ledger filtered to this workshop"
+                            disabled={
+                                rowIsBranch(logRow)
+                                    ? !logRow?.branchId
+                                    : !logRow?.workshopId
+                            }
+                            title="Opens Chart of Accounts with AR Affiliated ledger filtered to this customer"
                         >
                             Chart of Accounts (ledger)
                         </button>

@@ -20,7 +20,6 @@ import ReturnsListScreen from '../components/pos/ReturnsListScreen';
 import PettyCashScreen from '../components/pos/PettyCashScreen';
 import PromotionsScreen from '../components/pos/PromotionsScreen';
 import TechnicianAssignment from '../components/pos/TechnicianAssignment';
-import CurrentShiftScreen from '../components/pos/CurrentShiftScreen';
 import TakeawayScreen from '../components/pos/TakeawayScreen';
 import CounterClosingScreen from '../components/pos/CounterClosingScreen';
 import YourJobsView from '../components/pos/YourJobsView';
@@ -37,7 +36,6 @@ const NAV_ITEMS = [
     { id: 'petty_cash',    label: 'Petty Cash',    Icon: DollarSign },
     { id: 'promotions',    label: 'Promo Codes',   Icon: Tag },
     { id: 'technicians',   label: 'Technicians',   Icon: Users },
-    { id: 'current_shift', label: 'Current Shift', Icon: Clock },
     { id: 'store_closing', label: 'Store Closing', Icon: Store },
 ];
 
@@ -294,7 +292,6 @@ function POSContent() {
             case 'petty_cash':    return <PettyCashScreen onBack={() => setScreen('home')} />;
             case 'promotions':    return <PromotionsScreen onBack={() => setScreen('home')} />;
             case 'technicians':   return <TechnicianAssignment standalone />;
-            case 'current_shift': return <CurrentShiftScreen />;
             case 'store_closing': return <CounterClosingScreen onBack={() => setScreen('home')} onLogout={handleLogout} />;
             default:              return null;
         }

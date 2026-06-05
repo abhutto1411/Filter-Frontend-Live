@@ -60,7 +60,9 @@ export default function SalesReturnScreen({ onBack }) {
             const trimmed = search.trim();
             const isDigits = /^\d+$/.test(trimmed);
             const qs = new URLSearchParams(
-                isDigits ? { phone: trimmed, limit: '8' } : { name: trimmed, limit: '8' }
+                isDigits
+                    ? { phone: trimmed, limit: '8', scope: 'branch' }
+                    : { name: trimmed, limit: '8', scope: 'branch' },
             ).toString();
             apiFetch(`/cashier/customers/search?${qs}`)
                 .then(d => setCustomers(d.customers || d.data || []))
@@ -75,7 +77,7 @@ export default function SalesReturnScreen({ onBack }) {
         setSearch('');
         setCustomers([]);
         setOrdersLoading(true);
-        apiFetch(`/cashier/orders/invoiced/${c.id}`)
+        apiFetch(`/cashier/orders/invoiced/${c.id}?scope=branch`)
             .then(d => setOrders(d.orders || d.data || []))
             .catch(() => setOrders([]))
             .finally(() => setOrdersLoading(false));
@@ -113,7 +115,9 @@ export default function SalesReturnScreen({ onBack }) {
         if (returnsRes.status === 'fulfilled' && returnsRes.value) {
             const list = returnsRes.value.salesReturns || returnsRes.value.data || returnsRes.value.returns || [];
             const map = {};
-            (Array.isArray(list) ? list : []).forEach(ret => {
+            (Array.isArray(list) ? list : [])
+                .filter((ret) => String(ret.status || '').toLowerCase() === 'completed')
+                .forEach(ret => {
                 (ret.items || []).forEach(it => {
                     const id = it.salesOrderItemId || it.itemId || it.id;
                     if (!id) return;
@@ -248,8 +252,10 @@ export default function SalesReturnScreen({ onBack }) {
                 <div style={{ width: 100, height: 100, borderRadius: '50%', background: '#FCC247', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 32px', boxShadow: '0 20px 40px rgba(252,194,71,0.2)' }}>
                     <Check size={50} color="#23262D" strokeWidth={3} />
                 </div>
-                <h2 style={{ margin: '0 0 12px', fontSize: '2.4rem', fontWeight: 900, color: '#1E2124' }}>Return Recorded</h2>
-                <p style={{ margin: '0 0 40px', color: '#64748b', fontSize: '1.2rem', fontWeight: 600 }}>The sales return has been successfully submitted.</p>
+                <h2 style={{ margin: '0 0 12px', fontSize: '2.4rem', fontWeight: 900, color: '#1E2124' }}>Return Submitted</h2>
+                <p style={{ margin: '0 0 40px', color: '#64748b', fontSize: '1.2rem', fontWeight: 600, maxWidth: 520, marginLeft: 'auto', marginRight: 'auto' }}>
+                    Your sales return is pending workshop admin approval. Once approved, it will appear in the Sales Returns page and in your returns list.
+                </p>
                 <button onClick={resetAll}
                     style={{ padding: '16px 48px', background: '#23262D', color: '#FCC247', border: 'none', borderRadius: 18, fontWeight: 900, fontSize: '1.1rem', cursor: 'pointer', boxShadow: '0 10px 20px rgba(35,38,45,0.1)' }}>
                     Process Another Return

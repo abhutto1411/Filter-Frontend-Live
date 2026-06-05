@@ -214,6 +214,39 @@ export const patchBranchProduct = (branchId, productId, body, { workshopId, sign
         { method: 'PATCH', body: JSON.stringify(body), signal },
     );
 
+/**
+ * Apply the same UOM rule to many branch products.
+ * POST /workshop-catalog/branches/:branchId/products/bulk-uom
+ */
+export const postBranchBulkProductUom = (branchId, body, { workshopId, signal } = {}) =>
+    apiFetch(
+        `/workshop-catalog/branches/${encodeURIComponent(branchId)}/products/bulk-uom${qs({ workshopId })}`,
+        { method: 'POST', body: JSON.stringify(body), signal },
+    );
+
+export const listWorkshopUomProfiles = ({ workshopId, signal } = {}) =>
+    apiFetch(`/workshop-catalog/uom-profiles${qs({ workshopId })}`, { signal });
+
+export const createWorkshopUomProfile = (body, { workshopId, signal } = {}) =>
+    apiFetch(`/workshop-catalog/uom-profiles${qs({ workshopId })}`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+        signal,
+    });
+
+export const updateWorkshopUomProfile = (profileId, body, { workshopId, signal } = {}) =>
+    apiFetch(`/workshop-catalog/uom-profiles/${encodeURIComponent(profileId)}${qs({ workshopId })}`, {
+        method: 'PATCH',
+        body: JSON.stringify(body),
+        signal,
+    });
+
+export const deleteWorkshopUomProfile = (profileId, { workshopId, signal } = {}) =>
+    apiFetch(`/workshop-catalog/uom-profiles/${encodeURIComponent(profileId)}${qs({ workshopId })}`, {
+        method: 'DELETE',
+        signal,
+    });
+
 export const removeBranchService = (branchId, serviceId) =>
     apiFetch(`/workshop-catalog/branches/${branchId}/services/${serviceId}`, { method: 'DELETE' });
 

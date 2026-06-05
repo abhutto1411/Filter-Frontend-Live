@@ -24,6 +24,15 @@ export const listCoaAccounts = (kind = 'all', params = {}) =>
 export const listPayees = (type = 'supplier', params = {}) =>
     apiFetch(withQuery('/workshop-accounting/lookups/payees', { type, ...params }));
 
+/** prefix = 'PE' | 'RV' — next voucher numbers for this workshop only. */
+export const previewNextVouchers = (prefix = 'PE', count = 2) =>
+    apiFetch(
+        withQuery('/workshop-accounting/lookups/next-vouchers', {
+            prefix,
+            count,
+        }),
+    );
+
 // ---- Create ---------------------------------------------------------------
 
 export const createPayments = (body) =>

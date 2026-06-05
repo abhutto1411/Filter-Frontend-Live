@@ -3,6 +3,7 @@ export { default as WorkshopEmployees } from './WorkshopEmployees';
 export { default as WorkshopDepartments } from './WorkshopDepartments';
 export { default as WorkshopPurchases } from './WorkshopPurchases';
 export { default as WorkshopApprovals } from './WorkshopApprovals';
+export { default as WorkshopSalesReturns } from './WorkshopSalesReturns';
 export { default as WorkshopSuppliers } from './WorkshopSuppliers';
 export { default as WorkshopReports } from './WorkshopReports';
 export { default as WorkshopBranches } from './WorkshopBranches';

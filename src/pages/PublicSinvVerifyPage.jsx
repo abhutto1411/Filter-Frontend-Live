@@ -25,6 +25,37 @@ function fmtDate(d) {
     }
 }
 
+function fmtQty(n) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return '—';
+    if (Math.abs(v - Math.round(v)) < 0.0005) return String(Math.round(v));
+    return v.toFixed(2).replace(/\.?0+$/, '');
+}
+
+function stockReceiveSummaryText(data) {
+    if (data?.stockReceiveSummary) return data.stockReceiveSummary;
+    const totals = Array.isArray(data?.totalsByWorkshopUnit) ? data.totalsByWorkshopUnit : [];
+    if (totals.length === 1) {
+        return `Branch inventory will increase by +${fmtQty(totals[0].qty)} ${totals[0].unit}`;
+    }
+    if (totals.length > 1) {
+        return `Branch inventory will increase by ${totals
+            .map((t) => `+${fmtQty(t.qty)} ${t.unit}`)
+            .join(' · ')} (each product uses its own catalog UOM)`;
+    }
+    return null;
+}
+
+function lineConversionRule(ln) {
+    if (ln?.conversionRule) return ln.conversionRule;
+    const wh = ln?.warehouseUnit ?? ln?.supplierUnit ?? ln?.unit;
+    const ws = ln?.workshopReceiveUnit;
+    const cf = Number(ln?.conversionFactor);
+    if (!wh || !ws || !Number.isFinite(cf)) return null;
+    if (String(wh).toLowerCase() === String(ws).toLowerCase() && cf === 1) return null;
+    return `1 ${wh} = ${fmtQty(cf)} ${ws}`;
+}
+
 /**
  * Public landing when scanning QR on a supplier sales invoice (AR).
  * GET /public/supplier-sales-invoices/:id
@@ -326,6 +357,27 @@ export default function PublicSinvVerifyPage() {
 
                             {Array.isArray(data.lines) && data.lines.length > 0 ? (
                                 <>
+                                    {stockReceiveSummaryText(data) ? (
+                                        <div
+                                            style={{
+                                                marginBottom: 14,
+                                                padding: 14,
+                                                background: '#EFF6FF',
+                                                border: '1px solid #BFDBFE',
+                                                borderRadius: 12,
+                                                fontSize: '0.8125rem',
+                                                color: '#1E3A8A',
+                                                lineHeight: 1.5,
+                                            }}
+                                        >
+                                            <strong style={{ display: 'block', marginBottom: 6 }}>
+                                                Stock receive (when you confirm)
+                                            </strong>
+                                            {stockReceiveSummaryText(data)}. Each line uses that
+                                            product&apos;s catalog rule (e.g. 1 Box = 12 Liter, or 1 Box
+                                            = 10 Pcs). Chart of accounts (AP + inventory) posts on receive.
+                                        </div>
+                                    ) : null}
                                     <p
                                         style={{
                                             margin: '0 0 8px',
@@ -334,22 +386,52 @@ export default function PublicSinvVerifyPage() {
                                             color: '#94a3b8',
                                         }}
                                     >
-                                        LINE ITEMS (SUMMARY)
+                                        LINE ITEMS — SUPPLIER SHIPPED vs BRANCH STOCK
                                     </p>
                                     <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 10 }}>
                                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
                                             <thead>
                                                 <tr style={{ background: '#f1f5f9' }}>
                                                     <th style={{ textAlign: 'left', padding: 8 }}>Item</th>
-                                                    <th style={{ textAlign: 'right', padding: 8 }}>Qty</th>
+                                                    <th style={{ textAlign: 'left', padding: 8 }}>
+                                                        Supplier shipped
+                                                    </th>
+                                                    <th style={{ textAlign: 'left', padding: 8 }}>
+                                                        Catalog rule
+                                                    </th>
+                                                    <th style={{ textAlign: 'left', padding: 8 }}>
+                                                        Branch stock +
+                                                    </th>
                                                     <th style={{ textAlign: 'right', padding: 8 }}>Line total</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {data.lines.map((ln, i) => (
                                                     <tr key={i} style={{ borderTop: '1px solid #f1f5f9' }}>
-                                                        <td style={{ padding: 8 }}>{ln.itemName}</td>
-                                                        <td style={{ padding: 8, textAlign: 'right' }}>{ln.qty}</td>
+                                                        <td style={{ padding: 8, fontWeight: 600 }}>
+                                                            {ln.itemName}
+                                                        </td>
+                                                        <td style={{ padding: 8 }}>
+                                                            <strong>
+                                                                {fmtQty(ln.supplierQty ?? ln.qty)}{' '}
+                                                                {ln.supplierUnit ?? ln.unit ?? 'Box'}
+                                                            </strong>
+                                                        </td>
+                                                        <td
+                                                            style={{
+                                                                padding: 8,
+                                                                fontSize: '0.7rem',
+                                                                color: '#64748b',
+                                                            }}
+                                                        >
+                                                            {lineConversionRule(ln) ?? 'Same UOM'}
+                                                        </td>
+                                                        <td style={{ padding: 8, color: '#047857', fontWeight: 700 }}>
+                                                            {ln.stockIncreaseLabel ??
+                                                                (ln.workshopReceiveQty != null
+                                                                    ? `+${fmtQty(ln.workshopReceiveQty)} ${ln.workshopReceiveUnit ?? 'Liter'}`
+                                                                    : '—')}
+                                                        </td>
                                                         <td style={{ padding: 8, textAlign: 'right' }}>
                                                             {fmtMoney(ln.lineTotal, data.currencyCode)}
                                                         </td>
@@ -400,9 +482,10 @@ export default function PublicSinvVerifyPage() {
                                         >
                                             <strong style={{ color: '#0f172a' }}>Branch inventory</strong>
                                             <p style={{ margin: '8px 0 0' }}>
-                                                Every line on this invoice is already linked to products on this branch.
-                                                When you mark as received, on-hand quantities will increase by the amounts
-                                                on this invoice.
+                                                Every line is linked to products on this branch. When you
+                                                mark as received, on-hand quantities increase in{' '}
+                                                <strong>workshop units (Liters / Pcs)</strong>, not supplier
+                                                Box counts — see the table above for exact amounts per line.
                                             </p>
                                         </div>
                                     );
@@ -465,7 +548,10 @@ export default function PublicSinvVerifyPage() {
                                                                 Product (new on branch)
                                                             </th>
                                                             <th style={{ textAlign: 'right', padding: '8px 6px' }}>
-                                                                Opening qty
+                                                                Opening (branch)
+                                                            </th>
+                                                            <th style={{ textAlign: 'right', padding: '8px 6px' }}>
+                                                                Supplier sent
                                                             </th>
                                                             <th style={{ textAlign: 'right', padding: '8px 6px' }}>
                                                                 Critical stock
@@ -480,7 +566,13 @@ export default function PublicSinvVerifyPage() {
                                                             >
                                                                 <td style={{ padding: '8px 6px' }}>{p.name}</td>
                                                                 <td style={{ padding: '8px 6px', textAlign: 'right' }}>
-                                                                    {p.qty} {p.unit || ''}
+                                                                    <strong style={{ color: '#047857' }}>
+                                                                        +{fmtQty(p.qty)} {p.unit || ''}
+                                                                    </strong>
+                                                                </td>
+                                                                <td style={{ padding: '8px 6px', textAlign: 'right' }}>
+                                                                    {fmtQty(p.supplierQty ?? p.qty)}{' '}
+                                                                    {p.supplierUnit ?? 'Box'}
                                                                 </td>
                                                                 <td style={{ padding: '8px 6px', textAlign: 'right' }}>
                                                                     <input
@@ -652,6 +744,12 @@ export default function PublicSinvVerifyPage() {
                             Enter the branch login password OR the workshop owner / admin password to mark this invoice
                             as received and update inventory for{' '}
                             <strong>{data?.branchName || data?.workshopName || 'this workshop'}</strong>.
+                            {stockReceiveSummaryText(data) ? (
+                                <>
+                                    {' '}
+                                    Stock update: <strong>{stockReceiveSummaryText(data)}</strong>.
+                                </>
+                            ) : null}
                         </p>
                         {inventoryPreviewLoading ? (
                             <p style={{ fontSize: '0.8125rem', color: '#64748b', marginBottom: 12 }}>

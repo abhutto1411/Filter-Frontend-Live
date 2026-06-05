@@ -100,6 +100,8 @@ export default function PermissionsPage() {
     const [userModalOpen, setUserModalOpen] = useState(false);
     const [editingRole, setEditingRole] = useState(null);
     const [editingUser, setEditingUser] = useState(null);
+    /** User whose per-user permission override is being edited (separate from role-edit modal). */
+    const [permissionsUser, setPermissionsUser] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [portalFilter, setPortalFilter] = useState('');
     const [loading, setLoading] = useState(true);
@@ -165,6 +167,10 @@ export default function PermissionsPage() {
 
     const handleEditUserRole = (user) => {
         setEditingUser(user);
+    };
+
+    const handleEditUserPermissions = (user) => {
+        setPermissionsUser(user);
     };
 
     const handleSaveUserRole = async (userId, roleId, opts = {}) => {
@@ -296,6 +302,7 @@ export default function PermissionsPage() {
                                 setPortalFilter={setPortalFilter}
                                 totalCount={users.length}
                                 onEditUser={handleEditUserRole}
+                                onEditPermissions={handleEditUserPermissions}
                             />
                         ) : activeTab === 'roles' ? (
                             <RolesTab key="roles" roles={roles} onEdit={handleEditRole} onDelete={handleDeleteRole} />
@@ -334,6 +341,15 @@ export default function PermissionsPage() {
                         saving={saving}
                     />
                 )}
+                {permissionsUser && (
+                    <UserPermissionsModal
+                        user={permissionsUser}
+                        registryByPortal={registryByPortal}
+                        loadRegistry={fetchRegistry}
+                        onClose={() => setPermissionsUser(null)}
+                        onSaved={() => { setPermissionsUser(null); fetchUsers(); }}
+                    />
+                )}
             </AnimatePresence>
         </div>
     );
@@ -343,7 +359,7 @@ export default function PermissionsPage() {
 /*  Users tab                                                                */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function UsersTab({ users, searchQuery, setSearchQuery, portalFilter, setPortalFilter, totalCount, onEditUser }) {
+function UsersTab({ users, searchQuery, setSearchQuery, portalFilter, setPortalFilter, totalCount, onEditUser, onEditPermissions }) {
     return (
         <motion.div
             initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
@@ -447,14 +463,27 @@ function UsersTab({ users, searchQuery, setSearchQuery, portalFilter, setPortalF
                                         </span>
                                     </td>
                                     <td className="text-right">
-                                        <button
-                                            type="button"
-                                            className="btn-icon"
-                                            onClick={() => onEditUser?.(user)}
-                                            title="Change assigned role"
-                                        >
-                                            <Pencil size={18} />
-                                        </button>
+                                        <div style={{ display: 'inline-flex', gap: 6 }}>
+                                            <button
+                                                type="button"
+                                                className="btn-icon"
+                                                onClick={() => onEditUser?.(user)}
+                                                title="Change assigned role / workshop / branch"
+                                            >
+                                                <Pencil size={18} />
+                                            </button>
+                                            {user.role && (
+                                                <button
+                                                    type="button"
+                                                    className="btn-icon"
+                                                    onClick={() => onEditPermissions?.(user)}
+                                                    title="Override this user's permissions (won't affect the role)"
+                                                    style={{ color: '#7c3aed' }}
+                                                >
+                                                    <ShieldCheck size={18} />
+                                                </button>
+                                            )}
+                                        </div>
                                     </td>
                                 </tr>
                             );
@@ -923,9 +952,14 @@ function UserModal({ onClose, onSave, roles, saving }) {
             .finally(() => setLoadingBr(false));
     }, [workshopId]);
 
+    // Strict portal filter:
+    //   - Super Admin toggle ON → only super_admin portal roles
+    //   - Super Admin toggle OFF (workshop + branch + employee flow) → only workshop portal roles
+    // Other portals (cashier / corporate / supplier / technician) have their own
+    // dedicated create flows, so we don't list those roles here.
     const assignableRoles = useMemo(() => {
-        if (isSuperAdmin) return roles.filter((r) => r.portal === 'super_admin');
-        return roles.filter((r) => r.portal !== 'super_admin');
+        const targetPortal = isSuperAdmin ? 'super_admin' : 'workshop';
+        return roles.filter((r) => r.portal === targetPortal);
     }, [roles, isSuperAdmin]);
 
     const handleSubmit = () => {
@@ -1211,15 +1245,29 @@ function EditUserRoleModal({ user, roles, onClose, onSave, saving }) {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [workshopId, isWorkshopScoped]);
 
-    // Show roles that match the user's portal first, then the rest.
+    // Strict portal filter — only show roles for the user's actual portal.
+    //   - platform_admin user → super_admin roles only
+    //   - workshop_user / workshop_owner → workshop roles only
+    //   - cashier / corporate / supplier / technician → their respective portal
+    // Edge case 1: if we can't determine portal, show everything (fallback).
+    // Edge case 2: if the user is currently assigned a role from a different
+    //   portal (legacy data), keep that role visible so the admin can see what
+    //   they had — but flag it via the portalMismatch warning below.
     const userPortal = portalIdForUser(user);
     const assignableRoles = useMemo(() => {
+        if (!userPortal) return roles;
         const matching = roles.filter((r) => r.portal === userPortal);
-        const others   = roles.filter((r) => r.portal !== userPortal);
-        return [...matching, ...others];
-    }, [roles, userPortal]);
+        if (user.role?.id && !matching.some((r) => String(r.id) === String(user.role.id))) {
+            const current = roles.find((r) => String(r.id) === String(user.role.id));
+            if (current) return [current, ...matching];
+        }
+        return matching;
+    }, [roles, userPortal, user.role?.id]);
 
     const selectedRole = roles.find((r) => String(r.id) === String(roleId));
+    // Portal mismatch is now impossible via the dropdown — but keep the warning
+    // in case the user's previously-assigned role was from a different portal
+    // (e.g., legacy data).
     const portalMismatch = selectedRole && userPortal && selectedRole.portal !== userPortal;
 
     const handleSubmit = () => {
@@ -1380,6 +1428,228 @@ function EditUserRoleModal({ user, roles, onClose, onSave, saving }) {
                     💡 Tip — clear the role to revert this user to the legacy bypass
                     (they'll see everything their userType normally allows).
                     Changes take effect after the user logs out and back in.
+                </div>
+            </div>
+        </Modal>
+    );
+}
+
+/* ────────────────────────────────────────────────────────────────────────── */
+/*  Per-User Permission Override Modal                                        */
+/* ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Lets the admin override a single user's effective permissions without
+ * touching their role. Loads:
+ *   - The registry tree for the role's portal (matrix UI)
+ *   - The user's CURRENT effective codes (override or role defaults)
+ *
+ * Save → PUT /users/:id/permissions (stores override)
+ * Reset to defaults → DELETE /users/:id/permissions (clears override)
+ */
+function UserPermissionsModal({ user, registryByPortal, loadRegistry, onClose, onSaved }) {
+    const portal = user?.role?.portal || 'super_admin';
+    const [perms, setPerms] = useState({}); // { [tabKey]: { [action]: true } }
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState('');
+    const [hasOverride, setHasOverride] = useState(false);
+
+    // Make sure the role's portal tree is cached.
+    useEffect(() => {
+        if (registryByPortal[portal]) return;
+        loadRegistry(portal).catch(() => undefined);
+    }, [portal, registryByPortal, loadRegistry]);
+
+    // Load the user's effective codes on open and seed the checkbox matrix.
+    useEffect(() => {
+        let cancelled = false;
+        setLoading(true);
+        permissionsApi.getUserPermissions(user.id)
+            .then((res) => {
+                if (cancelled) return;
+                setHasOverride(Boolean(res?.hasOverride));
+                setPerms(codesToActionsByTab(res?.effectiveCodes ?? []));
+                setError('');
+            })
+            .catch((e) => {
+                if (cancelled) return;
+                setError(e?.message || 'Failed to load user permissions');
+            })
+            .finally(() => { if (!cancelled) setLoading(false); });
+        return () => { cancelled = true; };
+    }, [user.id]);
+
+    const portalTree = registryByPortal[portal] || COMING_SOON_TREE;
+    const totalActions = useMemo(() => portalTree.reduce(
+        (s, sec) => s + sec.tabs.reduce((c, t) => c + (t.actions?.length ?? 0), 0),
+        0,
+    ), [portalTree]);
+    const selectedCount = useMemo(() => Object.values(perms).reduce(
+        (s, m) => s + Object.values(m).filter(Boolean).length, 0,
+    ), [perms]);
+
+    const toggleAction = (tabKey, action) => {
+        setPerms((prev) => ({
+            ...prev,
+            [tabKey]: { ...(prev[tabKey] || {}), [action]: !prev[tabKey]?.[action] },
+        }));
+    };
+    const toggleTabAll = (tab) => {
+        const allOn = tab.actions.every((a) => perms[tab.key]?.[a]);
+        const next = { ...(perms[tab.key] || {}) };
+        tab.actions.forEach((a) => { next[a] = !allOn; });
+        setPerms((prev) => ({ ...prev, [tab.key]: next }));
+    };
+    const toggleSectionAll = (section) => {
+        const flat = section.tabs.flatMap((t) => t.actions.map((a) => [t.key, a]));
+        const allOn = flat.every(([k, a]) => perms[k]?.[a]);
+        const next = { ...perms };
+        for (const t of section.tabs) {
+            next[t.key] = { ...(next[t.key] || {}) };
+            for (const a of t.actions) next[t.key][a] = !allOn;
+        }
+        setPerms(next);
+    };
+    const selectAll = () => {
+        const allOn = selectedCount === totalActions;
+        const next = {};
+        if (!allOn) {
+            for (const sec of portalTree) for (const t of sec.tabs) {
+                next[t.key] = {};
+                for (const a of t.actions) next[t.key][a] = true;
+            }
+        }
+        setPerms(next);
+    };
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            const codes = flattenActionsByTab(perms);
+            await permissionsApi.setUserPermissions(user.id, codes);
+            onSaved?.();
+        } catch (e) {
+            alert(e?.message || 'Could not save permissions');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleReset = async () => {
+        if (!window.confirm("Revert this user to the role's default permissions? Their custom overrides will be discarded.")) return;
+        setSaving(true);
+        try {
+            await permissionsApi.clearUserPermissions(user.id);
+            onSaved?.();
+        } catch (e) {
+            alert(e?.message || 'Could not reset permissions');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <Modal
+            title={`Permissions — ${user.name || user.email}`}
+            onClose={onClose}
+            className="create-role-modal"
+            footer={(
+                <div className="modal-footer-actions">
+                    {hasOverride && (
+                        <button type="button" className="btn-secondary" onClick={handleReset} disabled={saving}>
+                            Reset to role defaults
+                        </button>
+                    )}
+                    <button type="button" className="btn-secondary" onClick={onClose}>Cancel</button>
+                    <button type="button" className="btn-submit" onClick={handleSave} disabled={saving || loading}>
+                        {saving ? 'Saving…' : 'Save Override'}
+                    </button>
+                </div>
+            )}
+        >
+            <div className="create-role-form">
+                {/* User + role summary */}
+                <div style={{
+                    display: 'flex', gap: 12, alignItems: 'center',
+                    padding: 14, borderRadius: 10,
+                    background: '#f8fafc', border: '1px solid #e2e8f0', marginBottom: 14,
+                }}>
+                    <div className="perm-user-avatar">
+                        {(user.name || user.email || '?').charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 800, color: '#0f172a' }}>{user.name || '—'}</div>
+                        <div style={{ fontSize: '0.8125rem', color: '#64748b' }}>{user.email || '—'}</div>
+                        <div style={{ marginTop: 4, fontSize: '0.75rem' }}>
+                            <span style={portalPillStyle(portal)}>
+                                {PORTALS.find((p) => p.id === portal)?.label ?? portal}
+                            </span>
+                            <span style={{ color: '#64748b', marginLeft: 6 }}>
+                                · Role: <strong>{user.role?.name}</strong>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Mode banner */}
+                <div style={{
+                    padding: '10px 14px', borderRadius: 10,
+                    background: hasOverride ? '#faf5ff' : '#eff6ff',
+                    border: `1px solid ${hasOverride ? '#e9d5ff' : '#bfdbfe'}`,
+                    fontSize: '0.8125rem', marginBottom: 14, fontWeight: 600,
+                    color: hasOverride ? '#6b21a8' : '#1e40af',
+                }}>
+                    {hasOverride
+                        ? '🟣 Custom override is active — this user is using a hand-picked permission set.'
+                        : '🔵 Using role defaults — saving below will create a custom override for this user only.'}
+                </div>
+
+                {error && (
+                    <div style={{ marginBottom: 12, padding: 10, background: '#fef2f2', color: '#991b1b', borderRadius: 8, fontSize: '0.875rem' }}>
+                        {error}
+                    </div>
+                )}
+
+                <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 14px', borderRadius: 10, background: '#f1f5f9',
+                    border: '1px solid #e2e8f0', marginBottom: 14,
+                }}>
+                    <span style={{ fontSize: '0.875rem', fontWeight: 700 }}>
+                        {selectedCount} of {totalActions} permissions selected
+                    </span>
+                    <button type="button" className="btn-link" onClick={selectAll}>
+                        {selectedCount === totalActions ? 'Deselect All' : 'Select All'}
+                    </button>
+                </div>
+
+                {loading ? (
+                    <div style={{ padding: 30, textAlign: 'center', color: '#64748b' }}>
+                        <Loader2 size={18} className="spin" /> Loading permissions…
+                    </div>
+                ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        {portalTree.map((section) => (
+                            <SectionPermissionsCard
+                                key={section.section}
+                                section={section}
+                                perms={perms}
+                                onToggleAction={toggleAction}
+                                onToggleTab={toggleTabAll}
+                                onToggleSection={() => toggleSectionAll(section)}
+                            />
+                        ))}
+                    </div>
+                )}
+
+                <div style={{
+                    marginTop: 14, padding: '10px 14px', borderRadius: 8,
+                    background: '#f1f5f9', fontSize: '0.75rem', color: '#64748b',
+                }}>
+                    💡 Tip — saving here creates a per-user override. The role itself is
+                    untouched, so other users assigned to <strong>{user.role?.name}</strong> are
+                    unaffected. Changes take effect after the user logs out and back in.
                 </div>
             </div>
         </Modal>

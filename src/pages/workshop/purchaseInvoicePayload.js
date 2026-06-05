@@ -1,25 +1,24 @@
 /**
  * Workshop purchase invoice — POST body shape for persisting a full draft/saved invoice.
- * Adjust field names to match your backend; structure mirrors the Purchase Invoice UI.
+ * Line and rollup math matches supplier sales invoice (see utils/invoiceLineFinancials.js).
  */
+
+import {
+    computeLineFinancials,
+    computeInvoiceRollupTotals,
+    reconstructInvoiceUnitPriceInput,
+    roundMoney2 as money2,
+    DEFAULT_INVOICE_TAXES,
+} from '../../utils/invoiceLineFinancials';
+
+export { reconstructInvoiceUnitPriceInput };
 
 export const PURCHASE_INVOICE_VAT_RATE = 0.15;
 export const PURCHASE_INVOICE_TAX_LABEL = 'VAT 15%';
 
-/**
- * Mirrors the supplier sales invoice tax catalog so workshop purchase invoices
- * can compute identical numbers when a different code is picked per line.
- */
-export const PURCHASE_INVOICE_TAXES = [
-    { id: 1, name: 'VAT 15%', percent: 15, code: 'VAT 15%', rate: 0.15 },
-    { id: 2, name: 'VAT 5%', percent: 5, code: 'VAT 5%', rate: 0.05 },
-    { id: 3, name: 'VAT 0%', percent: 0, code: 'VAT 0%', rate: 0 },
-    { id: 4, name: 'Exempt', percent: 0, code: 'Exempt', rate: 0 },
-];
+export const PURCHASE_INVOICE_TAXES = DEFAULT_INVOICE_TAXES;
 
-export function money2(n) {
-    return Math.round((Number(n) || 0) * 100) / 100;
-}
+export { money2 };
 
 /** Look up the VAT rate for a code, falling back to the default 15%. */
 export function vatRateForCode(code, fallback = PURCHASE_INVOICE_VAT_RATE) {
@@ -28,17 +27,17 @@ export function vatRateForCode(code, fallback = PURCHASE_INVOICE_VAT_RATE) {
     return found ? found.rate : fallback;
 }
 
+function lineFinancialsOpts(vatRate, opts = {}) {
+    return {
+        taxes: PURCHASE_INVOICE_TAXES,
+        defaultRate: vatRate,
+        noVat: opts.noVat === true,
+    };
+}
+
 /**
- * Line math: ex-VAT unit in `line.price`, unless `opts.unitPriceTaxInclusive` — then `line.price` is VAT-inclusive per unit (÷ (1+vat) for ex-VAT math).
- *
- * `discountMode` selection precedence (matches Supplier SI behaviour):
- *   1. `line.discountMode` if set ('percent' | 'fixed_sar')
- *   2. global `discountIsPercent` argument
- *
- * Tax rate precedence:
- *   1. `opts.noVat` is true → 0 (entire invoice is VAT-exempt; line tax code ignored)
- *   2. `line.taxCode` lookup in PURCHASE_INVOICE_TAXES
- *   3. caller-provided `vatRate`
+ * Adapter around {@link computeLineFinancials} for legacy call sites.
+ * `opts.unitPriceTaxInclusive` === supplier `amountsTaxInclusive`.
  */
 export function computeLineAmounts(
     line,
@@ -47,62 +46,37 @@ export function computeLineAmounts(
     vatRate = PURCHASE_INVOICE_VAT_RATE,
     opts = {},
 ) {
-    const qty = parseFloat(line.qty) || 0;
-    const rawUnit = parseFloat(line.price) || 0;
-    const noVat = opts.noVat === true;
-    const baseLineRate = line && line.taxCode ? vatRateForCode(line.taxCode, vatRate) : vatRate;
-    const lineRate = noVat ? 0 : baseLineRate;
-    /**
-     * `unitPriceTaxInclusive` only divides when VAT is actually being applied.
-     * In a VAT-exempt invoice, the entered unit price IS the final amount
-     * (no division, no extra tax line).
-     */
-    const priceExcl =
-        opts.unitPriceTaxInclusive === true && !noVat
-            ? money2(rawUnit / (1 + lineRate))
-            : rawUnit;
-    const discRaw = parseFloat(line.discount) || 0;
-    const grossExcl = qty * priceExcl;
-    const linePercentMode =
-        line && line.discountMode
-            ? line.discountMode !== 'fixed_sar'
-            : discountIsPercent;
-    let discountAmount = 0;
-    if (applyDiscount && discRaw > 0) {
-        if (linePercentMode) {
-            discountAmount = (grossExcl * Math.min(100, Math.max(0, discRaw))) / 100;
-        } else {
-            discountAmount = Math.min(discRaw, grossExcl);
-        }
+    const amountsTaxInclusive = opts.unitPriceTaxInclusive === true;
+    let workingLine = applyDiscount ? line : { ...line, discount: 0 };
+    if (
+        applyDiscount &&
+        !line.discountMode &&
+        discountIsPercent === false &&
+        workingLine.discountMode == null
+    ) {
+        workingLine = { ...workingLine, discountMode: 'fixed_sar' };
+    } else if (applyDiscount && !line.discountMode && discountIsPercent) {
+        workingLine = { ...workingLine, discountMode: 'percent' };
     }
-    const taxableExcl = Math.max(0, grossExcl - discountAmount);
-    const taxAmt = taxableExcl * lineRate;
-    const totalIncl = taxableExcl * (1 + lineRate);
-    /** Per-unit amount excluding VAT (before line discount), for API `unit_price_ex_vat`. */
-    const unitPriceExVat = money2(priceExcl);
+    const f = computeLineFinancials(workingLine, amountsTaxInclusive, lineFinancialsOpts(vatRate, opts));
+    const qty = parseFloat(String(line.qty).replace(',', '.')) || 0;
+    const unitPriceExVat = qty > 0 ? money2(f.lineEx / qty) : 0;
     return {
-        grossExcl,
-        taxableExcl,
-        taxAmt,
-        totalIncl,
-        discountAmount,
-        vatRate: lineRate,
+        grossExcl: money2(f.lineEx + f.discountAmount),
+        taxableExcl: f.lineEx,
+        taxAmt: f.taxAmt,
+        totalIncl: f.grandIncl,
+        discountAmount: f.discountAmount,
+        vatRate: f.vatRate,
         unitPriceExVat,
     };
 }
 
-/**
- * Roll up lines, then apply invoice-level discount on the sum of line taxable (ex VAT) amounts
- * and recalculate VAT.
- *
- * When per-line tax codes are used (mirrors Supplier SI), VAT is recomputed on
- * each line's net taxable share (after the proportional invoice discount split)
- * so totals match the per-line tax rate the user picked.
- */
+/** Roll up lines + freight + invoice discount (same rules as supplier sales invoice). */
 export function computePurchaseInvoiceTotals({
     lineItems,
     applyLineDiscount,
-    lineDiscountIsPercent,
+    lineDiscountIsPercent: _lineDiscountIsPercent,
     invoiceDiscountMode,
     invoiceDiscountValue,
     vatRate = PURCHASE_INVOICE_VAT_RATE,
@@ -110,66 +84,17 @@ export function computePurchaseInvoiceTotals({
     noVat = false,
     freightIn = 0,
 }) {
-    const lineOpts = { unitPriceTaxInclusive, noVat };
-    const freight = money2(freightIn);
-    const perLine = [];
-    let lineGross = 0;
-    let lineDiscountSum = 0;
-    let linesTaxable = 0;
-    let linesVat = 0;
-    let linesGrand = 0;
-
-    for (const line of lineItems) {
-        const a = computeLineAmounts(line, applyLineDiscount, lineDiscountIsPercent, vatRate, lineOpts);
-        perLine.push(a);
-        lineGross += a.grossExcl;
-        lineDiscountSum += a.discountAmount;
-        linesTaxable += a.taxableExcl;
-        linesVat += a.taxAmt;
-        linesGrand += a.totalIncl;
-    }
-
-    lineGross = money2(lineGross);
-    lineDiscountSum = money2(lineDiscountSum);
-    linesTaxable = money2(linesTaxable);
-    linesVat = money2(linesVat);
-    linesGrand = money2(linesGrand);
-
-    const invRaw = parseFloat(String(invoiceDiscountValue ?? '').replace(',', '.')) || 0;
-    let invoiceDiscountApplied = 0;
-    if (invoiceDiscountMode === 'percent') {
-        invoiceDiscountApplied = money2((linesTaxable * Math.min(100, Math.max(0, invRaw))) / 100);
-    } else {
-        invoiceDiscountApplied = money2(Math.min(invRaw, linesTaxable));
-    }
-
-    const discountFactor =
-        linesTaxable > 0 ? Math.max(0, 1 - invoiceDiscountApplied / linesTaxable) : 1;
-    let totalVat = 0;
-    let netTaxable = 0;
-    for (const a of perLine) {
-        const lineNet = money2(a.taxableExcl * discountFactor);
-        netTaxable += lineNet;
-        totalVat += lineNet * a.vatRate;
-    }
-    netTaxable = money2(netTaxable);
-    totalVat = money2(totalVat);
-    const goodsGrandInclVat = money2(netTaxable + totalVat);
-    const grandTotal = money2(goodsGrandInclVat + freight);
-
-    return {
-        line_gross_ex_vat: lineGross,
-        line_discount_amount: lineDiscountSum,
-        lines_taxable_ex_vat: linesTaxable,
-        lines_total_vat: linesVat,
-        lines_grand_total_incl_vat: linesGrand,
-        invoice_discount_applied_ex_vat: invoiceDiscountApplied,
-        subtotal_ex_vat: netTaxable,
-        total_vat: totalVat,
-        freight_in: freight,
-        goods_grand_incl_vat: goodsGrandInclVat,
-        grand_total: grandTotal,
-    };
+    return computeInvoiceRollupTotals({
+        lineItems,
+        amountsTaxInclusive: unitPriceTaxInclusive,
+        applyLineDiscount,
+        invoiceDiscountMode,
+        invoiceDiscountValue,
+        freightIn,
+        taxes: PURCHASE_INVOICE_TAXES,
+        defaultVatRate: vatRate,
+        noVat,
+    });
 }
 
 export function buildEnrichedLineItems(
@@ -208,6 +133,8 @@ export function buildEnrichedLineItems(
             account_name: name,
             description: line.description ?? '',
             uom: line.uom ?? 'piece',
+            uom_profile_id: line.uomProfileId ?? null,
+            uomProfileId: line.uomProfileId ?? null,
             qty,
             unit_price_ex_vat: unitPriceExVat,
             unit_purchase_price_incl_vat: unitPurchasePriceInclVat,
@@ -293,7 +220,16 @@ export function buildPurchaseInvoicePayload(p) {
             show_line_discount_column: Boolean(p.ui?.show_line_discount_column),
             line_discount_is_percent: Boolean(p.ui?.line_discount_is_percent),
             amounts_tax_inclusive: Boolean(p.ui?.amounts_tax_inclusive),
+            amountsTaxInclusive: Boolean(p.ui?.amounts_tax_inclusive),
+            prices_include_vat: Boolean(p.ui?.prices_include_vat ?? p.ui?.amounts_tax_inclusive),
+            no_vat: Boolean(p.ui?.no_vat),
+            showLineDescriptionColumn: Boolean(p.ui?.show_line_description_column),
+            showLineDiscountColumn: Boolean(p.ui?.show_line_discount_column),
+            lineDiscountIsPercent: Boolean(p.ui?.line_discount_is_percent),
         },
+
+        freight_in: money2(p.freight_in ?? p.totals?.freight_in ?? 0),
+        freightIn: money2(p.freight_in ?? p.totals?.freight_in ?? 0),
 
         invoice_discount: {
             mode: p.invoice_discount?.mode ?? 'fixed_sar',
@@ -323,4 +259,121 @@ export function buildPurchaseInvoicePayload(p) {
             freight_in: money2(p.totals?.freight_in ?? 0),
         },
     };
+}
+
+/** Snapshot raw modal line rows so draft reload restores the full form. */
+export function serializePurchaseInvoiceFormLines(lines) {
+    return (lines ?? []).map((line) => ({
+        client_line_id: line.id,
+        productId: line.productId ?? '',
+        item: line.item ?? '',
+        account: line.account ?? '',
+        description: line.description ?? '',
+        uom: line.uom ?? 'piece',
+        qty: line.qty ?? 1,
+        price: line.price ?? 0,
+        discount: line.discount ?? 0,
+        discountMode: line.discountMode ?? 'percent',
+        taxCode: line.taxCode ?? PURCHASE_INVOICE_TAX_LABEL,
+        taxAmt: line.taxAmt ?? '0.00',
+        totalFinal: line.totalFinal ?? '0.00',
+        warehouseUnit: line.warehouseUnit ?? null,
+        workshopUnit: line.workshopUnit ?? null,
+        conversionFactor: line.conversionFactor ?? null,
+        uomProfileId: line.uomProfileId ?? null,
+        supplierProductId: line.supplierProductId ?? null,
+    }));
+}
+
+/**
+ * Full purchase-invoice modal state for draft save/restore (checkboxes, searches, all lines).
+ */
+export function buildPurchaseInvoiceFormSnapshot(state) {
+    return {
+        version: 1,
+        invoice_branch_id: state.invoiceBranchId ?? '',
+        selected_vendor: state.selectedVendor ?? '',
+        supplier_id: state.supplierId ?? null,
+        issue_date: state.issueDate ?? '',
+        due_date_type: state.dueDateType ?? 'Net',
+        net_days: state.netDays ?? 30,
+        custom_due_date: state.customDueDate ?? '',
+        vendor_invoice_ref: state.vendorInvoiceRef ?? '',
+        invoice_description: state.invoiceDescription ?? '',
+        invoice_notes: state.invoiceNotes ?? '',
+        invoice_discount_value: state.invoiceDiscountValue ?? '0',
+        invoice_discount_mode: state.invoiceDiscountMode ?? 'fixed_sar',
+        show_desc: Boolean(state.showDesc),
+        show_discount: Boolean(state.showDiscount),
+        discount_is_percent: Boolean(state.discountIsPercent),
+        amounts_tax_inclusive: Boolean(state.amountsTaxInclusive),
+        freight_sar: state.freightSar ?? '0',
+        update_last_purchase_price: Boolean(state.updateLastPurchasePrice),
+        product_search_by_line_id: state.productSearchByLineId ?? {},
+        line_items: serializePurchaseInvoiceFormLines(state.lineItems),
+    };
+}
+
+/** Build API line DTOs; for drafts include every modal row (even without a picked product). */
+export function buildPurchaseInvoiceLinesForSave(
+    lineItems,
+    {
+        applyLineDiscount,
+        lineDiscountIsPercent,
+        amountsTaxInclusive,
+        forDraft = false,
+        productSearchByLineId = {},
+    },
+) {
+    const mapped = (lineItems ?? []).map((line) => {
+        const itemLabel = String(productSearchByLineId[line.id] ?? line.item ?? '').trim();
+        const qtyRaw = parseFloat(String(line.qty ?? '').replace(',', '.'));
+        const qty =
+            forDraft && (!Number.isFinite(qtyRaw) || qtyRaw <= 0)
+                ? 1
+                : line.qty ?? 1;
+        return {
+            ...line,
+            item: itemLabel || line.item || '',
+            qty,
+        };
+    });
+
+    let rows = forDraft
+        ? mapped
+        : mapped.filter((l) => l.productId != null && String(l.productId).trim() !== '');
+
+    if (forDraft && rows.length === 0) {
+        rows = [
+            {
+                id: `draft-${Date.now()}`,
+                productId: '',
+                item: '',
+                account: '1410 - Inventory Asset',
+                description: '',
+                uom: 'piece',
+                qty: 1,
+                price: 0,
+                discount: 0,
+                discountMode: 'percent',
+                taxCode: PURCHASE_INVOICE_TAX_LABEL,
+            },
+        ];
+    }
+
+    if (forDraft) {
+        rows = rows.map((line) => ({
+            ...line,
+            item: String(line.item ?? '').trim() || 'Draft line',
+        }));
+    }
+
+    return buildEnrichedLineItems(
+        rows,
+        applyLineDiscount,
+        lineDiscountIsPercent,
+        PURCHASE_INVOICE_VAT_RATE,
+        PURCHASE_INVOICE_TAX_LABEL,
+        { unitPriceTaxInclusive: amountsTaxInclusive, noVat: false },
+    );
 }

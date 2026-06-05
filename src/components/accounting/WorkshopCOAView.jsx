@@ -648,6 +648,8 @@ export default function WorkshopCOAView({ readOnly = false }) {
                 grossProfit: 0,
                 operatingExpenses: [],
                 totalOperatingExpenses: 0,
+                otherIncome: [],
+                totalOtherIncome: 0,
                 otherExpenses: [],
                 totalOtherExpenses: 0,
                 netIncome: 0,
@@ -733,6 +735,21 @@ export default function WorkshopCOAView({ readOnly = false }) {
                             <div style={{ ...rowStyle, fontWeight: 700, color: '#dc2626' }}>
                                 <span>Total Operating Expenses</span>
                                 <span>{fmtMoney(d.totalOperatingExpenses)}</span>
+                            </div>
+                            <div style={sectionHeader}>OTHER INCOME</div>
+                            {d.otherIncome.length === 0 ? (
+                                <div style={{ color: palette.textSecondary, fontSize: 13 }}>No other income</div>
+                            ) : (
+                                d.otherIncome.map((r) => (
+                                    <div key={r.code} style={rowStyle}>
+                                        <span>{r.name}</span>
+                                        <span>{fmtMoney(r.amount)}</span>
+                                    </div>
+                                ))
+                            )}
+                            <div style={{ ...rowStyle, fontWeight: 700, color: '#16a34a' }}>
+                                <span>Total Other Income</span>
+                                <span>{fmtMoney(d.totalOtherIncome)}</span>
                             </div>
                             <div style={sectionHeader}>OTHER EXPENSES</div>
                             {d.otherExpenses.length === 0 ? (

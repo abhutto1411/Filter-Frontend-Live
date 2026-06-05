@@ -116,7 +116,9 @@ function TrialBalance() {
                         </tfoot>
                     </table>
                     <p style={{ marginTop: 12, fontSize: 12, fontWeight: 700, color: data.isBalanced ? '#065F46' : '#B91C1C' }}>
-                        {data.isBalanced ? '✓ Balanced' : '⚠ Out of balance — check recent entries'}
+                        {data.isBalanced
+                            ? '✓ Balanced'
+                            : `⚠ Out of balance by ${money(Math.abs(data.difference ?? data.totalDebits - data.totalCredits))}`}
                     </p>
                 </div>
             )}
@@ -418,6 +420,105 @@ function CashFlowBucket({ title, bucket, onCashLineClick }) {
     );
 }
 
+function CashFlowInsights({ insights }) {
+    const list = Array.isArray(insights) ? insights : [];
+    if (!list.length) return null;
+    const tone = {
+        success: { bg: '#ECFDF5', border: '#A7F3D0', title: '#065F46' },
+        warning: { bg: '#FFFBEB', border: '#FDE68A', title: '#B45309' },
+        info: { bg: '#EFF6FF', border: '#BFDBFE', title: '#1D4ED8' },
+    };
+    return (
+        <div style={{ marginBottom: 16 }}>
+            <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 800, color: '#0F172A' }}>
+                Performance insights
+            </h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {list.map((item, i) => {
+                    const t = tone[item.severity] || tone.info;
+                    return (
+                        <div
+                            key={i}
+                            style={{
+                                padding: '10px 12px',
+                                borderRadius: 10,
+                                border: `1px solid ${t.border}`,
+                                background: t.bg,
+                            }}
+                        >
+                            <div style={{ fontWeight: 800, fontSize: 12, color: t.title }}>
+                                {item.title}
+                            </div>
+                            <div style={{ fontSize: 12, color: '#334155', marginTop: 4 }}>
+                                {item.message}
+                            </div>
+                            {item.action ? (
+                                <div style={{ fontSize: 11, color: '#64748B', marginTop: 6, fontStyle: 'italic' }}>
+                                    Suggested action: {item.action}
+                                </div>
+                            ) : null}
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+function IndirectCashFlowSection({ indirect }) {
+    if (!indirect) return null;
+    const lineRow = (label, amount, bold = false) => (
+        <div
+            style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                padding: '4px 0',
+                fontWeight: bold ? 800 : 500,
+                fontSize: 13,
+            }}
+        >
+            <span style={{ color: '#475569' }}>{label}</span>
+            <span style={{ color: amount >= 0 ? '#065F46' : '#B91C1C' }}>
+                {amount < 0 ? `(${money(Math.abs(amount))})` : money(amount)}
+            </span>
+        </div>
+    );
+    return (
+        <div>
+            <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 800 }}>Cash flows from operating activities</h4>
+            {lineRow('Net income (from Profit & Loss)', indirect.netIncome)}
+            {(indirect.adjustments ?? []).map((a, i) => (
+                <div key={`adj-${i}`}>{lineRow(a.label, a.amount)}</div>
+            ))}
+            {(indirect.workingCapitalChanges ?? []).length > 0 ? (
+                <>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#64748B', margin: '8px 0 4px' }}>
+                        Changes in working capital
+                    </div>
+                    {indirect.workingCapitalChanges.map((w, i) => (
+                        <div key={`wc-${i}`}>{lineRow(w.label, w.amount)}</div>
+                    ))}
+                </>
+            ) : null}
+            <div style={{ borderTop: '1px solid #E2E8F0', marginTop: 8, paddingTop: 6 }}>
+                {lineRow('Net cash from operating activities', indirect.netCashFromOperating, true)}
+            </div>
+            {Math.abs(indirect.reconciliationDifference ?? 0) > 0.5 ? (
+                <p style={{ fontSize: 11, color: '#64748B', margin: '6px 0 0' }}>
+                    Reconciliation vs direct operating total: {money(indirect.directOperatingNet)} (difference{' '}
+                    {money(indirect.reconciliationDifference)})
+                </p>
+            ) : null}
+
+            <h4 style={{ margin: '16px 0 8px', fontSize: 13, fontWeight: 800 }}>Cash flows from investing activities</h4>
+            {lineRow(indirect.investing?.description || 'Net investing', indirect.investing?.net ?? 0, true)}
+
+            <h4 style={{ margin: '16px 0 8px', fontSize: 13, fontWeight: 800 }}>Cash flows from financing activities</h4>
+            {lineRow(indirect.financing?.description || 'Net financing', indirect.financing?.net ?? 0, true)}
+        </div>
+    );
+}
+
 function CashFlow() {
     const navigate = useNavigate();
     const openLedger = useCallback(
@@ -432,47 +533,135 @@ function CashFlow() {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [err, setErr] = useState('');
-    const [{ dateFrom, dateTo }, setRange] = useState({ dateFrom: startOfMonthISO(), dateTo: todayISO() });
+    const [method, setMethod] = useState('direct');
+    const [{ dateFrom, dateTo }, setRange] = useState({
+        dateFrom: startOfMonthISO(),
+        dateTo: todayISO(),
+    });
 
     const load = useCallback(async () => {
         setLoading(true);
         setErr('');
         try {
-            const res = await getSupplierCashFlow({ dateFrom, dateTo });
+            const res = await getSupplierCashFlow({ dateFrom, dateTo, method });
             setData(res);
         } catch (e) {
             setErr(e?.message || 'Failed to load cash flow');
         } finally {
             setLoading(false);
         }
-    }, [dateFrom, dateTo]);
+    }, [dateFrom, dateTo, method]);
 
-    useEffect(() => { load(); }, [load]);
+    useEffect(() => {
+        load();
+    }, [load]);
+
+    const isIndirect = data?.method === 'indirect';
 
     return (
         <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12, flexWrap: 'wrap', gap: 10 }}>
+            <div
+                style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-end',
+                    marginBottom: 12,
+                    flexWrap: 'wrap',
+                    gap: 10,
+                }}
+            >
                 <DateRangePicker dateFrom={dateFrom} dateTo={dateTo} onChange={setRange} />
+                <div>
+                    <div style={{ fontSize: '0.7rem', fontWeight: 700, marginBottom: 4 }}>
+                        Cash flow method
+                    </div>
+                    <select
+                        style={{ ...inputStyle, minWidth: 200 }}
+                        value={method}
+                        onChange={(e) => setMethod(e.target.value)}
+                    >
+                        <option value="direct">Direct method</option>
+                        <option value="indirect">Indirect method</option>
+                    </select>
+                </div>
             </div>
             <p style={{ fontSize: 12, color: '#64748B', marginBottom: 12 }}>
-                Direct method — cash movements on cash-equivalent accounts categorised by activity.
+                {isIndirect
+                    ? 'Indirect method — starts with net income, then adjusts for working capital (AR, inventory, AP, VAT) to explain cash from operations.'
+                    : 'Direct method — lists actual cash receipts and payments on bank/cash accounts by activity.'}
             </p>
             <AcctError message={err} />
-            {loading ? <AcctLoading /> : !data ? <AcctEmpty message="No data" /> : (
+            {loading ? (
+                <AcctLoading />
+            ) : !data ? (
+                <AcctEmpty message="No data" />
+            ) : (
                 <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #E2E8F0', marginBottom: 12 }}>
+                    <CashFlowInsights insights={data.insights} />
+                    <div
+                        style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            padding: '8px 0',
+                            borderBottom: '1px solid #E2E8F0',
+                            marginBottom: 12,
+                        }}
+                    >
                         <span style={{ fontSize: 13, color: '#475569' }}>Opening cash</span>
                         <span style={{ fontWeight: 700 }}>{money(data.openingCash)}</span>
                     </div>
-                    <CashFlowBucket title="Operating Activities" bucket={data.operating} onCashLineClick={openLedger} />
-                    <CashFlowBucket title="Investing Activities" bucket={data.investing} onCashLineClick={openLedger} />
-                    <CashFlowBucket title="Financing Activities" bucket={data.financing} onCashLineClick={openLedger} />
-                    <div style={{ padding: '8px 0', borderTop: '1px solid #E2E8F0', display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                    {isIndirect ? (
+                        <IndirectCashFlowSection indirect={data.indirect} />
+                    ) : (
+                        <>
+                            <CashFlowBucket
+                                title="Operating Activities"
+                                bucket={data.operating}
+                                onCashLineClick={openLedger}
+                            />
+                            <CashFlowBucket
+                                title="Investing Activities"
+                                bucket={data.investing}
+                                onCashLineClick={openLedger}
+                            />
+                            <CashFlowBucket
+                                title="Financing Activities"
+                                bucket={data.financing}
+                                onCashLineClick={openLedger}
+                            />
+                        </>
+                    )}
+                    <div
+                        style={{
+                            padding: '8px 0',
+                            borderTop: '1px solid #E2E8F0',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            fontWeight: 700,
+                        }}
+                    >
                         <span>Net change in cash</span>
-                        <span style={{ color: data.netChange >= 0 ? '#065F46' : '#B91C1C' }}>{money(data.netChange)}</span>
+                        <span
+                            style={{
+                                color: data.netChange >= 0 ? '#065F46' : '#B91C1C',
+                            }}
+                        >
+                            {money(data.netChange)}
+                        </span>
                     </div>
-                    <div style={{ padding: '10px 0', borderTop: '2px solid #0F172A', display: 'flex', justifyContent: 'space-between', fontWeight: 800, fontSize: 16 }}>
-                        <span>Closing cash</span><span>{money(data.closingCash)}</span>
+                    <div
+                        style={{
+                            padding: '10px 0',
+                            borderTop: '2px solid #0F172A',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            fontWeight: 800,
+                            fontSize: 16,
+                        }}
+                    >
+                        <span>Closing cash</span>
+                        <span>{money(data.closingCash)}</span>
                     </div>
                 </div>
             )}

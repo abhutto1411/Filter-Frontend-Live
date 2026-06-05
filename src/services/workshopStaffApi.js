@@ -87,6 +87,34 @@ export const postWorkshopEmployees = (body = {}, options = {}) =>
         headers: options.headers,
     });
 
+/** Stable select value — ids overlap across employees, cashiers, and portal users. */
+export function workshopStaffSelectValue(row) {
+    if (!row) return '';
+    const type = row.recordType || 'employee';
+    return `${type}:${String(row.id ?? '')}`;
+}
+
+/** Parse `workshopStaffSelectValue` back to record type + bare id. */
+export function parseWorkshopStaffSelectValue(value) {
+    if (!value) return { recordType: 'employee', id: '', compositeKey: '' };
+    const s = String(value);
+    const idx = s.indexOf(':');
+    if (idx <= 0) {
+        return { recordType: 'employee', id: s, compositeKey: `employee:${s}` };
+    }
+    return {
+        recordType: s.slice(0, idx),
+        id: s.slice(idx + 1),
+        compositeKey: s,
+    };
+}
+
+export function indexWorkshopStaffBySelectValue(employees) {
+    return Object.fromEntries(
+        (employees ?? []).map((e) => [workshopStaffSelectValue(e), e]),
+    );
+}
+
 /** Unwrap GET/POST /workshop-staff/employees list payloads. */
 export function unwrapWorkshopEmployeesList(res) {
     if (Array.isArray(res)) return res;
@@ -432,6 +460,16 @@ export const deleteWorkshopCashier = async (id) => {
     }
 };
 
+/**
+ * Delete a workshop portal staff user (manager / supervisor / team_leader).
+ * `id` is `users.id` (matches the recordType: 'portal_user' rows on GET /employees).
+ * Works for any approval state (pending / approved / rejected).
+ */
+export const deleteWorkshopPortalStaff = (id) =>
+    apiFetch(`/workshop-staff/portal-staff/${encodeURIComponent(String(id))}`, {
+        method: 'DELETE',
+    });
+
 export const getWorkshopBranches = () => apiFetch('/workshop-staff/branches');
 
 /** Cash/bank registers — each row is auto-linked to a Current Asset COA account for the workshop. */
@@ -515,9 +553,9 @@ export const getWorkshopStaffBranchCatalog = (branchId, { signal } = {}) =>
  * `workshopId` query is optional: the backend uses `query.workshopId || req.user.workshopId`.
  * Omit it for normal workshop tokens; pass it for impersonation / super-admin-style flows.
  */
-export const getWorkshopStaffBranchProducts = (branchId, { signal, workshopId } = {}) =>
+export const getWorkshopStaffBranchProducts = (branchId, { signal, workshopId, supplierId } = {}) =>
     apiFetch(
-        `/workshop-staff/branches/${encodeURIComponent(branchId)}/products${qs({ workshopId })}`,
+        `/workshop-staff/branches/${encodeURIComponent(branchId)}/products${qs({ workshopId, supplierId })}`,
         { signal },
     );
 
@@ -598,6 +636,25 @@ export const getWorkshopRecentOrderDetails = (invoiceId, params = {}, options = 
 
 export const getWorkshopRecentOrderPdf = (invoiceId, params = {}, options = {}) =>
     apiFetch(`/workshop-staff/reports/recent-orders/${encodeURIComponent(String(invoiceId))}/pdf${qs(params)}`, options);
+
+export const getWorkshopSalesReturns = (params = {}, options = {}) =>
+    apiFetch(`/workshop-staff/sales-returns${qs(params)}`, options);
+
+export const getWorkshopSalesReturn = (returnId, params = {}, options = {}) =>
+    apiFetch(`/workshop-staff/sales-returns/${encodeURIComponent(String(returnId))}${qs(params)}`, options);
+
+export const approveWorkshopSalesReturn = (returnId, params = {}, options = {}) =>
+    apiFetch(`/workshop-staff/sales-returns/${encodeURIComponent(String(returnId))}/approve${qs(params)}`, {
+        method: 'POST',
+        ...options,
+    });
+
+export const rejectWorkshopSalesReturn = (returnId, body, params = {}, options = {}) =>
+    apiFetch(`/workshop-staff/sales-returns/${encodeURIComponent(String(returnId))}/reject${qs(params)}`, {
+        method: 'POST',
+        body: JSON.stringify(body ?? {}),
+        ...options,
+    });
 
 export const runWorkshopRelativeAction = (endpoint, method = 'POST', body) =>
     apiFetch(endpoint, {
@@ -754,6 +811,12 @@ export const getWorkshopSupplierPurchaseInvoice = (invoiceId) =>
 export const getWorkshopSupplierLastPurchasePrices = (supplierId) =>
     apiFetch(
         `/workshop-staff/suppliers/${encodeURIComponent(String(supplierId))}/last-purchase-prices`,
+    );
+
+/** UOM rules (Box ↔ Liter) for branch products matched to affiliated supplier catalog. */
+export const getWorkshopSupplierProductUomRules = (supplierId, branchId) =>
+    apiFetch(
+        `/workshop-staff/suppliers/${encodeURIComponent(String(supplierId))}/product-uom-rules?branchId=${encodeURIComponent(String(branchId))}`,
     );
 
 /**
@@ -1004,6 +1067,31 @@ export function normalizeWorkshopEmployee(raw, role) {
                 ? ''
                 : String(basicSalaryRaw),
         approvalStatus: approvalStatus || undefined,
+        // Pass-through the currently-assigned RBAC role from the backend
+        // (workshop Roles & Permissions). Without this, the Edit modal's
+        // Permission Role dropdown can't pre-select and the Employees table's
+        // "Assigned Role" column always shows '—'. Accept multiple casings
+        // since different endpoints have shipped slightly different shapes.
+        permissionRole:
+            raw.permissionRole ??
+            raw.permission_role ??
+            user?.permissionRole ??
+            user?.permission_role ??
+            null,
+        userType:
+            raw.userType ??
+            raw.user_type ??
+            user?.userType ??
+            user?.user_type ??
+            null,
+        userId:
+            raw.userId != null
+                ? String(raw.userId)
+                : user?.id != null
+                  ? String(user.id)
+                  : raw.user_id != null
+                    ? String(raw.user_id)
+                    : null,
         _source: role,
     };
 }
@@ -1090,10 +1178,12 @@ export async function loadWorkshopEmployeesCombined(params = {}) {
     }
     if (params.isActive != null && params.isActive !== '') {
         query.isActive = String(params.isActive);
-    } else if (isWorkshopWide && !params.includeInactive) {
-        // Portal "all branches": list active staff only (single-branch views still load full branch roster).
-        query.isActive = 'true';
     }
+    // Note: previously "all branches" mode auto-added isActive=true, which
+    // caused newly-created employees to disappear if their User.isActive flag
+    // wasn't true yet (e.g., pending approval, or auto-set false by a portal
+    // flow). Now both single-branch and all-branches views load the same set;
+    // callers that explicitly want active-only can still pass isActive: 'true'.
     if (params.limit != null && params.limit !== '') {
         query.limit = String(params.limit);
     }

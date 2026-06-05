@@ -4,6 +4,8 @@ import {
     fetchCorporatePendingWalkInOrders,
     approveCorporateWalkInOrder,
     rejectCorporateWalkInOrder,
+    getCorporateWalkInSettings,
+    updateCorporateWalkInSettings,
 } from '../../services/corporateBookingsApi';
 import WalkInOrderDetailModal from './WalkInOrderDetailModal';
 
@@ -14,12 +16,24 @@ export default function CorporateBookingApprovals() {
     const [detailId, setDetailId] = useState(null);
     const [actionId, setActionId] = useState(null);
     const [banner, setBanner] = useState('');
+    // Auto-approval toggle — when ON, cashier walk-in submissions skip this
+    // queue entirely. Loaded from `/corporate/walk-in-orders/settings`.
+    const [autoApprove, setAutoApprove] = useState(false);
+    const [toggleBusy, setToggleBusy] = useState(false);
 
     const load = useCallback(() => {
         setLoading(true);
         setError('');
-        fetchCorporatePendingWalkInOrders()
-            .then((list) => setRows(Array.isArray(list) ? list : []))
+        // Fetch the pending list AND the auto-approve setting in parallel —
+        // both render on the same page header.
+        Promise.all([
+            fetchCorporatePendingWalkInOrders(),
+            getCorporateWalkInSettings().catch(() => ({ autoApproveWalkIns: false })),
+        ])
+            .then(([list, settings]) => {
+                setRows(Array.isArray(list) ? list : []);
+                setAutoApprove(Boolean(settings?.autoApproveWalkIns));
+            })
             .catch((e) => {
                 setRows([]);
                 setError(e?.message || 'Could not load pending approvals');
@@ -30,6 +44,22 @@ export default function CorporateBookingApprovals() {
     useEffect(() => {
         load();
     }, [load]);
+
+    const handleToggleAutoApprove = async () => {
+        const next = !autoApprove;
+        setToggleBusy(true);
+        setBanner('');
+        // Optimistic flip — revert if the server rejects.
+        setAutoApprove(next);
+        try {
+            await updateCorporateWalkInSettings({ autoApproveWalkIns: next });
+        } catch (e) {
+            setAutoApprove(!next);
+            setBanner(e?.message || 'Could not update auto-approval setting');
+        } finally {
+            setToggleBusy(false);
+        }
+    };
 
     useEffect(() => {
         const onSocket = () => load();
@@ -75,16 +105,23 @@ export default function CorporateBookingApprovals() {
                         reject with a reason.
                     </p>
                 </div>
-                <button
-                    type="button"
-                    className="btn-portal-outline"
-                    onClick={() => load()}
-                    disabled={loading}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-                >
-                    <RefreshCw size={16} className={loading ? 'spin' : ''} />
-                    Refresh
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                    <AutoApproveToggle
+                        value={autoApprove}
+                        busy={toggleBusy}
+                        onChange={handleToggleAutoApprove}
+                    />
+                    <button
+                        type="button"
+                        className="btn-portal-outline"
+                        onClick={() => load()}
+                        disabled={loading}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+                    >
+                        <RefreshCw size={16} className={loading ? 'spin' : ''} />
+                        Refresh
+                    </button>
+                </div>
             </div>
 
             {error ? (
@@ -241,5 +278,135 @@ export default function CorporateBookingApprovals() {
 
             {detailId ? <WalkInOrderDetailModal orderId={detailId} onClose={() => setDetailId(null)} /> : null}
         </div>
+    );
+}
+
+/**
+ * Compact pill-style toggle for the auto-approval setting. While the API
+ * call is in flight, the whole pill dims + shows a spinner on the thumb
+ * and the ON/OFF label says "Saving…". Optimistic flip keeps the UI
+ * responsive; parent rolls back on backend error.
+ */
+function AutoApproveToggle({ value, busy, onChange }) {
+    return (
+        <label
+            style={{
+                position: 'relative',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '8px 14px',
+                borderRadius: 999,
+                border: `1px solid ${value ? '#10b981' : '#cbd5e1'}`,
+                background: value ? '#ecfdf5' : '#f8fafc',
+                cursor: busy ? 'wait' : 'pointer',
+                userSelect: 'none',
+                fontSize: '0.8125rem',
+                fontWeight: 700,
+                color: value ? '#065f46' : '#475569',
+                transition: 'background 0.15s, border-color 0.15s, opacity 0.15s',
+                // Dim the whole pill while saving — clear "something's happening" cue.
+                opacity: busy ? 0.85 : 1,
+                overflow: 'hidden',
+            }}
+            title={
+                busy
+                    ? 'Saving…'
+                    : value
+                        ? 'Auto-approve is ON — cashier walk-in orders skip this queue.'
+                        : 'Auto-approve is OFF — cashier walk-ins land here for manual review.'
+            }
+        >
+            <input
+                type="checkbox"
+                checked={!!value}
+                disabled={busy}
+                onChange={(e) => { e.stopPropagation(); onChange?.(); }}
+                style={{ display: 'none' }}
+            />
+            {/* Track */}
+            <span style={{
+                width: 36,
+                height: 20,
+                borderRadius: 999,
+                background: value ? '#10b981' : '#cbd5e1',
+                position: 'relative',
+                transition: 'background 0.15s',
+            }}>
+                {/* Thumb — when busy, the thumb hosts a tiny spinner. */}
+                <span style={{
+                    position: 'absolute',
+                    top: 2,
+                    left: value ? 18 : 2,
+                    width: 16,
+                    height: 16,
+                    borderRadius: '50%',
+                    background: '#fff',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+                    transition: 'left 0.15s',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                }}>
+                    {busy ? (
+                        <Loader2
+                            size={11}
+                            className="spin"
+                            style={{ color: value ? '#10b981' : '#64748b' }}
+                        />
+                    ) : null}
+                </span>
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                Auto-approve walk-ins
+                <span style={{
+                    marginLeft: 0,
+                    fontSize: '0.65rem',
+                    fontWeight: 800,
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    background: busy
+                        ? '#64748b'
+                        : value ? '#10b981' : '#94a3b8',
+                    color: '#fff',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    minWidth: 36,
+                    justifyContent: 'center',
+                    transition: 'background 0.15s',
+                }}>
+                    {busy ? (
+                        <>
+                            <Loader2 size={10} className="spin" /> Saving
+                        </>
+                    ) : value ? 'ON' : 'OFF'}
+                </span>
+            </span>
+            {/* Indeterminate progress bar that runs along the bottom edge while busy. */}
+            {busy ? (
+                <span
+                    aria-hidden="true"
+                    style={{
+                        position: 'absolute',
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: 2,
+                        background:
+                            'linear-gradient(90deg, transparent 0%, ' +
+                            (value ? '#10b981' : '#64748b') +
+                            ' 50%, transparent 100%)',
+                        backgroundSize: '200% 100%',
+                        animation: 'autoApproveToggleBar 1.1s linear infinite',
+                    }}
+                />
+            ) : null}
+            {/* Keyframes injected once via <style> — keeps the component self-contained. */}
+            <style>{`@keyframes autoApproveToggleBar {
+                0% { background-position: 200% 0; }
+                100% { background-position: -200% 0; }
+            }`}</style>
+        </label>
     );
 }

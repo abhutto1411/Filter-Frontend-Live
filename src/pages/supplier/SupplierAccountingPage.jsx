@@ -18,6 +18,7 @@ import SupplierCashBank from './SupplierCashBank';
 import SupplierExpenses from './SupplierExpenses';
 import SupplierSuperSupplierPurchasesPanel from './SupplierSuperSupplierPurchasesPanel';
 import SupplierCOAManager from './accounting/SupplierCOAManager';
+import SupplierVatReport from './accounting/SupplierVatReport';
 import SupplierTransactionHub from './accounting/SupplierTransactionHub';
 import SupplierJournalLogs from './accounting/SupplierJournalLogs';
 import SupplierAccountingReports from './accounting/SupplierAccountingReports';
@@ -894,6 +895,7 @@ export default function SupplierAccountingPage({ activeSubTab: propActiveTab }) 
             logs_payments: 'logs-payments',
             logs_receipts: 'logs-receipts',
             logs_journals: 'logs-journals',
+            vat: 'vat',
             reports_tb: 'reports-tb',
             reports_pl: 'reports-pl',
             reports_bs: 'reports-bs',
@@ -921,6 +923,7 @@ export default function SupplierAccountingPage({ activeSubTab: propActiveTab }) 
             {activeSub === 'logs-payments' && <SupplierJournalLogs initialTab="payments" />}
             {activeSub === 'logs-receipts' && <SupplierJournalLogs initialTab="receipts" />}
             {activeSub === 'logs-journals' && <SupplierJournalLogs initialTab="journals" />}
+            {activeSub === 'vat' && <SupplierVatReport />}
             {activeSub === 'reports-tb' && <SupplierAccountingReports initialTab="tb" />}
             {activeSub === 'reports-pl' && <SupplierAccountingReports initialTab="pl" />}
             {activeSub === 'reports-bs' && <SupplierAccountingReports initialTab="bs" />}

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Wallet, Plus, MessageSquare, RefreshCw } from 'lucide-react';
+import { Wallet, Plus, MessageSquare, RefreshCw, Clock } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import {
     getMyPettyCash,
@@ -10,7 +10,7 @@ import {
 } from '../../services/employeeExpenseApi';
 import { getWorkshopBranches, unwrapWorkshopBranchesResponse } from '../../services/workshopStaffApi';
 import WorkshopPettyCashManagement from './WorkshopPettyCashManagement';
-import { StatusBadge, MessageThread, formatSar } from './WorkshopMyPettyCash.shared';
+import { StatusBadge, MessageThread, formatSar, WalletTransactionsTable } from './WorkshopMyPettyCash.shared';
 import '../../styles/admin/AccountingPage.css';
 
 function WorkshopMyPettyCashStaff() {
@@ -299,42 +299,21 @@ function WorkshopMyPettyCashStaff() {
                 <header style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0' }}>
                     <strong>Wallet Transactions</strong>
                 </header>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                        <tr className="table-header-row">
-                            <th className="table-th">Date</th>
-                            <th className="table-th">Type</th>
-                            <th className="table-th">Amount</th>
-                            <th className="table-th">Description</th>
-                            <th className="table-th">Source</th>
-                            <th className="table-th">Reference</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {transactions.length === 0 ? (
-                            <tr><td colSpan={6} className="table-cell table-empty">No transactions yet.</td></tr>
-                        ) : transactions.map((t) => (
-                            <tr key={t.id}>
-                                <td className="table-cell">{new Date(t.entryDate).toLocaleDateString()}</td>
-                                <td className="table-cell">{t.type === 'credit' ? 'In' : 'Out'}</td>
-                                <td className="table-cell" style={{ color: t.type === 'credit' ? '#065F46' : '#991B1B' }}>
-                                    {t.type === 'credit' ? '+' : '-'} SAR {formatSar(t.amount)}
-                                </td>
-                                <td className="table-cell">{t.description || '—'}</td>
-                                <td className="table-cell">{t.sourceType || '—'}</td>
-                                <td className="table-cell">{t.reference || '—'}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                <WalletTransactionsTable transactions={transactions} loading={loading} />
             </section>
         </div>
     );
 }
 
 export default function WorkshopMyPettyCash({ selectedBranchId = 'all' }) {
-    const { user } = useAuth();
-    if (user?.userType === 'workshop_owner') {
+    const { user, hasPermission } = useAuth();
+    // Show the full management UI for anyone who can "view" petty cash —
+    // workshop owners (legacy bypass), roleless workshop users (legacy bypass),
+    // and custom-role users who were explicitly granted
+    // `workshop.my-petty-cash.view`. Falls back to the personal staff view
+    // only for users without the permission (which today is unreachable
+    // anyway, because the sidebar item is gated by the same code).
+    if (user?.userType === 'workshop_owner' || hasPermission('workshop.my-petty-cash.view')) {
         return <WorkshopPettyCashManagement selectedBranchId={selectedBranchId} />;
     }
     return <WorkshopMyPettyCashStaff />;

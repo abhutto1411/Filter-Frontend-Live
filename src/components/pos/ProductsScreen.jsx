@@ -295,14 +295,30 @@ export default function ProductsScreen() {
         setPromoLoading(true);
         setPromoError(null);
         try {
+            const productIds = cart
+                .filter((item) => !isService(item.product))
+                .map((item) => String(item.product.id));
+            const serviceIds = cart
+                .filter((item) => isService(item.product))
+                .map((item) => String(item.product.id));
             const res = await apiFetch('/cashier/promo-code/apply', {
                 method: 'POST',
-                body: JSON.stringify({ code, orderAmount: afterGlobalDisc }),
+                body: JSON.stringify({
+                    code,
+                    orderAmount: afterGlobalDisc,
+                    productIds,
+                    serviceIds,
+                }),
             });
-            // Response shape tolerant: look for a discount amount under several keys.
+            if (res?.valid === false) {
+                setPromoError(res?.message || 'Promo code is not valid for this order.');
+                setPromoApplied(0);
+                return;
+            }
             const disc = parseFloat(
-                res?.discount
+                res?.promoCode?.discountAmount
                 ?? res?.discountAmount
+                ?? res?.discount
                 ?? res?.promo?.discount
                 ?? res?.data?.discount
                 ?? 0

@@ -11,6 +11,54 @@ export const formatSar = (n) => {
     return x.toLocaleString('en-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 
+export const formatWalletSourceType = (sourceType) => {
+    const key = String(sourceType || '').toLowerCase();
+    const map = {
+        petty_cash_replenishment: 'Fund top-up',
+        petty_cash_expense: 'Expense',
+        petty_cash_issue: 'Direct issue',
+        internal_transfer: 'Transfer',
+        payment: 'Payment',
+        receipt: 'Receipt',
+    };
+    return map[key] || sourceType || '—';
+};
+
+export function WalletTransactionsTable({ transactions = [], loading = false, emptyMessage = 'No transactions yet.' }) {
+    return (
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+                <tr className="table-header-row">
+                    <th className="table-th">Date</th>
+                    <th className="table-th">Type</th>
+                    <th className="table-th">Amount</th>
+                    <th className="table-th">Description</th>
+                    <th className="table-th">Source</th>
+                    <th className="table-th">Reference</th>
+                </tr>
+            </thead>
+            <tbody>
+                {loading ? (
+                    <tr><td colSpan={6} className="table-cell table-empty">Loading register…</td></tr>
+                ) : transactions.length === 0 ? (
+                    <tr><td colSpan={6} className="table-cell table-empty">{emptyMessage}</td></tr>
+                ) : transactions.map((t) => (
+                    <tr key={t.id}>
+                        <td className="table-cell">{new Date(t.entryDate).toLocaleDateString()}</td>
+                        <td className="table-cell">{t.type === 'credit' ? 'In' : 'Out'}</td>
+                        <td className="table-cell" style={{ color: t.type === 'credit' ? '#065F46' : '#991B1B' }}>
+                            {t.type === 'credit' ? '+' : '-'} SAR {formatSar(t.amount)}
+                        </td>
+                        <td className="table-cell">{t.description || '—'}</td>
+                        <td className="table-cell">{formatWalletSourceType(t.sourceType)}</td>
+                        <td className="table-cell">{t.reference || '—'}</td>
+                    </tr>
+                ))}
+            </tbody>
+        </table>
+    );
+}
+
 export function StatusBadge({ status }) {
     const map = {
         pending: { bg: '#FEF3C7', fg: '#92400E', icon: Clock, label: 'Pending' },

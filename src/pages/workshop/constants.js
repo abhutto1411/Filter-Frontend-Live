@@ -2,7 +2,7 @@ import {
     LayoutDashboard, Users, Layers, Package, ShoppingCart, ClipboardCheck,
     Truck, BarChart3, Building2, CheckCircle, CheckCircle2, PlayCircle,
     Store, Shield, Globe, Landmark, Banknote, Monitor, TicketPercent, Briefcase,
-    Archive, Lock, Wallet
+    Archive, Lock, Wallet, RotateCcw,
 } from 'lucide-react';
 
 export const NAV_ITEMS = [
@@ -13,6 +13,7 @@ export const NAV_ITEMS = [
     { id: 'inventory', label: 'Manage Inventory', icon: Archive, permission: 'workshop.inventory.view' },
     { id: 'purchases', label: 'Purchase Invoices', icon: ShoppingCart, permission: 'workshop.purchases.view' },
     { id: 'approvals', label: 'Approvals Queue', icon: ClipboardCheck, permission: 'workshop.approvals.view', badge: true },
+    { id: 'sales-returns', label: 'Sales Returns', icon: RotateCcw, permission: 'workshop.sales-returns.view' },
     { id: 'suppliers', label: 'Suppliers & Purchases', icon: Truck, permission: 'workshop.suppliers.view' },
     { id: 'affiliated-suppliers', label: 'Filter Affiliated Suppliers', icon: Truck, permission: 'workshop.affiliated-suppliers.view' },
     { id: 'non-affiliated-suppliers', label: 'Non-Affiliated Suppliers', icon: Truck, permission: 'workshop.non-affiliated-suppliers.view' },

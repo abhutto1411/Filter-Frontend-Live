@@ -7,7 +7,8 @@ import {
     Users, Wallet, Wrench, Box, Building, Car, Truck, Warehouse
 } from 'lucide-react';
 import '../../styles/admin/DashboardPage.css';
-import { getStats } from '../../services/superAdminApi';
+import { getStats, getSalesOrders, getProducts } from '../../services/superAdminApi';
+import { list as listApprovals } from '../../services/approvalsApi';
 
 const DashboardStatCard = ({ title, value, subtitle, icon: Icon }) => (
     <motion.div whileHover={{ y: -4 }} className="dashboard-stat-card">
@@ -45,12 +46,73 @@ const QUICK_ACTIONS = [
     { label: 'Manage Zones', icon: Map },
 ];
 
+/** Format a date as "Mon DD, HH:MM AM/PM" — defensive against missing/invalid input. */
+function formatOrderDate(raw) {
+    if (!raw) return '—';
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleString('en-US', {
+        month: 'short',
+        day: '2-digit',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+    });
+}
+
+/** Friendly amount with SAR prefix; falls back to '—' for null/NaN. */
+function formatSar(value) {
+    if (value == null || value === '') return '—';
+    const n = Number(value);
+    if (!Number.isFinite(n)) return '—';
+    return `SAR ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export default function DashboardPage() {
     const navigate = useNavigate();
     const [stats, setStats] = useState(null);
+    const [recentOrders, setRecentOrders] = useState([]);
+    const [lowStock, setLowStock] = useState([]);
+    const [pendingApprovals, setPendingApprovals] = useState([]);
+    const [panelLoading, setPanelLoading] = useState(true);
 
     useEffect(() => {
         getStats().then((d) => setStats(d?.totals ?? d)).catch(() => {});
+    }, []);
+
+    // Three independent fetches for the bottom-row panels. Don't block the
+    // page if any single one fails — each catches and falls back to empty.
+    useEffect(() => {
+        let cancelled = false;
+        setPanelLoading(true);
+        Promise.all([
+            getSalesOrders({ limit: 5 })
+                .then((r) => (Array.isArray(r) ? r : (r?.items ?? r?.data ?? r?.salesOrders ?? [])))
+                .catch(() => []),
+            getProducts({})
+                .then((r) => (Array.isArray(r) ? r : (r?.items ?? r?.products ?? r?.data ?? [])))
+                .catch(() => []),
+            listApprovals({ status: 'pending', limit: 5 })
+                .then((r) => (Array.isArray(r) ? r : (r?.items ?? r?.approvals ?? r?.data ?? [])))
+                .catch(() => []),
+        ]).then(([orders, products, approvals]) => {
+            if (cancelled) return;
+            setRecentOrders(orders.slice(0, 5));
+            // Pick rows where stockQty < reorderLevel (or criticalLevel as fallback).
+            // Defensive against shape variations between super-admin product endpoints.
+            const low = products
+                .filter((p) => {
+                    const stock = Number(p.stockQty ?? p.stock_qty ?? p.stock ?? 0);
+                    const reorder = Number(p.reorderLevel ?? p.reorder_level ?? p.criticalLevel ?? p.critical_level ?? 0);
+                    return reorder > 0 && stock <= reorder;
+                })
+                .slice(0, 5);
+            setLowStock(low);
+            setPendingApprovals(approvals.slice(0, 5));
+        }).finally(() => {
+            if (!cancelled) setPanelLoading(false);
+        });
+        return () => { cancelled = true; };
     }, []);
 
     return (
@@ -167,31 +229,83 @@ export default function DashboardPage() {
                 <div className="dashboard-panel">
                     <div className="dashboard-panel-header">
                         <h4>Recent Orders</h4>
-                        <button type="button" className="panel-link" onClick={() => navigate('/pos')}>View All</button>
+                        <button type="button" className="panel-link" onClick={() => navigate('/admin/sales-orders')}>View All</button>
                     </div>
-                    <div className="recent-order-item">
-                        <div className="recent-order-id">ORD-82898441</div>
-                        <div className="recent-order-meta">Feb 28, 12:48 PM · SAR 136.85</div>
-                        <span className="status-badge status-completed">completed</span>
-                    </div>
+                    {panelLoading ? (
+                        <p className="low-stock-message">Loading…</p>
+                    ) : recentOrders.length === 0 ? (
+                        <p className="low-stock-message">No recent orders yet.</p>
+                    ) : (
+                        recentOrders.map((o) => {
+                            const num = o.orderNumber ?? o.order_number ?? o.invoiceNumber ?? o.id ?? '—';
+                            const dt = o.createdAt ?? o.created_at ?? o.orderDate ?? o.invoiceDate ?? o.invoice_date;
+                            const total = o.grandTotal ?? o.grand_total ?? o.totalAmount ?? o.total_amount ?? o.total;
+                            const status = String(o.status ?? o.workflowStatus ?? 'pending').toLowerCase();
+                            return (
+                                <div key={o.id ?? num} className="recent-order-item">
+                                    <div className="recent-order-id">{num}</div>
+                                    <div className="recent-order-meta">
+                                        {formatOrderDate(dt)} · {formatSar(total)}
+                                    </div>
+                                    <span className={`status-badge status-${status.replace(/[^a-z0-9_-]/g, '-')}`}>
+                                        {status.replace(/_/g, ' ')}
+                                    </span>
+                                </div>
+                            );
+                        })
+                    )}
                 </div>
                 <div className="dashboard-panel">
                     <div className="dashboard-panel-header">
                         <h4>Low Stock Alerts</h4>
                         <button type="button" className="panel-link" onClick={() => navigate('/admin/inventory/products-services')}>Manage</button>
                     </div>
-                    <p className="low-stock-message">All stock levels are healthy</p>
+                    {panelLoading ? (
+                        <p className="low-stock-message">Loading…</p>
+                    ) : lowStock.length === 0 ? (
+                        <p className="low-stock-message">All stock levels are healthy</p>
+                    ) : (
+                        lowStock.map((p) => {
+                            const name = p.name ?? p.productName ?? p.product_name ?? '—';
+                            const stock = Number(p.stockQty ?? p.stock_qty ?? p.stock ?? 0);
+                            const reorder = Number(p.reorderLevel ?? p.reorder_level ?? p.criticalLevel ?? p.critical_level ?? 0);
+                            return (
+                                <div key={p.id ?? name} className="recent-order-item">
+                                    <div className="recent-order-id">{name}</div>
+                                    <div className="recent-order-meta">
+                                        Stock {stock} · reorder at {reorder}
+                                    </div>
+                                    <span className="status-badge status-low">low</span>
+                                </div>
+                            );
+                        })
+                    )}
                 </div>
                 <div className="dashboard-panel">
                     <div className="dashboard-panel-header">
                         <h4>Pending Approvals</h4>
                         <button type="button" className="panel-link" onClick={() => navigate('/admin/approvals')}>Review All</button>
                     </div>
-                    <div className="pending-approval-item">
-                        <span className="pending-approval-type">promotion</span>
-                        <p className="pending-approval-desc">New promotion: &quot;Eid15%&quot;</p>
-                        <span className="pending-approval-amount">SAR 0.00</span>
-                    </div>
+                    {panelLoading ? (
+                        <p className="low-stock-message">Loading…</p>
+                    ) : pendingApprovals.length === 0 ? (
+                        <p className="low-stock-message">No pending approvals.</p>
+                    ) : (
+                        pendingApprovals.map((a) => {
+                            const type = String(a.entityType ?? a.type ?? 'item').replace(/_/g, ' ');
+                            const desc = a.title ?? a.description ?? a.name ?? a.entityName ?? `${type} pending review`;
+                            const amt = a.amount ?? a.total ?? a.grandTotal ?? a.grand_total;
+                            return (
+                                <div key={`${a.entityType ?? type}-${a.id}`} className="pending-approval-item">
+                                    <span className="pending-approval-type">{type}</span>
+                                    <p className="pending-approval-desc">{desc}</p>
+                                    {amt != null && amt !== '' && (
+                                        <span className="pending-approval-amount">{formatSar(amt)}</span>
+                                    )}
+                                </div>
+                            );
+                        })
+                    )}
                 </div>
             </div>
         </div>

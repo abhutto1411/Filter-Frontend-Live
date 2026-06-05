@@ -5,6 +5,7 @@ import {
     Factory,
     UserCircle2,
     PieChart,
+    Boxes,
 } from 'lucide-react';
 
 export const NAV_GROUPS = [
@@ -17,6 +18,9 @@ export const NAV_GROUPS = [
         { id: 'stock', label: 'Stock Inventory', icon: Warehouse },
         { id: 'stock_alerts', label: 'Workshop Alerts', icon: AlertTriangle },
         { id: 'employees', label: 'Staff & Roles', icon: Users },
+    ]},
+    { label: 'STORAGE FACILITY', items: [
+        { id: 'storage_facility', label: 'Storage brands', icon: Boxes },
     ]},
     { label: 'FINANCE', items: [
         { id: 'sales_invoices', label: 'Sales Invoices (AR)', icon: FileText },
@@ -42,13 +46,11 @@ export const NAV_GROUPS = [
                 { id: 'accounting_logs_payments', label: 'Payments Log', icon: BadgeDollarSign },
                 { id: 'accounting_logs_receipts', label: 'Receipts Log', icon: Receipt },
                 { id: 'accounting_logs_journals', label: 'Journal Log', icon: FileText },
+                { id: 'accounting_vat', label: 'VAT', icon: Receipt },
                 { id: 'accounting_reports_tb', label: 'Trial Balance', icon: BookOpen },
                 { id: 'accounting_reports_pl', label: 'Profit & Loss', icon: PieChart },
                 { id: 'accounting_reports_bs', label: 'Balance Sheet', icon: FileSpreadsheet },
                 { id: 'accounting_reports_cf', label: 'Cash Flow', icon: DollarSign },
-                { id: 'accounting_cash_bank', label: 'Cash & Bank (legacy)', icon: Landmark },
-                { id: 'accounting_purchases', label: 'Purchases (legacy)', icon: ShoppingCart },
-                { id: 'accounting_expenses', label: 'Expenses (legacy)', icon: Package },
             ]
         },
     ]},

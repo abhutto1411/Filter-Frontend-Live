@@ -40,3 +40,33 @@ export const bulkCreateSalaryPayments = (body) =>
     apiFetch('/advances-global/salary-payments/bulk', { method: 'POST', body: JSON.stringify(body) });
 export const getEmployeeLedger = (employeeId) =>
     apiFetch(`/advances-global/employee-ledger/${encodeURIComponent(employeeId)}`);
+
+// Workshop-scoped advances (branch filter + Salary Advances control account)
+export const getWorkshopAdvancesStats = (params = {}) =>
+    apiFetch(withQuery('/workshop-staff/advances/stats', params));
+
+export const getWorkshopAdvancesOverview = (params = {}) =>
+    apiFetch(withQuery('/workshop-staff/advances/overview', params));
+
+export const getWorkshopAdvancesList = (params = {}) =>
+    apiFetch(withQuery('/workshop-staff/advances', params)).then((res) =>
+        parseArr(res?.list ?? res),
+    );
+
+export const createWorkshopAdvance = (body) =>
+    apiFetch('/workshop-staff/advances', { method: 'POST', body: JSON.stringify(body) });
+
+export const bulkCreateWorkshopAdvances = (body) =>
+    apiFetch('/workshop-staff/advances/bulk', { method: 'POST', body: JSON.stringify(body) });
+
+export const getSalaryPayrollPreview = (params = {}) =>
+    apiFetch(withQuery('/workshop-staff/salary-payroll/preview', params));
+
+export const postWorkshopSalaryPayroll = (body) =>
+    apiFetch('/workshop-staff/salary-payroll', { method: 'POST', body: JSON.stringify(body) });
+
+export const getRecentWorkshopSalaryPayroll = (params = {}) =>
+    apiFetch(withQuery('/workshop-staff/salary-payroll/recent', params));
+
+export const getWorkshopEmployeeLedger = (employeeRecordId, params = {}) =>
+    apiFetch(withQuery(`/workshop-staff/employee-ledger/${encodeURIComponent(String(employeeRecordId))}`, params));

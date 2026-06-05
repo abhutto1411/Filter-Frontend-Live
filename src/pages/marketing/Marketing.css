@@ -225,7 +225,9 @@
     overflow: hidden;
 }
 
-.nav-sub-link {
+/* Scoped to .marketing-layout-root — the unscoped versions were leaking
+   into the regular Admin sidebar and forcing sub-items to 9.8px. */
+.marketing-layout-root .nav-sub-link {
     display: block;
     padding: 5px 12px 5px 32px;
     font-size: 9.8px;
@@ -234,8 +236,8 @@
     text-decoration: none;
 }
 
-.nav-sub-link:hover,
-.nav-sub-link.active {
+.marketing-layout-root .nav-sub-link:hover,
+.marketing-layout-root .nav-sub-link.active {
     background: rgba(0, 0, 0, 0.08);
     color: #1a1a1a;
     font-weight: 700;

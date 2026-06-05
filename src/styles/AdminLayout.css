@@ -149,8 +149,11 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 9px 28px;
-    font-size: 0.8rem;
+    padding: 10px 28px;
+    /* Was 0.8rem — too small next to the 0.875rem parent nav-link. Bump
+       to match parent so sub-items don't feel like "small print" and
+       stay readable on standard displays. */
+    font-size: 0.875rem;
     color: var(--sidebar-text);
     cursor: pointer;
     transition: all 0.2s;
@@ -587,6 +590,33 @@
     animation: modal-content-pop 0.22s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+.app-modal-content--large {
+    width: min(94vw, 1060px);
+    max-width: min(94vw, 1060px);
+    max-height: min(88vh, 820px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.app-modal-content--large .app-modal-header {
+    flex-shrink: 0;
+    padding: 12px 22px;
+}
+
+.app-modal-content--large .app-modal-body {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 0 22px 16px;
+}
+
+.app-modal-content--large .app-modal-footer {
+    flex-shrink: 0;
+}
+
 .app-modal-header,
 .app-modal-body,
 .app-modal-footer {
@@ -635,7 +665,7 @@
 }
 
 @media (max-width: 1024px) {
-    .app-modal-content {
+    .app-modal-content:not(.app-modal-content--large) {
         max-width: 100vw;
         margin: 0;
         border-radius: 24px 24px 0 0;
@@ -645,6 +675,10 @@
         right: 0;
         animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
         max-height: 90vh;
+    }
+
+    .app-modal-content--large {
+        max-height: min(92vh, 820px);
     }
 }
 

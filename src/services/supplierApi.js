@@ -160,6 +160,14 @@ export const createSupplierLocation = (body) =>
     apiFetch('/supplier/locations', { method: 'POST', body: JSON.stringify(body) });
 export const getSupplierInventoryStockBalances = (params = {}) =>
     apiFetch(withQuery('/supplier/inventory/stock-balances', params));
+
+export const getSupplierProductInventoryTimeline = (productId, params = {}) =>
+    apiFetch(
+        withQuery(
+            `/supplier/inventory/products/${encodeURIComponent(String(productId))}/timeline`,
+            params,
+        ),
+    );
 export const getSupplierStockVisibilityScreen = (params = {}) =>
     apiFetch(withQuery('/supplier/stock-visibility/screen', params));
 export const getSupplierCriticalStockSummary = () =>
@@ -278,6 +286,19 @@ export const updateSupplierSuperSupplier = (id, body) =>
         method: 'PATCH',
         body: JSON.stringify(body),
     });
+export const deleteSupplierSuperSupplier = (id) =>
+    apiFetch(`/supplier/super-suppliers/${encodeURIComponent(String(id))}`, {
+        method: 'DELETE',
+    });
+export const getSuperSupplierApLedger = (id, params = {}) =>
+    apiFetch(withQuery(`/supplier/super-suppliers/${encodeURIComponent(String(id))}/ap-ledger`, params));
+export const getSuperSupplierPurchaseProducts = (id, params = {}) =>
+    apiFetch(
+        withQuery(
+            `/supplier/super-suppliers/${encodeURIComponent(String(id))}/purchase-products`,
+            params,
+        ),
+    );
 export const listSupplierSuperSupplierPurchases = (params = {}) =>
     apiFetch(withQuery('/supplier/super-supplier-purchases', params));
 export const createSupplierSuperSupplierPurchase = (body) =>
@@ -300,6 +321,10 @@ export const listSupplierWorkshopPurchaseInvoices = (params = {}) =>
     apiFetch(withQuery('/supplier/workshop-purchase-invoices', params));
 export const getSupplierWorkshopPurchaseInvoice = (id) =>
     apiFetch(`/supplier/workshop-purchase-invoices/${encodeURIComponent(String(id))}`);
+export const getWorkshopPurchaseSalesInvoicePrefill = (id) =>
+    apiFetch(
+        `/supplier/workshop-purchase-invoices/${encodeURIComponent(String(id))}/sales-invoice-prefill`,
+    );
 export const updateSupplierWorkshopPurchaseInvoice = (id, body) =>
     apiFetch(`/supplier/workshop-purchase-invoices/${encodeURIComponent(String(id))}`, {
         method: 'PATCH',

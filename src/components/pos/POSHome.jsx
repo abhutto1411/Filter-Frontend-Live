@@ -38,10 +38,11 @@ export default function POSHome({ onNewWalkIn, onCorporateBooking, onViewHistory
         debounceRef.current = setTimeout(() => {
             setSearching(true);
             const trimmed = search.trim();
-            const isDigits = /^\d+$/.test(trimmed);
-            const qs = new URLSearchParams(
-                isDigits ? { phone: trimmed, limit: '10' } : { name: trimmed, limit: '10' }
-            ).toString();
+            const qs = new URLSearchParams({
+                q: trimmed,
+                limit: '20',
+                scope: 'all',
+            }).toString();
             apiFetch(`/cashier/customers/search?${qs}`)
                 .then(d => setCustomers(d.customers || d.data || []))
                 .catch(() => setCustomers([]))

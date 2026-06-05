@@ -20,7 +20,52 @@ import {
     workshopCommissionsScopeParams,
 } from '../../services/workshopCommissionsApi';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 25;
+
+function buildListParams(selectedBranchId, dateScope, filterStatus, filterEmployeeId, page) {
+    const base = workshopCommissionsScopeParams(selectedBranchId, dateScope);
+    return {
+        ...base,
+        ...(filterStatus !== 'all' ? { status: filterStatus } : {}),
+        ...(filterEmployeeId ? { employeeId: String(filterEmployeeId) } : {}),
+        page,
+        pageSize: PAGE_SIZE,
+    };
+}
+
+/** Fetch every accrued line id + amount matching the current filters (all pages). */
+async function fetchAllAccruedInScope(selectedBranchId, dateScope, filterEmployeeId, options = {}) {
+    const base = workshopCommissionsScopeParams(selectedBranchId, dateScope);
+    const batchSize = 200;
+    const lines = new Map();
+    let page = 1;
+    let total = Infinity;
+
+    while ((page - 1) * batchSize < total) {
+        const res = await getWorkshopCommissionsList(
+            {
+                ...base,
+                status: 'accrued',
+                ...(filterEmployeeId ? { employeeId: String(filterEmployeeId) } : {}),
+                page,
+                pageSize: batchSize,
+            },
+            options,
+        );
+        const { items, total: t } = parseCommissionList(res);
+        total = t;
+        for (const raw of items) {
+            const row = mapCommissionRow(raw);
+            if (row.id && row.status === 'accrued') {
+                lines.set(row.id, row.amount);
+            }
+        }
+        if (items.length === 0) break;
+        page += 1;
+    }
+
+    return lines;
+}
 
 const CHIP_PALETTE = [
     { color: '#E0E7FF', textColor: '#4338CA' },
@@ -145,10 +190,12 @@ export default function WorkshopCommissions({ selectedBranchId = 'all', branches
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [page, setPage] = useState(1);
+    const [accruedTotalInScope, setAccruedTotalInScope] = useState(0);
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState('');
+    const [selectAllLoading, setSelectAllLoading] = useState(false);
 
-    const [selectedIds, setSelectedIds] = useState(() => new Set());
+    const [selectedLines, setSelectedLines] = useState(() => new Map());
     const [payoutModalOpen, setPayoutModalOpen] = useState(false);
     const [payoutAccounts, setPayoutAccounts] = useState([]);
     const [accountsLoading, setAccountsLoading] = useState(false);
@@ -171,33 +218,44 @@ export default function WorkshopCommissions({ selectedBranchId = 'all', branches
         return o;
     }, [startDate, endDate]);
 
+    const filterScopeKey = useMemo(
+        () => [selectedBranchId, startDate, endDate, filterStatus, filterEmployeeId].join('\u0001'),
+        [selectedBranchId, startDate, endDate, filterStatus, filterEmployeeId],
+    );
+
     useEffect(() => {
         const ac = new AbortController();
         const opt = { signal: ac.signal };
         let cancelled = false;
 
-        const scopeKey = [selectedBranchId, startDate, endDate, filterStatus, filterEmployeeId].join('\u0001');
-        const scopeChanged = filterScopeKeyRef.current !== scopeKey;
-
-        if (scopeChanged && page !== 1) {
-            filterScopeKeyRef.current = scopeKey;
-            setPage(1);
-            return () => ac.abort();
+        const scopeChanged = filterScopeKeyRef.current !== filterScopeKey;
+        if (scopeChanged) {
+            filterScopeKeyRef.current = filterScopeKey;
+            setSelectedLines(new Map());
+            if (page !== 1) {
+                setPage(1);
+                return () => ac.abort();
+            }
         }
-
-        filterScopeKeyRef.current = scopeKey;
 
         setLoadError('');
         setIsLoading(true);
         (async () => {
             try {
                 const base = workshopCommissionsScopeParams(selectedBranchId, dateScope);
-                const listParams = {
+                const listParams = buildListParams(
+                    selectedBranchId,
+                    dateScope,
+                    filterStatus,
+                    filterEmployeeId,
+                    page,
+                );
+                const accruedCountParams = {
                     ...base,
-                    ...(filterStatus !== 'all' ? { status: filterStatus } : {}),
+                    status: 'accrued',
                     ...(filterEmployeeId ? { employeeId: String(filterEmployeeId) } : {}),
-                    limit: PAGE_SIZE,
-                    offset: (page - 1) * PAGE_SIZE,
+                    page: 1,
+                    pageSize: 1,
                 };
 
                 const settled = await Promise.allSettled([
@@ -205,17 +263,33 @@ export default function WorkshopCommissions({ selectedBranchId = 'all', branches
                     getWorkshopCommissionsPendingByEmployee(base, opt),
                     getWorkshopCommissionsEmployees(base, opt),
                     getWorkshopCommissionsList(listParams, opt),
+                    filterStatus === 'accrued'
+                        ? Promise.resolve(null)
+                        : getWorkshopCommissionsList(accruedCountParams, opt),
                 ]);
 
                 if (cancelled) return;
 
-                const deduped = applyCommissionDashboardSettled(settled, {
+                const deduped = applyCommissionDashboardSettled(settled.slice(0, 4), {
                     setSummary,
                     setPendingByEmployee,
                     setFilterEmployees,
                     setCommissionRows,
                     setListTotal,
                 });
+                if (!cancelled) {
+                    const listRes = settled[3];
+                    if (listRes.status === 'fulfilled') {
+                        const { total: listCount } = parseCommissionList(listRes.value);
+                        if (filterStatus === 'accrued') {
+                            setAccruedTotalInScope(listCount);
+                        }
+                    }
+                    if (filterStatus !== 'accrued' && settled[4]?.status === 'fulfilled') {
+                        const { total } = parseCommissionList(settled[4].value);
+                        setAccruedTotalInScope(total);
+                    }
+                }
                 if (!cancelled && deduped.length) {
                     setLoadError(
                         deduped.length === 1
@@ -235,7 +309,7 @@ export default function WorkshopCommissions({ selectedBranchId = 'all', branches
             cancelled = true;
             ac.abort();
         };
-    }, [selectedBranchId, dateScope, filterStatus, filterEmployeeId, page]);
+    }, [selectedBranchId, dateScope, filterStatus, filterEmployeeId, page, filterScopeKey]);
 
     useEffect(() => {
         if (!payoutModalOpen) return undefined;
@@ -263,60 +337,74 @@ export default function WorkshopCommissions({ selectedBranchId = 'all', branches
         };
     }, [payoutModalOpen, selectedBranchId, dateScope]);
 
+    const selectedCount = selectedLines.size;
+
     const selectedTotal = useMemo(() => {
         let sum = 0;
-        for (const row of commissionRows) {
-            if (selectedIds.has(row.id)) sum += row.amount;
-        }
+        for (const amt of selectedLines.values()) sum += amt;
         return sum;
-    }, [commissionRows, selectedIds]);
+    }, [selectedLines]);
 
-    const toggleSelect = (id) => {
-        setSelectedIds((prev) => {
-            const next = new Set(prev);
-            const sid = String(id);
-            if (next.has(sid)) next.delete(sid);
-            else next.add(sid);
+    const toggleSelect = (row) => {
+        if (row.status !== 'accrued') return;
+        setSelectedLines((prev) => {
+            const next = new Map(prev);
+            if (next.has(row.id)) next.delete(row.id);
+            else next.set(row.id, row.amount);
             return next;
         });
     };
 
     const accruedOnPage = commissionRows.filter((c) => c.status === 'accrued');
-    const allAccruedOnPageSelected =
-        accruedOnPage.length > 0 && accruedOnPage.every((c) => selectedIds.has(c.id));
+    const allAccruedInScopeSelected =
+        accruedTotalInScope > 0 && selectedCount >= accruedTotalInScope;
 
-    const toggleSelectAllAccruedOnPage = () => {
-        const accruedIds = accruedOnPage.map((c) => c.id);
-        const allSelected = accruedIds.length > 0 && accruedIds.every((id) => selectedIds.has(id));
-        if (allSelected) setSelectedIds(new Set());
-        else setSelectedIds(new Set(accruedIds));
+    const toggleSelectAllAccrued = async () => {
+        if (allAccruedInScopeSelected && selectedCount > 0) {
+            setSelectedLines(new Map());
+            return;
+        }
+        setSelectAllLoading(true);
+        setLoadError('');
+        try {
+            const lines = await fetchAllAccruedInScope(
+                selectedBranchId,
+                dateScope,
+                filterEmployeeId,
+            );
+            setSelectedLines(lines);
+        } catch (e) {
+            setLoadError(e?.message || 'Could not select all accrued commissions');
+        } finally {
+            setSelectAllLoading(false);
+        }
     };
 
     const totalPages = Math.max(1, Math.ceil(listTotal / PAGE_SIZE));
 
     const confirmPayout = async () => {
-        if (!selectedAccountId || selectedIds.size === 0) return;
+        if (!selectedAccountId || selectedCount === 0) return;
         setPayoutError('');
         setPayoutSubmitting(true);
         try {
             await postWorkshopCommissionsPayout({
-                commissionLineIds: Array.from(selectedIds),
+                commissionLineIds: Array.from(selectedLines.keys()),
                 payoutAccountId: selectedAccountId,
                 ...(payoutNotes.trim() ? { notes: payoutNotes.trim() } : {}),
             });
-            setSelectedIds(new Set());
+            setSelectedLines(new Map());
             setPayoutModalOpen(false);
             setSelectedAccountId('');
             setPayoutNotes('');
             setIsLoading(true);
             const base = workshopCommissionsScopeParams(selectedBranchId, dateScope);
-            const listParams = {
-                ...base,
-                ...(filterStatus !== 'all' ? { status: filterStatus } : {}),
-                ...(filterEmployeeId ? { employeeId: String(filterEmployeeId) } : {}),
-                limit: PAGE_SIZE,
-                offset: (page - 1) * PAGE_SIZE,
-            };
+            const listParams = buildListParams(
+                selectedBranchId,
+                dateScope,
+                filterStatus,
+                filterEmployeeId,
+                page,
+            );
             const settled = await Promise.allSettled([
                 getWorkshopCommissionsSummary(base),
                 getWorkshopCommissionsPendingByEmployee(base),
@@ -366,7 +454,7 @@ export default function WorkshopCommissions({ selectedBranchId = 'all', branches
     };
 
     const openIndividualPayout = (row) => {
-        setSelectedIds(new Set([row.id]));
+        setSelectedLines(new Map([[row.id, row.amount]]));
         setPayoutModalOpen(true);
     };
 
@@ -561,24 +649,27 @@ export default function WorkshopCommissions({ selectedBranchId = 'all', branches
                     </div>
                 </div>
                 <div className="ws-filter-actions">
-                    {selectedIds.size > 0 && (
-                        <button type="button" className="ws-btn-clear" onClick={() => setSelectedIds(new Set())}>
-                            Clear ({selectedIds.size})
+                    {selectedCount > 0 && (
+                        <button type="button" className="ws-btn-clear" onClick={() => setSelectedLines(new Map())}>
+                            Clear ({selectedCount})
                         </button>
                     )}
                     <button
                         type="button"
-                        className={`ws-btn-payout ${selectedIds.size > 0 ? 'active' : ''}`}
+                        className={`ws-btn-payout ${selectedCount > 0 ? 'active' : ''}`}
+                        disabled={selectAllLoading}
                         onClick={() =>
-                            selectedIds.size > 0 ? setPayoutModalOpen(true) : toggleSelectAllAccruedOnPage()
+                            selectedCount > 0 ? setPayoutModalOpen(true) : toggleSelectAllAccrued()
                         }
                     >
-                        {selectedIds.size > 0 ? (
+                        {selectAllLoading ? (
+                            'Selecting…'
+                        ) : selectedCount > 0 ? (
                             <>
                                 <Wallet size={16} /> Process Payout · SAR {selectedTotal.toLocaleString()}
                             </>
                         ) : (
-                            'Select All Accrued'
+                            `Select All Accrued${accruedTotalInScope > 0 ? ` (${accruedTotalInScope})` : ''}`
                         )}
                     </button>
                 </div>
@@ -591,9 +682,15 @@ export default function WorkshopCommissions({ selectedBranchId = 'all', branches
                             <th style={{ width: 40 }}>
                                 <input
                                     type="checkbox"
-                                    checked={allAccruedOnPageSelected}
-                                    onChange={toggleSelectAllAccruedOnPage}
-                                    disabled={accruedOnPage.length === 0}
+                                    checked={allAccruedInScopeSelected}
+                                    ref={(el) => {
+                                        if (el) {
+                                            el.indeterminate =
+                                                selectedCount > 0 && !allAccruedInScopeSelected;
+                                        }
+                                    }}
+                                    onChange={toggleSelectAllAccrued}
+                                    disabled={accruedOnPage.length === 0 || selectAllLoading}
                                 />
                             </th>
                             <th>EMPLOYEE</th>
@@ -617,12 +714,12 @@ export default function WorkshopCommissions({ selectedBranchId = 'all', branches
                             </tr>
                         ) : (
                             commissionRows.map((c) => (
-                                <tr key={c.id} className={selectedIds.has(c.id) ? 'selected' : ''}>
+                                <tr key={c.id} className={selectedLines.has(c.id) ? 'selected' : ''}>
                                     <td>
                                         <input
                                             type="checkbox"
-                                            checked={selectedIds.has(c.id)}
-                                            onChange={() => c.status === 'accrued' && toggleSelect(c.id)}
+                                            checked={selectedLines.has(c.id)}
+                                            onChange={() => toggleSelect(c)}
                                             disabled={c.status !== 'accrued'}
                                         />
                                     </td>
@@ -761,7 +858,7 @@ export default function WorkshopCommissions({ selectedBranchId = 'all', branches
                         <div className="ws-summary-box">
                             <div className="ws-summary-line">
                                 <span className="ws-text-dim">Commissions selected</span>
-                                <span className="ws-font-bold">{selectedIds.size}</span>
+                                <span className="ws-font-bold">{selectedCount}</span>
                             </div>
                             <div className="ws-summary-line">
                                 <span className="ws-text-dim">Total payout amount</span>

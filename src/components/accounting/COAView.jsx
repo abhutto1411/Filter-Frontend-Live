@@ -453,7 +453,7 @@ export default function COAView({ readOnly = false }) {
         }
 
         if (activeTab === 'P&L') {
-            const d = plData || { revenue: [], totalRevenue: 0, costOfGoodsSold: [], totalCOGS: 0, grossProfit: 0, operatingExpenses: [], totalOperatingExpenses: 0, otherExpenses: [], totalOtherExpenses: 0, netIncome: 0 };
+            const d = plData || { revenue: [], totalRevenue: 0, costOfGoodsSold: [], totalCOGS: 0, grossProfit: 0, operatingExpenses: [], totalOperatingExpenses: 0, otherIncome: [], totalOtherIncome: 0, otherExpenses: [], totalOtherExpenses: 0, netIncome: 0 };
             const sectionHeader = { marginTop: 18, fontSize: 11, letterSpacing: 1, color: '#6b7280', fontWeight: 700 };
             const rowStyle = { display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: `1px solid ${palette.border}` };
             return (
@@ -482,6 +482,9 @@ export default function COAView({ readOnly = false }) {
                             <div style={sectionHeader}>OPERATING EXPENSES</div>
                             {d.operatingExpenses.length === 0 ? <div style={{ color: palette.textSecondary, fontSize: 13 }}>No operating expenses</div> : d.operatingExpenses.map((r) => <div key={r.code} style={rowStyle}><a href="#" style={{ color: palette.primary, textDecoration: 'none' }}>{r.name}</a><span>{fmtMoney(r.amount)}</span></div>)}
                             <div style={{ ...rowStyle, fontWeight: 700, color: '#dc2626' }}><span>Total Operating Expenses</span><span>{fmtMoney(d.totalOperatingExpenses)}</span></div>
+                            <div style={sectionHeader}>OTHER INCOME</div>
+                            {d.otherIncome.length === 0 ? <div style={{ color: palette.textSecondary, fontSize: 13 }}>No other income</div> : d.otherIncome.map((r) => <div key={r.code} style={rowStyle}><span>{r.name}</span><span>{fmtMoney(r.amount)}</span></div>)}
+                            <div style={{ ...rowStyle, fontWeight: 700, color: '#16a34a' }}><span>Total Other Income</span><span>{fmtMoney(d.totalOtherIncome)}</span></div>
                             <div style={sectionHeader}>OTHER EXPENSES</div>
                             {d.otherExpenses.length === 0 ? <div style={{ color: palette.textSecondary, fontSize: 13 }}>No other expenses</div> : d.otherExpenses.map((r) => <div key={r.code} style={rowStyle}><span>{r.name}</span><span>{fmtMoney(r.amount)}</span></div>)}
                             <div style={{ ...rowStyle, fontWeight: 700, color: '#dc2626' }}><span>Total Other Expenses</span><span>{fmtMoney(d.totalOtherExpenses)}</span></div>

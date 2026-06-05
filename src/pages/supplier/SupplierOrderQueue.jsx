@@ -30,26 +30,29 @@ const ORDER_STATUS_STYLES = Object.fromEntries(PIPELINE_STAGES.map(s => [s.id, {
 
 const STATUS_LABEL = Object.fromEntries(PIPELINE_STAGES.map(s => [s.id, s.label]));
 
-/** Maps workshop PI API status → Order Queue pipeline card id (aligned with branch PO stages). */
+/** Workshop purchase requests: pending → approved → sales invoice (no fulfillment pipeline). */
+const WPI_WORKSHOP_ORDER_STAGES = [
+    { id: 'pending_acceptance', label: 'Pending approval', bg: '#FEF3C7', color: '#B45309', api: 'pending' },
+    { id: 'accepted', label: 'Approved', bg: '#D1FAE5', color: '#047857', api: 'approved' },
+    { id: 'rejected', label: 'Rejected', bg: '#FEE2E2', color: '#B91C1C', api: 'rejected' },
+];
+
+/** Maps workshop PI API status → simplified Order Queue bucket. */
 function wpiStatusToPipelineId(status) {
     const s = String(status || '').toLowerCase();
     if (s === 'pending') return 'pending_acceptance';
-    if (s === 'approved') return 'accepted';
-    if (s === 'processing') return 'processing';
-    if (s === 'ready_to_dispatch') return 'ready_to_dispatch';
-    if (s === 'on_the_way') return 'dispatched';
-    if (s === 'delivered') return 'delivered';
+    if (s === 'rejected') return 'rejected';
+    if (
+        s === 'approved' ||
+        s === 'processing' ||
+        s === 'ready_to_dispatch' ||
+        s === 'on_the_way' ||
+        s === 'delivered'
+    ) {
+        return 'accepted';
+    }
     return null;
 }
-
-const PIPELINE_STAGE_TO_WPI_API = {
-    pending_acceptance: 'pending',
-    accepted: 'approved',
-    processing: 'processing',
-    ready_to_dispatch: 'ready_to_dispatch',
-    dispatched: 'on_the_way',
-    delivered: 'delivered',
-};
 
 export default function SupplierOrderQueue() {
     /** Purchase-order queue vs full workshop purchase invoice list (same APIs as Finance → Workshop purchases). */
@@ -228,9 +231,15 @@ export default function SupplierOrderQueue() {
     const pipelineCounts = PIPELINE_STAGES.reduce(
         (acc, s) => ({
             ...acc,
-            [s.id]:
-                orders.filter(o => o.status === s.id).length +
-                wpiRowsForCounts.filter(r => wpiStatusToPipelineId(r?.status) === s.id).length,
+            [s.id]: orders.filter((o) => o.status === s.id).length,
+        }),
+        {},
+    );
+
+    const wpiPipelineCounts = WPI_WORKSHOP_ORDER_STAGES.reduce(
+        (acc, s) => ({
+            ...acc,
+            [s.id]: wpiRowsForCounts.filter((r) => wpiStatusToPipelineId(r?.status) === s.id).length,
         }),
         {},
     );
@@ -291,13 +300,13 @@ export default function SupplierOrderQueue() {
                         )}
                     </p>
                 </button>
-                {PIPELINE_STAGES.map((s) => (
+                {WPI_WORKSHOP_ORDER_STAGES.map((s) => (
                     <button
                         key={s.id}
                         type="button"
                         onClick={() => {
                             setSegment('wpi_all');
-                            setWpiListStatusFilter(PIPELINE_STAGE_TO_WPI_API[s.id] ?? '');
+                            setWpiListStatusFilter(s.api ?? '');
                         }}
                         style={{
                             padding: 12,
@@ -306,7 +315,7 @@ export default function SupplierOrderQueue() {
                             color: s.color,
                             textAlign: 'center',
                             boxShadow:
-                                segment === 'wpi_all' && wpiListStatusFilter === PIPELINE_STAGE_TO_WPI_API[s.id]
+                                segment === 'wpi_all' && wpiListStatusFilter === s.api
                                     ? '0 0 0 2px rgba(15, 23, 42, 0.22)'
                                     : '0 1px 3px rgba(0,0,0,0.04)',
                             border: 'none',
@@ -317,11 +326,7 @@ export default function SupplierOrderQueue() {
                     >
                         <p style={{ fontSize: '0.65rem', fontWeight: 600, margin: 0, lineHeight: 1.2 }}>{s.label}</p>
                         <p style={{ fontSize: '1.35rem', fontWeight: 800, margin: '6px 0 0 0', minHeight: 28 }}>
-                            {loading ? (
-                                <Shimmer style={{ display: 'inline-block', verticalAlign: 'middle', height: 22, width: 32, borderRadius: 6 }} />
-                            ) : (
-                                pipelineCounts[s.id]
-                            )}
+                            {wpiPipelineCounts[s.id]}
                         </p>
                     </button>
                 ))}
@@ -348,8 +353,8 @@ export default function SupplierOrderQueue() {
             {segment === 'wpi_all' ? (
                 <div style={{ marginTop: 8 }}>
                     <p style={{ margin: '0 0 12px', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                        Cards filter the workshop purchase invoice table. Same data as{' '}
-                        <strong>Finance → Workshop purchases</strong>.
+                        Approve or reject, then <strong>Prepare sales invoice</strong> (same AR/stock/GL as Sales
+                        Invoices). Same data as <strong>Finance → Workshop purchases</strong>.
                     </p>
                     <WorkshopPurchaseInvoicesSupplierPanel
                         variant="embedded"

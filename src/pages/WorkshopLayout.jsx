@@ -11,6 +11,7 @@ import WorkshopDepartments from './workshop/WorkshopDepartments';
 import WorkshopCatalogNew from './workshop/WorkshopCatalogNew';
 import WorkshopPurchases from './workshop/WorkshopPurchases';
 import WorkshopApprovals from './workshop/WorkshopApprovals';
+import WorkshopSalesReturns from './workshop/WorkshopSalesReturns';
 import WorkshopSuppliers from './workshop/WorkshopSuppliers';
 import WorkshopReports from './workshop/WorkshopReports';
 import WorkshopPosMonitoring from './workshop/WorkshopPosMonitoring';
@@ -39,23 +40,47 @@ import './workshop/Workshop.css';
 import '../styles/admin/AccountingPage.css';
 import '../styles/admin/ApprovalsPage.css';
 
+/** Tabs reachable by in-app navigation but not listed in the sidebar. */
+const WORKSHOP_INTERNAL_TABS = new Set(['supplier-ledger']);
+
+function parseLedgerTabStateFromSearch(search) {
+    const params = new URLSearchParams(search || '');
+    const type = params.get('type');
+    const id = params.get('id');
+    if (!type || !id) return null;
+    const name = params.get('name');
+    return {
+        type,
+        id,
+        ...(name ? { name } : {}),
+    };
+}
+
 export default function WorkshopLayout() {
     const navigate = useNavigate();
     const location = useLocation();
     const { logout, hasPermission, user } = useAuth();
 
     /**
-     * Branch-restriction rule for the workshop portal:
-     *   - If user has a non-system custom role AND a User.branchId → they are
-     *     LOCKED to that branch. The sidebar branch selector hides "All
-     *     Branches" and shows only their assigned branch. Every page receives
-     *     that branchId as `selectedBranchId`.
-     *   - Workshop owners and users without a role keep full multi-branch view.
+     * Branch-restriction rules for the workshop portal (priority top-down):
+     *   1. User has a non-system custom role AND `User.branchId` set → SINGLE
+     *      branch HARD LOCK. Sidebar hides "All Branches" + dropdown disabled.
+     *   2. User has a non-system custom role AND `role.branchIds` non-empty →
+     *      MULTI-branch scope. Dropdown shows only those branches; "All
+     *      Branches" still selectable but means "all branches I have access to".
+     *   3. Workshop owners + system-role users + roleless users → full access.
      */
     const userBranchLock =
         user?.role && !user.role.isSystem && user.branchId
             ? String(user.branchId)
             : null;
+    /** Set of allowed branch IDs from role.branchIds (only when no hard lock). */
+    const roleBranchScope = useMemo(() => {
+        if (userBranchLock) return null; // hard lock overrides scope
+        if (!user?.role || user.role.isSystem) return null;
+        const ids = (user.role.branchIds ?? []).map(String);
+        return ids.length > 0 ? new Set(ids) : null;
+    }, [user?.role, userBranchLock]);
 
     /**
      * Filter sidebar items by the current user's permissions.
@@ -112,7 +137,12 @@ export default function WorkshopLayout() {
     };
 
     const [activeTab, setActiveTab] = useState(getActiveTabFromUrl());
-    const [tabState, setTabState] = useState(null);
+    const [tabState, setTabState] = useState(() => {
+        if (getActiveTabFromUrl() === 'supplier-ledger') {
+            return parseLedgerTabStateFromSearch(window.location.search);
+        }
+        return null;
+    });
 
     /** Resolve first visible tab id (top-level OR sub-item). Used for auto-snap. */
     const firstVisibleTabId = (() => {
@@ -128,11 +158,21 @@ export default function WorkshopLayout() {
      */
     useEffect(() => {
         if (!firstVisibleTabId) return;
+        if (WORKSHOP_INTERNAL_TABS.has(activeTab)) return;
         const allVisible = visibleNavItems.flatMap((i) => i.subItems ? i.subItems.map((s) => s.id) : [i.id]);
         if (!allVisible.includes(activeTab)) {
             setActiveTab(firstVisibleTabId);
         }
     }, [activeTab, firstVisibleTabId, visibleNavItems]);
+
+    useEffect(() => {
+        const tabFromUrl = getActiveTabFromUrl();
+        setActiveTab(tabFromUrl);
+        if (tabFromUrl === 'supplier-ledger') {
+            const ledgerState = parseLedgerTabStateFromSearch(location.search);
+            if (ledgerState) setTabState(ledgerState);
+        }
+    }, [location.pathname, location.search]);
 
     const handleTabChange = (tabId, state = null) => {
         setActiveTab(tabId);
@@ -153,6 +193,17 @@ export default function WorkshopLayout() {
                 'acc-ledger': 'ledger',
             };
             navigate(`/workshop/accounting/${reverseMapping[tabId]}`);
+        } else if (
+            tabId === 'supplier-ledger' &&
+            state?.type &&
+            state?.id
+        ) {
+            const q = new URLSearchParams({
+                type: String(state.type),
+                id: String(state.id),
+            });
+            if (state.name) q.set('name', String(state.name));
+            navigate(`/workshop/${tabId}?${q.toString()}`);
         } else {
             navigate(`/workshop/${tabId}`);
         }
@@ -265,10 +316,16 @@ export default function WorkshopLayout() {
 
     const activeBranches = useMemo(() => {
         const all = filterPortalVisibleBranches(branches);
-        if (!userBranchLock) return all;
-        // Branch-locked users only see their own branch in the dropdown + data.
-        return all.filter((b) => String(b.id) === userBranchLock);
-    }, [branches, userBranchLock]);
+        if (userBranchLock) {
+            // Branch-locked users only see their own branch in the dropdown + data.
+            return all.filter((b) => String(b.id) === userBranchLock);
+        }
+        if (roleBranchScope) {
+            // Role with explicit branch scope — limit dropdown to that set.
+            return all.filter((b) => roleBranchScope.has(String(b.id)));
+        }
+        return all;
+    }, [branches, userBranchLock, roleBranchScope]);
 
     // If the loaded branch list never contains the user's locked branch (e.g.
     // pending data race), still keep selectedBranch pointed at the lock so all
@@ -284,10 +341,13 @@ export default function WorkshopLayout() {
         if (userBranchLock) return; // never override a hard branch lock
         if (selectedBranch === 'all') return;
         const sel = branches.find((b) => String(b.id) === String(selectedBranch));
-        if (!sel || isWorkshopPortalBranchInactive(sel)) {
+        // If the selected branch is now invalid (inactive, or outside this
+        // user's role scope), snap back to "All Branches" within their scope.
+        const outsideScope = roleBranchScope && !roleBranchScope.has(String(selectedBranch));
+        if (!sel || isWorkshopPortalBranchInactive(sel) || outsideScope) {
             setSelectedBranch('all');
         }
-    }, [branches, selectedBranch, userBranchLock]);
+    }, [branches, selectedBranch, userBranchLock, roleBranchScope]);
 
     useEffect(() => {
         if (userBranchLock) return;
@@ -354,7 +414,15 @@ export default function WorkshopLayout() {
                     branches={activeBranches}
                 />
             );
-            case 'approvals':   return <WorkshopApprovals selectedBranchId={selectedBranch} branches={activeBranches} />;
+            case 'approvals':   return (
+                <WorkshopApprovals
+                    selectedBranchId={selectedBranch}
+                    branches={activeBranches}
+                    branchLockedId={userBranchLock}
+                />
+            );
+           
+            case 'sales-returns': return <WorkshopSalesReturns selectedBranchId={selectedBranch} branches={activeBranches} />;
             case 'suppliers':   return <WorkshopSuppliers selectedBranchId={selectedBranch} branches={activeBranches} onTabChange={handleTabChange} />;
             case 'affiliated-suppliers':
                 return (
@@ -410,7 +478,10 @@ export default function WorkshopLayout() {
         }
     };
 
-    const currentLabel = NAV_ITEMS.flatMap(i => i.subItems ? [i, ...i.subItems] : [i]).find(n => n.id === activeTab)?.label || 'Dashboard';
+    const currentLabel =
+        activeTab === 'supplier-ledger'
+            ? 'Supplier Ledger'
+            : NAV_ITEMS.flatMap(i => i.subItems ? [i, ...i.subItems] : [i]).find(n => n.id === activeTab)?.label || 'Dashboard';
     const topbarSubtitle = activeTab === 'catalog-new' ? 'Corporate master catalog' : selectedBranchName;
 
     return (
@@ -485,9 +556,11 @@ export default function WorkshopLayout() {
                                                         key={sub.id}
                                                         className={`ws-nav-btn ws-nav-sub-btn ${activeTab === sub.id ? 'active' : ''}`}
                                                         onClick={() => handleTabChange(sub.id)}
-                                                        style={{ 
-                                                            padding: '8px 12px', 
-                                                            fontSize: '0.8125rem',
+                                                        style={{
+                                                            padding: '10px 12px',
+                                                            // Bumped from 0.8125rem — sub-items felt like "small print"
+                                                            // and were hard to read; now matches parent nav button.
+                                                            fontSize: '0.875rem',
                                                             background: 'transparent',
                                                             color: '#000000',
                                                             textDecoration: activeTab === sub.id ? 'underline' : 'none',
@@ -496,7 +569,7 @@ export default function WorkshopLayout() {
                                                             textAlign: 'left',
                                                             cursor: 'pointer',
                                                             display: 'block',
-                                                            opacity: activeTab === sub.id ? 1 : 0.6
+                                                            opacity: activeTab === sub.id ? 1 : 0.7
                                                         }}
                                                     >
                                                         {sub.label}

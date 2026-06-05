@@ -30,7 +30,7 @@ export default function ReturnsListScreen() {
                 <RotateCcw size={20} color="#23262D" />
                 <div style={{ flex: 1 }}>
                     <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 900, color: '#1E2124' }}>Returns List</h2>
-                    <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>All processed sales returns</p>
+                    <p style={{ margin: '2px 0 0', fontSize: '0.75rem', color: '#94a3b8' }}>Cashier sales returns (pending + approved)</p>
                 </div>
                 <button onClick={() => fetchReturns(true)} disabled={refreshing}
                     style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '7px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', fontWeight: 700, color: '#475569' }}>
@@ -77,7 +77,7 @@ export default function ReturnsListScreen() {
                             <div key={r.id || i} style={{ background: '#fff', borderRadius: 14, padding: '14px 18px', border: '1px solid #e5e7eb', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                                     <p style={{ margin: 0, fontWeight: 900, fontSize: '0.9rem', color: '#1E2124' }}>
-                                        Return #{r.returnNumber || r.id?.slice?.(-6) || r.id}
+                                        {r.returnNo || r.creditNoteNo || `Return #${r.id?.slice?.(-6) || r.id}`}
                                     </p>
                                     <span style={{ padding: '3px 10px', borderRadius: 20, background: statusColor.bg, color: statusColor.fg, fontSize: '0.7rem', fontWeight: 800, textTransform: 'capitalize' }}>
                                         {status}

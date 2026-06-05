@@ -5,12 +5,17 @@ import Modal from '../../components/Modal';
 import { ShimmerTableBodyRows, ShimmerTextBlock } from '../../components/supplier/Shimmer';
 import WorkshopPurchaseInvoiceView from '../../components/supplier/WorkshopPurchaseInvoiceView';
 import { apiFetch } from '../../services/api';
-import { qs, branchScopeParams } from '../../services/workshopStaffApi';
+import { qs, branchScopeParams, getWorkshopSalesReturns, approveWorkshopSalesReturn, rejectWorkshopSalesReturn } from '../../services/workshopStaffApi';
 import { useAuth } from '../../context/AuthContext';
+
+function isSalesReturnRow(row) {
+    return row?._source === 'sales_return';
+}
 
 /** Map a row kind → permission-code suffix. */
 function approvalTypeKey(row) {
     if (isSupplierSalesInvoiceRow(row)) return 'supplier-invoice';
+    if (isSalesReturnRow(row)) return 'sales-return';
     if (isTopUpRequest(row)) return 'top-up';
     if (isExpenseRequest(row)) return 'expense';
     return null;
@@ -107,6 +112,7 @@ function isExpenseRequest(row) {
 
 function formatRequestKindLabel(row) {
     if (isSupplierSalesInvoiceRow(row)) return 'Supplier invoice';
+    if (isSalesReturnRow(row)) return 'Sales return';
     const kind = row?.kind ?? row?.type;
     const k = String(kind || '')
         .trim()
@@ -138,25 +144,37 @@ function pettyCashListQuery(queueFilter, branchSelected) {
     return base;
 }
 
-export default function WorkshopApprovals({ selectedBranchId = 'all', branches = [] }) {
+export default function WorkshopApprovals({
+    selectedBranchId = 'all',
+    branches = [],
+    /** When set, user is locked to one branch — supplier invoices are scoped to it. */
+    branchLockedId = null,
+}) {
     const { hasPermission } = useAuth();
     /** Per-type approval helpers — fall back to parent codes for backward compat. */
     const canViewType = useCallback((row) => {
         const k = approvalTypeKey(row);
         if (!k) return true;
-        return hasPermission(`workshop.approvals.${k}.view`);
+        return (
+            hasPermission(`workshop.approvals.${k}.view`) ||
+            hasPermission('workshop.approvals.view')
+        );
     }, [hasPermission]);
     const canApproveType = useCallback((row) => {
         const k = approvalTypeKey(row);
         if (!k) return hasPermission('workshop.approvals.approve');
-        const specific = hasPermission(`workshop.approvals.${k}.approve`);
-        // Strict if any per-type code is configured; otherwise allow via parent.
-        return specific;
+        return (
+            hasPermission(`workshop.approvals.${k}.approve`) ||
+            hasPermission('workshop.approvals.approve')
+        );
     }, [hasPermission]);
     const canRejectType = useCallback((row) => {
         const k = approvalTypeKey(row);
         if (!k) return hasPermission('workshop.approvals.reject');
-        return hasPermission(`workshop.approvals.${k}.reject`);
+        return (
+            hasPermission(`workshop.approvals.${k}.reject`) ||
+            hasPermission('workshop.approvals.reject')
+        );
     }, [hasPermission]);
 
     const scopeBranchName = useMemo(() => {
@@ -190,16 +208,29 @@ export default function WorkshopApprovals({ selectedBranchId = 'all', branches =
             const loadSupplierInvoices =
                 queueFilter === 'all' || queueFilter === 'pending';
 
-            const [response, siRes] = await Promise.all([
+            // Supplier invoices are workshop-wide unless the user is branch-locked.
+            // Sidebar branch selection must not hide invoices for other branches.
+            const supplierBranchScope = branchLockedId
+                ? branchScopeParams(branchLockedId)
+                : {};
+            const [response, siRes, srRes] = await Promise.all([
                 apiFetch(`/workshop-staff/petty-cash/requests${qs(pettyQs)}`),
                 loadSupplierInvoices
                     ? apiFetch(
                           `/workshop-staff/supplier-sales-invoices${qs({
                               limit: 100,
                               offset: 0,
-                              ...branchScopeParams(selectedBranchId),
+                              ...supplierBranchScope,
                           })}`,
                       ).catch(() => null)
+                    : Promise.resolve(null),
+                queueFilter === 'all' || queueFilter === 'pending'
+                    ? getWorkshopSalesReturns({
+                          status: 'pending',
+                          limit: 100,
+                          offset: 0,
+                          ...branchScopeParams(selectedBranchId),
+                      }).catch(() => null)
                     : Promise.resolve(null),
             ]);
 
@@ -244,7 +275,29 @@ export default function WorkshopApprovals({ selectedBranchId = 'all', branches =
                 reason: inv.productLabel ? `Lines: ${inv.productLabel}` : null,
             }));
 
-            const merged = [...supplierRows, ...list].sort((a, b) => {
+            const srList = Array.isArray(srRes?.salesReturns) ? srRes.salesReturns : [];
+            const salesReturnRows = srList.map((sr) => ({
+                id: `sales-return-${sr.id}`,
+                _source: 'sales_return',
+                salesReturnId: sr.id,
+                kind: 'sales_return',
+                status: sr.status || 'pending',
+                amount: Number(sr.totalAmount ?? 0),
+                invoiceNo: sr.invoiceNo,
+                creditNoteNo: sr.creditNoteNo,
+                returnScope: sr.returnScope,
+                customerName: sr.customerName,
+                customerPhone: sr.customerPhone,
+                vehicleNumber: sr.vehicleNumber,
+                cashierName: sr.cashier?.name,
+                branchId: sr.branchId,
+                branchName: sr.branchName,
+                requestedAt: sr.createdAt || sr.returnDate,
+                reason: sr.reason,
+                items: sr.items,
+            }));
+
+            const merged = [...supplierRows, ...salesReturnRows, ...list].sort((a, b) => {
                 const ta = new Date(a.requestedAt || a.createdAt || 0).getTime();
                 const tb = new Date(b.requestedAt || b.createdAt || 0).getTime();
                 return tb - ta;
@@ -258,7 +311,7 @@ export default function WorkshopApprovals({ selectedBranchId = 'all', branches =
         } finally {
             setIsLoading(false);
         }
-    }, [queueFilter, selectedBranchId, scopeBranchName]);
+    }, [queueFilter, selectedBranchId, scopeBranchName, branchLockedId]);
 
     useEffect(() => {
         loadApprovals();
@@ -298,6 +351,7 @@ export default function WorkshopApprovals({ selectedBranchId = 'all', branches =
             if (requestTypeFilter === 'topup') return isTopUpRequest(a);
             if (requestTypeFilter === 'expenses') return isExpenseRequest(a);
             if (requestTypeFilter === 'supplier_invoices') return isSupplierSalesInvoiceRow(a);
+            if (requestTypeFilter === 'sales_returns') return isSalesReturnRow(a);
             return true;
         });
     }, [approvals, requestTypeFilter, canViewType]);
@@ -308,6 +362,7 @@ export default function WorkshopApprovals({ selectedBranchId = 'all', branches =
         advance: 'ws-badge--purple',
         purchase: 'ws-badge--purple',
         supplier_invoice: 'ws-badge--purple',
+        sales_return: 'ws-badge--blue',
     };
     const statusColors = { pending: 'ws-badge--yellow', approved: 'ws-badge--green', rejected: 'ws-badge--red' };
 
@@ -317,6 +372,22 @@ export default function WorkshopApprovals({ selectedBranchId = 'all', branches =
 
     const handleApproveRow = async (row) => {
         setLoadError('');
+        if (isSalesReturnRow(row)) {
+            if (row.status !== 'pending') return;
+            const rid = row.salesReturnId;
+            setActionLoadingId(`approve-sr-${rid}`);
+            try {
+                await approveWorkshopSalesReturn(rid, branchScopeParams(selectedBranchId));
+                await loadApprovals();
+                window.dispatchEvent(new Event('workshop-approvals-updated'));
+                window.dispatchEvent(new CustomEvent('workshop-inventory-updated', { detail: { branchId: row.branchId, source: 'approve_sales_return' } }));
+            } catch (error) {
+                setLoadError(error.message || 'Failed to approve sales return.');
+            } finally {
+                setActionLoadingId(null);
+            }
+            return;
+        }
         if (isSupplierSalesInvoiceRow(row)) {
             if (!supplierRowCanAct(row)) return;
             const sid = row.supplierInvoiceId;
@@ -384,6 +455,23 @@ export default function WorkshopApprovals({ selectedBranchId = 'all', branches =
     const handleRejectSubmit = async () => {
         if (!rejectReason.trim() || !rejectDialog) return;
         setLoadError('');
+        if (isSalesReturnRow(rejectDialog)) {
+            if (rejectDialog.status !== 'pending') return;
+            const rid = rejectDialog.salesReturnId;
+            setActionLoadingId(`reject-sr-${rid}`);
+            try {
+                await rejectWorkshopSalesReturn(rid, { rejectionReason: rejectReason.trim() }, branchScopeParams(selectedBranchId));
+                setRejectDialog(null);
+                setRejectReason('');
+                await loadApprovals();
+                window.dispatchEvent(new Event('workshop-approvals-updated'));
+            } catch (error) {
+                setLoadError(error.message || 'Failed to reject sales return.');
+            } finally {
+                setActionLoadingId(null);
+            }
+            return;
+        }
         if (isSupplierSalesInvoiceRow(rejectDialog)) {
             if (!supplierRowCanAct(rejectDialog)) return;
             const sid = rejectDialog.supplierInvoiceId;
@@ -542,8 +630,12 @@ export default function WorkshopApprovals({ selectedBranchId = 'all', branches =
                         {hasPermission('workshop.approvals.expense.view') && (
                             <option value="expenses">Expenses</option>
                         )}
-                        {hasPermission('workshop.approvals.supplier-invoice.view') && (
+                        {hasPermission('workshop.approvals.supplier-invoice.view') ||
+                        hasPermission('workshop.approvals.view') ? (
                             <option value="supplier_invoices">Supplier invoices</option>
+                        ) : null}
+                        {(hasPermission('workshop.approvals.sales-return.view') || hasPermission('workshop.approvals.view')) && (
+                            <option value="sales_returns">Sales returns</option>
                         )}
                     </select>
                     <button className="btn-portal" onClick={loadApprovals} disabled={isLoading}>
@@ -588,11 +680,13 @@ export default function WorkshopApprovals({ selectedBranchId = 'all', branches =
                         ) : (
                             filtered.map((a) => {
                                 const isSupplier = isSupplierSalesInvoiceRow(a);
-                                const kindKey = isSupplier ? 'supplier_invoice' : requestKindKey(a);
-                                const pettyPending = !isSupplier && a.status === 'pending';
+                                const isSalesReturn = isSalesReturnRow(a);
+                                const kindKey = isSupplier ? 'supplier_invoice' : isSalesReturn ? 'sales_return' : requestKindKey(a);
+                                const pettyPending = !isSupplier && !isSalesReturn && a.status === 'pending';
                                 const rowActionable =
                                     (isSupplier && supplierRowCanAct(a)) ||
-                                    (!isSupplier && pettyPending);
+                                    (isSalesReturn && a.status === 'pending') ||
+                                    pettyPending;
                                 const allowApprove = rowActionable && canApproveType(a);
                                 const allowReject  = rowActionable && canRejectType(a);
                                 // Legacy single flag — kept so disabled prop falls back if either is true.
@@ -612,6 +706,11 @@ export default function WorkshopApprovals({ selectedBranchId = 'all', branches =
                                                     }}
                                                 >
                                                     {a.invoiceNo}
+                                                </div>
+                                            ) : null}
+                                            {isSalesReturn && a.invoiceNo ? (
+                                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: 4 }}>
+                                                    Inv {a.invoiceNo}{a.returnScope ? ` · ${a.returnScope}` : ''}
                                                 </div>
                                             ) : null}
                                         </td>
@@ -635,7 +734,9 @@ export default function WorkshopApprovals({ selectedBranchId = 'all', branches =
                                         <td>
                                             {isSupplier
                                                 ? a.supplier?.name || 'Supplier'
-                                                : a.cashier?.name || a.employee?.name || '—'}
+                                                : isSalesReturn
+                                                  ? a.cashierName || 'Cashier'
+                                                  : a.cashier?.name || a.employee?.name || '—'}
                                         </td>
                                         <td style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
                                             {formatDate(a.requestedAt)}

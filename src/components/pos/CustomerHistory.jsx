@@ -10,7 +10,7 @@ export default function CustomerHistory({ customer, onBack }) {
         if (!customer) return;
         setLoading(true);
         // Mocking the fetch for history, in real app call /cashier/customers/:id/history
-        apiFetch(`/cashier/orders?customerId=${customer.id}`)
+        apiFetch(`/cashier/orders/invoiced/${customer.id}?scope=all`)
             .then(d => setOrders(d.orders || d.data || []))
             .catch(() => setOrders([]))
             .finally(() => setLoading(false));

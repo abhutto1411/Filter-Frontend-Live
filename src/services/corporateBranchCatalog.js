@@ -10,10 +10,6 @@
 import { apiFetch } from './api';
 import { toCatalogPickerRow } from './corporateMasterCatalogSearch';
 
-/**
- * Map API catalog line → shape consumed by `toCatalogPickerRow` / booking `handleAddCatalogRow`.
- * `id` is the catalog service/product id sent as serviceId / productId on POST /corporate/bookings.
- */
 function bookingCatalogLineToRaw(row, fallbackItemType) {
     const itemType = String(row?.itemType ?? fallbackItemType ?? 'product').toLowerCase() === 'service' ? 'service' : 'product';
     const id = row?.id != null ? String(row.id) : '';

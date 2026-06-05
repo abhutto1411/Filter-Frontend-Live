@@ -142,6 +142,14 @@ export const getSupplierCashFlow = (params = {}) =>
         }),
     );
 
+export const getSupplierVatReport = (params = {}) =>
+    apiFetch(
+        withQuery(`${BASE}/reports/vat`, {
+            ...params,
+            _t: Date.now(),
+        }),
+    );
+
 // ---------------------------------------------------------------------------
 // Inventory drill-down
 // ---------------------------------------------------------------------------

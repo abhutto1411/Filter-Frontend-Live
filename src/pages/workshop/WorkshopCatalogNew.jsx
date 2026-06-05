@@ -11,6 +11,10 @@ import {
     getCatalogCategories,
     getCatalogProducts,
     getCatalogServices,
+    getMyDepartments,
+    getMyCategories,
+    getMyProducts,
+    getMyServices,
     adoptDepartmentsToBranches,
     adoptCategoriesToBranches,
     adoptProductsToBranches,
@@ -41,6 +45,11 @@ const TABS = [
     { id: 'categories',  label: 'Categories',  Icon: Tags,    permission: 'workshop.catalog.categories.view' },
     { id: 'products',    label: 'Products',    Icon: Package, permission: 'workshop.catalog.products.view' },
     { id: 'services',    label: 'Services',    Icon: Wrench,  permission: 'workshop.catalog.services.view' },
+];
+
+const SUB_TABS = [
+    { id: 'not_added', label: 'Not added' },
+    { id: 'added', label: 'Already added' },
 ];
 
 /** Pull an array out of a backend response, trying a few common shapes. */
@@ -342,12 +351,15 @@ function ResultBanner({ banner, onClose }) {
 }
 
 /** Card used in every grid: checkbox + title + meta + adoption badge. */
-function CatalogCard({ row, label, subtitle, meta, selected, disabled, disabledLabel, hint, onToggle }) {
+function CatalogCard({ row, label, subtitle, meta, selected, disabled, disabledLabel, hint, onToggle, noAdd = false }) {
+    // `disabled` = already in workshop's inventory (can't re-add).
+    // `noAdd` = user lacks the `.add` permission for this tab (read-only mode).
+    const inert = disabled || noAdd;
     return (
         <div
-            className={`mc-product-card ${disabled ? '' : 'clickable'} ${selected ? 'selected' : ''}`}
-            onClick={() => !disabled && onToggle?.()}
-            style={disabled ? { opacity: 0.7, cursor: 'default' } : undefined}
+            className={`mc-product-card ${inert ? '' : 'clickable'} ${selected ? 'selected' : ''}`}
+            onClick={() => !inert && onToggle?.()}
+            style={inert ? { opacity: 0.7, cursor: 'default' } : undefined}
         >
             <div className="mc-card-type-label">{label}</div>
             <div className="mc-card-info-main">
@@ -374,6 +386,13 @@ function CatalogCard({ row, label, subtitle, meta, selected, disabled, disabledL
                     <span className="ws-badge ws-badge--green" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                         <ShieldCheck size={14} /> {disabledLabel || 'In your workshop'}
                     </span>
+                ) : noAdd ? (
+                    // Read-only mode — no add permission. Show a muted lock-like
+                    // indicator instead of the clickable plus so users don't
+                    // wonder why the card doesn't respond.
+                    <span style={{ fontSize: '0.7rem', color: '#94a3b8', fontWeight: 600 }}>
+                        Read only
+                    </span>
                 ) : (
                     <div className={`mc-card-selection-btn ${selected ? 'selected' : ''}`}>
                         {selected ? <ShieldCheck size={20} /> : <Plus size={20} />}
@@ -384,9 +403,82 @@ function CatalogCard({ row, label, subtitle, meta, selected, disabled, disabledL
     );
 }
 
+function isInSelectedBranch(row, branchId) {
+    if (!branchId || branchId === 'all') return true;
+    const bid = String(branchId);
+    const branches = row?.branches;
+    if (Array.isArray(branches)) {
+        return branches.some((b) => String(b?.id) === bid);
+    }
+    return false;
+}
+
+function matchesCatalogSearch(row, q) {
+    const query = String(q || '').trim().toLowerCase();
+    if (!query) return true;
+    const fields = [
+        row?.name,
+        row?.sku,
+        row?.brandName,
+        row?.departmentName,
+        row?.categoryName,
+    ]
+        .filter((v) => v != null)
+        .map((v) => String(v).toLowerCase());
+    return fields.some((f) => f.includes(query));
+}
+
+function SubTabToggle({ value, counts, onChange }) {
+    return (
+        <div
+            style={{
+                display: 'inline-flex',
+                border: '1px solid var(--color-border-light, #E5E7EB)',
+                background: '#fff',
+                borderRadius: 10,
+                padding: 4,
+                gap: 4,
+            }}
+        >
+            {SUB_TABS.map((t) => (
+                <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => onChange(t.id)}
+                    style={{
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: '6px 10px',
+                        borderRadius: 8,
+                        fontSize: '0.8125rem',
+                        fontWeight: 800,
+                        background: value === t.id ? '#23262D' : 'transparent',
+                        color: value === t.id ? '#FCC247' : 'var(--color-text-muted)',
+                    }}
+                >
+                    {t.label}
+                    {counts && Number.isFinite(Number(counts[t.id])) ? (
+                        <span style={{ opacity: value === t.id ? 1 : 0.7 }}>
+                            {' '}
+                            ({Number(counts[t.id]).toLocaleString()})
+                        </span>
+                    ) : null}
+                </button>
+            ))}
+        </div>
+    );
+}
+
 export default function WorkshopCatalogNew({ branches: branchesProp = [], selectedBranchId = 'all' }) {
     const { hasPermission } = useAuth();
     const visibleTabs = TABS.filter((t) => hasPermission(t.permission));
+    // Per-tab "add" permission gates the + icon on each card AND the
+    // "Add Selected to branches…" bulk button. Users with only `.view` see
+    // the catalog read-only; cards aren't clickable and Add buttons are hidden.
+    const canAddDept = hasPermission('workshop.catalog.departments.add');
+    const canAddCat  = hasPermission('workshop.catalog.categories.add');
+    const canAddProd = hasPermission('workshop.catalog.products.add');
+    const canAddSvc  = hasPermission('workshop.catalog.services.add');
     const [activeTab, setActiveTab] = useState(() => visibleTabs[0]?.id ?? 'departments');
     const [banner, setBanner] = useState(null);
 
@@ -398,10 +490,25 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
         }
     }, [visibleTabs, activeTab]);
 
+    // Local branch filter for this page (shown next to Already added / Not added)
+    const [branchScopeId, setBranchScopeId] = useState(selectedBranchId || 'all');
+    useEffect(() => {
+        setBranchScopeId(selectedBranchId || 'all');
+    }, [selectedBranchId]);
+
+    const effectiveBranchScopeId = branchScopeId || 'all';
     const catalogBranchId = useMemo(
-        () => (!selectedBranchId || selectedBranchId === 'all' ? undefined : String(selectedBranchId)),
-        [selectedBranchId],
+        () => (!effectiveBranchScopeId || effectiveBranchScopeId === 'all' ? undefined : String(effectiveBranchScopeId)),
+        [effectiveBranchScopeId],
     );
+
+    const [subTab, setSubTab] = useState({
+        departments: 'not_added',
+        categories: 'not_added',
+        products: 'not_added',
+        services: 'not_added',
+    });
+    const activeSubTab = subTab[activeTab] || 'not_added';
 
     // Corporate master catalog via GET /workshop-catalog/catalog/* (same rows as super-admin
     // tables; workshop JWT). We omit branchId on list calls for full master browse—branchId only
@@ -412,6 +519,11 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
         [branchesProp],
     );
 
+    const [deptCounts, setDeptCounts] = useState({ added: null, not_added: null });
+    const [catCounts, setCatCounts] = useState({ added: null, not_added: null });
+    const [prodCounts, setProdCounts] = useState({ added: null, not_added: null });
+    const [svcCounts, setSvcCounts] = useState({ added: null, not_added: null });
+
     // ─── Departments tab ────────────────────────────────────────────────────
     const [deptRows, setDeptRows] = useState([]);
     const [deptLoading, setDeptLoading] = useState(false);
@@ -421,13 +533,29 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
     const loadDepartments = useCallback((signal) => {
         setDeptLoading(true);
         setDeptError('');
-        getCatalogDepartments({ signal, branchId: catalogBranchId })
-            .then((res) => setDeptRows(pickArray(res, ['departments', 'items'])))
+        const mode = subTab.departments;
+        const branchIdForBadges = catalogBranchId;
+
+        Promise.all([
+            getCatalogDepartments({ signal, branchId: branchIdForBadges }),
+            getMyDepartments({ signal }),
+        ])
+            .then(([masterRes, myRes]) => {
+                const masterRows = pickArray(masterRes, ['departments', 'items']);
+                const myRows = pickArray(myRes, ['departments', 'items']);
+                const addedRows = myRows.filter((r) => isInSelectedBranch(r, effectiveBranchScopeId));
+                const masterNotAdded = masterRows.filter((r) => {
+                    const inScope = catalogBranchId ? Boolean(r?.inBranch) : Boolean(r?.inWorkshop);
+                    return !inScope;
+                });
+                setDeptCounts({ added: addedRows.length, not_added: masterNotAdded.length });
+                setDeptRows(mode === 'added' ? addedRows : masterNotAdded);
+            })
             .catch((err) => {
                 if (err.name !== 'AbortError') setDeptError(err.message || 'Failed to load departments.');
             })
             .finally(() => setDeptLoading(false));
-    }, [catalogBranchId]);
+    }, [catalogBranchId, effectiveBranchScopeId, subTab.departments]);
 
     // ─── Categories tab ─────────────────────────────────────────────────────
     const [catRows, setCatRows] = useState([]);
@@ -445,13 +573,32 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
             branchId: catalogBranchId,
             signal,
         };
-        getCatalogCategories(params)
-            .then((res) => setCatRows(pickArray(res, ['categories', 'items'])))
+        const mode = subTab.categories;
+
+        Promise.all([
+            getCatalogCategories(params),
+            getMyCategories({
+                departmentId: params.departmentId,
+                type: params.type,
+                signal,
+            }),
+        ])
+            .then(([masterRes, myRes]) => {
+                const masterRows = pickArray(masterRes, ['categories', 'items']);
+                const myRows = pickArray(myRes, ['categories', 'items']);
+                const addedRows = myRows.filter((r) => isInSelectedBranch(r, effectiveBranchScopeId));
+                const masterNotAdded = masterRows.filter((r) => {
+                    const inScope = catalogBranchId ? Boolean(r?.inBranch) : Boolean(r?.inWorkshop);
+                    return !inScope;
+                });
+                setCatCounts({ added: addedRows.length, not_added: masterNotAdded.length });
+                setCatRows(mode === 'added' ? addedRows : masterNotAdded);
+            })
             .catch((err) => {
                 if (err.name !== 'AbortError') setCatError(err.message || 'Failed to load categories.');
             })
             .finally(() => setCatLoading(false));
-    }, [catFilter.departmentId, catFilter.type, catalogBranchId]);
+    }, [catFilter.departmentId, catFilter.type, catalogBranchId, effectiveBranchScopeId, subTab.categories]);
 
     // ─── Products tab ───────────────────────────────────────────────────────
     const [prodRows, setProdRows] = useState([]);
@@ -468,6 +615,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
     const loadProducts = useCallback((signal) => {
         setProdLoading(true);
         setProdError('');
+        const mode = subTab.products;
         const params = {
             departmentId: prodFilter.departmentId === 'all' ? undefined : prodFilter.departmentId,
             categoryId: prodFilter.categoryId === 'all' ? undefined : prodFilter.categoryId,
@@ -477,11 +625,48 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
             branchId: catalogBranchId,
             signal,
         };
-        getCatalogProducts(params)
-            .then((res) => {
+        Promise.all([
+            // Total matching master rows (use pageSize=1 to keep payload tiny)
+            getCatalogProducts({ ...params, page: 1, pageSize: 1 }),
+            // Full adopted list (already small enough) to count branch-scoped matches
+            getMyProducts({
+                departmentId: params.departmentId,
+                categoryId: params.categoryId,
+                isActive: true,
+                signal,
+            }),
+            // Page rows for not-added browse (keeps pagination behavior)
+            mode === 'added' ? Promise.resolve(null) : getCatalogProducts(params),
+        ])
+            .then(([masterRes, myRes, pageRes]) => {
+                const masterMeta = pickPagination(masterRes);
+                const masterTotal = masterMeta.total;
+                const myRowsRaw = pickArray(myRes, ['products', 'items']);
+                const myAdded = myRowsRaw
+                    .filter((r) => isInSelectedBranch(r, effectiveBranchScopeId))
+                    .filter((r) => matchesCatalogSearch(r, prodFilter.q));
+                const addedCount = myAdded.length;
+                const notAddedCount = Math.max(0, masterTotal - addedCount);
+                setProdCounts({ added: addedCount, not_added: notAddedCount });
+
+                if (mode === 'added') {
+                    const totalPages = Math.max(1, Math.ceil(addedCount / PAGE_SIZE));
+                    const page = Math.min(Math.max(1, prodPage), totalPages);
+                    const slice = myAdded.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+                    setProdRows(slice);
+                    setProdTotal(addedCount);
+                    setProdHasNext(page < totalPages);
+                    return;
+                }
+
+                const res = pageRes || masterRes;
                 const rows = pickArray(res, ['products', 'items']);
+                const filtered = rows.filter((r) => {
+                    const inScope = catalogBranchId ? Boolean(r?.inBranch) : Boolean(r?.inWorkshop);
+                    return !inScope;
+                });
                 const meta = pickPagination(res);
-                setProdRows(rows);
+                setProdRows(filtered);
                 setProdTotal(meta.total);
                 setProdHasNext(meta.hasNext);
             })
@@ -489,7 +674,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
                 if (err.name !== 'AbortError') setProdError(err.message || 'Failed to load products.');
             })
             .finally(() => setProdLoading(false));
-    }, [prodFilter.departmentId, prodFilter.categoryId, prodFilter.q, prodPage, catalogBranchId]);
+    }, [prodFilter.departmentId, prodFilter.categoryId, prodFilter.q, prodPage, catalogBranchId, effectiveBranchScopeId, subTab.products]);
 
     // ─── Services tab ───────────────────────────────────────────────────────
     const [svcRows, setSvcRows] = useState([]);
@@ -506,6 +691,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
     const loadServices = useCallback((signal) => {
         setSvcLoading(true);
         setSvcError('');
+        const mode = subTab.services;
         const params = {
             departmentId: svcFilter.departmentId === 'all' ? undefined : svcFilter.departmentId,
             categoryId: svcFilter.categoryId === 'all' ? undefined : svcFilter.categoryId,
@@ -515,11 +701,45 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
             branchId: catalogBranchId,
             signal,
         };
-        getCatalogServices(params)
-            .then((res) => {
+        Promise.all([
+            getCatalogServices({ ...params, page: 1, pageSize: 1 }),
+            getMyServices({
+                departmentId: params.departmentId,
+                categoryId: params.categoryId,
+                isActive: true,
+                signal,
+            }),
+            mode === 'added' ? Promise.resolve(null) : getCatalogServices(params),
+        ])
+            .then(([masterRes, myRes, pageRes]) => {
+                const masterMeta = pickPagination(masterRes);
+                const masterTotal = masterMeta.total;
+                const myRowsRaw = pickArray(myRes, ['services', 'items']);
+                const myAdded = myRowsRaw
+                    .filter((r) => isInSelectedBranch(r, effectiveBranchScopeId))
+                    .filter((r) => matchesCatalogSearch(r, svcFilter.q));
+                const addedCount = myAdded.length;
+                const notAddedCount = Math.max(0, masterTotal - addedCount);
+                setSvcCounts({ added: addedCount, not_added: notAddedCount });
+
+                if (mode === 'added') {
+                    const totalPages = Math.max(1, Math.ceil(addedCount / PAGE_SIZE));
+                    const page = Math.min(Math.max(1, svcPage), totalPages);
+                    const slice = myAdded.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+                    setSvcRows(slice);
+                    setSvcTotal(addedCount);
+                    setSvcHasNext(page < totalPages);
+                    return;
+                }
+
+                const res = pageRes || masterRes;
                 const rows = pickArray(res, ['services', 'items']);
+                const filtered = rows.filter((r) => {
+                    const inScope = catalogBranchId ? Boolean(r?.inBranch) : Boolean(r?.inWorkshop);
+                    return !inScope;
+                });
                 const meta = pickPagination(res);
-                setSvcRows(rows);
+                setSvcRows(filtered);
                 setSvcTotal(meta.total);
                 setSvcHasNext(meta.hasNext);
             })
@@ -527,7 +747,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
                 if (err.name !== 'AbortError') setSvcError(err.message || 'Failed to load services.');
             })
             .finally(() => setSvcLoading(false));
-    }, [svcFilter.departmentId, svcFilter.categoryId, svcFilter.q, svcPage, catalogBranchId]);
+    }, [svcFilter.departmentId, svcFilter.categoryId, svcFilter.q, svcPage, catalogBranchId, effectiveBranchScopeId, subTab.services]);
 
     const handleSelectAllProducts = useCallback(async () => {
         setProdSelectAllBusy(true);
@@ -602,6 +822,15 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
     // Reset to page 1 when filters or adoption branch context changes.
     useEffect(() => { setProdPage(1); }, [prodFilter.departmentId, prodFilter.categoryId, prodFilter.q]);
     useEffect(() => { setSvcPage(1); }, [svcFilter.departmentId, svcFilter.categoryId, svcFilter.q]);
+    useEffect(() => { setProdPage(1); }, [subTab.products, effectiveBranchScopeId]);
+    useEffect(() => { setSvcPage(1); }, [subTab.services, effectiveBranchScopeId]);
+    useEffect(() => {
+        // Clear selection when switching added/not-added modes.
+        setDeptSelected(new Set());
+        setCatSelected(new Set());
+        setProdSelected(new Set());
+        setSvcSelected(new Set());
+    }, [subTab.departments, subTab.categories, subTab.products, subTab.services]);
 
     // Debounced search input → filter.
     const prodSearchRef = useRef();
@@ -917,7 +1146,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
     };
 
     // ─── Render helpers ─────────────────────────────────────────────────────
-    const renderToolbar = (count, onAdd, addLabel, onClear, listToolbarOpts) => {
+    const renderToolbar = (count, onAdd, addLabel, onClear, listToolbarOpts, canAdd = true) => {
         const { onSelectAll, selectAllDisabled, selectAllBusy } = listToolbarOpts || {};
         return (
         <div
@@ -936,9 +1165,14 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
         >
             <div style={{ fontWeight: 700, fontSize: '0.875rem' }}>
                 Selected: <span style={{ color: count > 0 ? '#2563EB' : 'inherit' }}>{count}</span>
+                {!canAdd && (
+                    <span style={{ marginLeft: 10, color: '#94a3b8', fontWeight: 400, fontSize: '0.75rem' }}>
+                        (read-only — no add permission)
+                    </span>
+                )}
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {typeof onSelectAll === 'function' && (
+                {canAdd && typeof onSelectAll === 'function' && (
                     <button
                         type="button"
                         className="mc-btn-ghost"
@@ -949,12 +1183,16 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
                         {selectAllBusy ? 'Selecting…' : 'Select all'}
                     </button>
                 )}
-                <button type="button" className="mc-btn-ghost" disabled={count === 0} onClick={onClear}>
-                    Clear
-                </button>
-                <button type="button" className="mc-btn-primary blue-btn" disabled={count === 0} onClick={onAdd}>
-                    {addLabel}
-                </button>
+                {canAdd && (
+                    <button type="button" className="mc-btn-ghost" disabled={count === 0} onClick={onClear}>
+                        Clear
+                    </button>
+                )}
+                {canAdd && (
+                    <button type="button" className="mc-btn-primary blue-btn" disabled={count === 0} onClick={onAdd}>
+                        {addLabel}
+                    </button>
+                )}
             </div>
         </div>
         );
@@ -986,18 +1224,47 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
 
     const renderDepartmentsTab = () => (
         <>
-            {renderToolbar(
-                deptSelected.size,
-                openDeptCategoryModal,
-                'Add Selected to branches…',
-                () => setDeptSelected(new Set()),
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', margin: '6px 0 10px' }}>
+                <SubTabToggle
+                    value={subTab.departments}
+                    counts={deptCounts}
+                    onChange={(v) => setSubTab((prev) => ({ ...prev, departments: v }))}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <Filter size={14} />
+                        <select
+                            value={effectiveBranchScopeId}
+                            onChange={(e) => setBranchScopeId(e.target.value)}
+                            style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--color-border)', fontSize: '0.875rem', minWidth: 200 }}
+                        >
+                            <option value="all">All branches</option>
+                            {branchList.map((b) => (
+                                <option key={String(b.id)} value={String(b.id)}>{b.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                        Branch: <strong>{catalogBranchLabel}</strong>
+                    </div>
+                </div>
+            </div>
+            {subTab.departments === 'not_added' &&
+                renderToolbar(
+                    deptSelected.size,
+                    openDeptCategoryModal,
+                    'Add Selected to branches…',
+                    () => setDeptSelected(new Set()),
+                    undefined,
+                    canAddDept,
+                )}
             <div className="mc-product-grid">
                 {deptError ? renderError(deptError)
                     : deptLoading ? renderLoading('Loading departments…')
-                    : deptRows.length === 0 ? renderEmpty(Layers, 'No departments in the master catalog.')
+                    : deptRows.length === 0 ? renderEmpty(Layers, subTab.departments === 'added' ? 'No departments added for this branch.' : 'No departments match (not added).')
                     : deptRows.map((d) => {
                         const id = String(d.id);
+                        const adoptedLabel = subTab.departments === 'added';
                         return (
                             <CatalogCard
                                 key={id}
@@ -1006,9 +1273,10 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
                                 subtitle={d.description || 'Master Department'}
                                 meta={typeof d.categoriesCount === 'number' ? [{ Icon: Tags, text: `${d.categoriesCount} categories` }] : []}
                                 selected={deptSelected.has(id)}
-                                disabled={false}
-                                disabledLabel=""
+                                disabled={adoptedLabel}
+                                disabledLabel="Already added"
                                 hint={null}
+                                noAdd={!canAddDept}
                                 onToggle={() => toggleId(deptSelected, setDeptSelected, id)}
                             />
                         );
@@ -1019,6 +1287,31 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
 
     const renderCategoriesTab = () => (
         <>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', margin: '6px 0 10px' }}>
+                <SubTabToggle
+                    value={subTab.categories}
+                    counts={catCounts}
+                    onChange={(v) => setSubTab((prev) => ({ ...prev, categories: v }))}
+                />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                        <Filter size={14} />
+                        <select
+                            value={effectiveBranchScopeId}
+                            onChange={(e) => setBranchScopeId(e.target.value)}
+                            style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--color-border)', fontSize: '0.875rem', minWidth: 200 }}
+                        >
+                            <option value="all">All branches</option>
+                            {branchList.map((b) => (
+                                <option key={String(b.id)} value={String(b.id)}>{b.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                        Branch: <strong>{catalogBranchLabel}</strong>
+                    </div>
+                </div>
+            </div>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Filter size={14} />
@@ -1043,19 +1336,23 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
                     <option value="service">Service</option>
                 </select>
             </div>
-            {renderToolbar(
-                catSelected.size,
-                openCategoryAdopt,
-                'Add Selected to branches…',
-                () => setCatSelected(new Set()),
-            )}
+            {subTab.categories === 'not_added' &&
+                renderToolbar(
+                    catSelected.size,
+                    openCategoryAdopt,
+                    'Add Selected to branches…',
+                    () => setCatSelected(new Set()),
+                    undefined,
+                    canAddCat,
+                )}
             <div className="mc-product-grid">
                 {catError ? renderError(catError)
                     : catLoading ? renderLoading('Loading categories…')
-                    : catRows.length === 0 ? renderEmpty(Tags, 'No categories match these filters.')
+                    : catRows.length === 0 ? renderEmpty(Tags, subTab.categories === 'added' ? 'No categories added for this branch.' : 'No categories match (not added).')
                     : catRows.map((c) => {
                         const id = String(c.id);
                         const deptName = c.departmentName || c.department?.name || departmentOptions.find((d) => d.id === String(c.departmentId))?.name;
+                        const adoptedLabel = subTab.categories === 'added';
                         return (
                             <CatalogCard
                                 key={id}
@@ -1064,9 +1361,10 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
                                 subtitle={deptName ? `${deptName} department` : 'Category'}
                                 meta={[]}
                                 selected={catSelected.has(id)}
-                                disabled={false}
-                                disabledLabel=""
+                                disabled={adoptedLabel}
+                                disabledLabel="Already added"
                                 hint={null}
+                                noAdd={!canAddCat}
                                 onToggle={() => toggleId(catSelected, setCatSelected, id)}
                             />
                         );
@@ -1083,6 +1381,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
         kind,
         onSelectAllAllPages,
         selectAllBusy,
+        canAdd = true,
     }) => {
         const totalPagesKnown = total > 0 ? Math.max(1, Math.ceil(total / PAGE_SIZE)) : null;
         // Next: honor explicit hasNext; else known total pages; else if this page is full, allow probing
@@ -1142,6 +1441,31 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
         };
         return (
             <>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', margin: '6px 0 10px' }}>
+                    <SubTabToggle
+                        value={kind === 'product' ? subTab.products : subTab.services}
+                        counts={kind === 'product' ? prodCounts : svcCounts}
+                        onChange={(v) => setSubTab((prev) => ({ ...prev, [kind === 'product' ? 'products' : 'services']: v }))}
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                            <Filter size={14} />
+                            <select
+                                value={effectiveBranchScopeId}
+                                onChange={(e) => setBranchScopeId(e.target.value)}
+                                style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--color-border)', fontSize: '0.875rem', minWidth: 200 }}
+                            >
+                                <option value="all">All branches</option>
+                                {branchList.map((b) => (
+                                    <option key={String(b.id)} value={String(b.id)}>{b.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                            Branch: <strong>{catalogBranchLabel}</strong>
+                        </div>
+                    </div>
+                </div>
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
                     <div style={{ position: 'relative', flex: 1, minWidth: 240 }}>
                         <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', opacity: 0.6 }} />
@@ -1164,25 +1488,34 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
                         ))}
                     </select>
                 </div>
-                {renderToolbar(
-                    selected.size,
-                    kind === 'product' ? openProductAdopt : openServiceAdopt,
-                    'Add Selected to branches…',
-                    () => setSelected(new Set()),
-                    typeof onSelectAllAllPages === 'function'
-                        ? {
-                              onSelectAll: onSelectAllAllPages,
-                              selectAllBusy: !!selectAllBusy,
-                              selectAllDisabled: loading || !!error || rows.length === 0,
-                          }
-                        : undefined,
-                )}
+                {(kind === 'product' ? subTab.products : subTab.services) === 'not_added' &&
+                    renderToolbar(
+                        selected.size,
+                        kind === 'product' ? openProductAdopt : openServiceAdopt,
+                        'Add Selected to branches…',
+                        () => setSelected(new Set()),
+                        typeof onSelectAllAllPages === 'function'
+                            ? {
+                                  onSelectAll: onSelectAllAllPages,
+                                  selectAllBusy: !!selectAllBusy,
+                                  selectAllDisabled: loading || !!error || rows.length === 0,
+                              }
+                            : undefined,
+                        canAdd,
+                    )}
                 <div className="mc-product-grid">
                     {error ? renderError(error)
                         : loading ? renderLoading(`Loading ${kind === 'product' ? 'products' : 'services'}…`)
-                        : rows.length === 0 ? renderEmpty(Icon, `No ${kind === 'product' ? 'products' : 'services'} match these filters.`)
+                        : rows.length === 0 ? renderEmpty(
+                            Icon,
+                            (kind === 'product' ? subTab.products : subTab.services) === 'added'
+                                ? `No ${kind === 'product' ? 'products' : 'services'} added for this branch.`
+                                : `No ${kind === 'product' ? 'products' : 'services'} match (not added).`,
+                        )
                         : rows.map((row) => {
                             const id = String(row.id);
+                            const adoptedLabel =
+                                (kind === 'product' ? subTab.products : subTab.services) === 'added';
                             return (
                                 <CatalogCard
                                     key={id}
@@ -1191,9 +1524,10 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
                                     subtitle={subtitleFn(row)}
                                     meta={metaFn(row)}
                                     selected={selected.has(id)}
-                                    disabled={false}
-                                    disabledLabel=""
+                                    disabled={adoptedLabel}
+                                    disabledLabel="Already added"
                                     hint={null}
+                                    noAdd={!canAdd}
                                     onToggle={() => toggleId(selected, setSelected, id)}
                                 />
                             );
@@ -1234,10 +1568,8 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
             <div className="mc-header">
                 <div className="mc-title-group">
                     <h1>Master Catalog</h1>
-                    <p>
-                        This is the same corporate catalog managed in Super Admin (departments, categories, products, and services). Select items here, then choose which workshop branches to add them to in the next step.
-                        {' '}
-                        <strong>Branch row context: {catalogBranchLabel}</strong>
+                    <p style={{ marginBottom: 0 }}>
+                        Browse items and add them to workshop branches.
                     </p>
                 </div>
                 <div className="mc-header-actions">
@@ -1281,6 +1613,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
                     kind: 'product',
                     onSelectAllAllPages: handleSelectAllProducts,
                     selectAllBusy: prodSelectAllBusy,
+                    canAdd: canAddProd,
                 })}
                 {activeTab === 'services' && renderListTab({
                     rows: svcRows, loading: svcLoading, error: svcError,
@@ -1292,6 +1625,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
                     kind: 'service',
                     onSelectAllAllPages: handleSelectAllServices,
                     selectAllBusy: svcSelectAllBusy,
+                    canAdd: canAddSvc,
                 })}
             </div>
 

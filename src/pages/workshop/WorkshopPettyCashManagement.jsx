@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Wallet, Plus, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
+import { Wallet, Plus, RefreshCw, CheckCircle, XCircle, ChevronRight } from 'lucide-react';
+import Modal from '../../components/Modal';
 import {
     listWorkshopPettyCashWallets,
     listWorkshopExpenseRequests,
@@ -7,13 +8,20 @@ import {
     issuePettyCash,
     approveExpenseRequest,
     rejectExpenseRequest,
+    getStaffPettyCashWallet,
 } from '../../services/employeeExpenseApi';
 import { listCashBankAccounts } from '../../services/workshopAccountingApi';
 import { getWorkshopBranches, unwrapWorkshopBranchesResponse } from '../../services/workshopStaffApi';
-import { StatusBadge, MessageThread, formatSar } from './WorkshopMyPettyCash.shared';
+import { StatusBadge, MessageThread, formatSar, WalletTransactionsTable } from './WorkshopMyPettyCash.shared';
+import { useAuth } from '../../context/AuthContext';
 import '../../styles/admin/AccountingPage.css';
 
 export default function WorkshopPettyCashManagement({ selectedBranchId = 'all' }) {
+    const { hasPermission, user } = useAuth();
+    // Owners bypass; otherwise role must explicitly grant the .issue code.
+    const canIssue =
+        user?.userType === 'workshop_owner' ||
+        hasPermission('workshop.my-petty-cash.issue');
     const [branchFilter, setBranchFilter] = useState('');
     const [wallets, setWallets] = useState([]);
     const [requests, setRequests] = useState([]);
@@ -36,24 +44,42 @@ export default function WorkshopPettyCashManagement({ selectedBranchId = 'all' }
     const [actionBusyId, setActionBusyId] = useState(null);
     const [approvePayFromByRequest, setApprovePayFromByRequest] = useState({});
 
+    const [registerRow, setRegisterRow] = useState(null);
+    const [registerData, setRegisterData] = useState(null);
+    const [registerLoading, setRegisterLoading] = useState(false);
+
     const effectiveBranch = branchFilter || undefined;
 
     const loadAll = useCallback(async () => {
         setLoading(true);
         setError('');
-        try {
-            const [walletRes, reqRes, targetRes, cashRes, brRes] = await Promise.all([
-                listWorkshopPettyCashWallets({ branchId: effectiveBranch }),
-                listWorkshopExpenseRequests({ limit: 100 }),
-                listExpenseIssuanceTargets(),
-                listCashBankAccounts({}).catch(() => ({ accounts: [] })),
-                getWorkshopBranches().catch(() => ({ branches: [] })),
-            ]);
+
+        // Primary data — wallets + requests are the actual page content; wait
+        // for these before clearing the loader so the user sees real data, not
+        // empty tables.
+        const primary = Promise.all([
+            listWorkshopPettyCashWallets({ branchId: effectiveBranch }),
+            listWorkshopExpenseRequests({ limit: 100, branchId: effectiveBranch }),
+        ]).then(([walletRes, reqRes]) => {
             setWallets(walletRes?.wallets ?? []);
             setRequests(reqRes?.items ?? []);
-            setTargets(targetRes?.users ?? []);
-            setCashAccounts(cashRes?.accounts ?? cashRes?.items ?? []);
-            setBranches(unwrapWorkshopBranchesResponse(brRes));
+        });
+
+        // Secondary data — only needed when the Issue modal opens. Load in the
+        // background, never block the page render on these. Each catches its
+        // own errors so one slow/failing endpoint doesn't poison the others.
+        listExpenseIssuanceTargets()
+            .then((r) => setTargets(r?.users ?? []))
+            .catch(() => undefined);
+        listCashBankAccounts({})
+            .then((r) => setCashAccounts(r?.accounts ?? r?.items ?? []))
+            .catch(() => undefined);
+        getWorkshopBranches()
+            .then((r) => setBranches(unwrapWorkshopBranchesResponse(r)))
+            .catch(() => undefined);
+
+        try {
+            await primary;
         } catch (e) {
             setError(e?.message || 'Could not load petty cash management data.');
         } finally {
@@ -170,6 +196,32 @@ export default function WorkshopPettyCashManagement({ selectedBranchId = 'all' }
         if (t?.branchId) setIssueBranchId(String(t.branchId));
     };
 
+    const openStaffRegister = useCallback(async (row) => {
+        if (!row?.user?.id) return;
+        setRegisterRow(row);
+        setRegisterData(null);
+        setRegisterLoading(true);
+        try {
+            const res = await getStaffPettyCashWallet(row.user.id, { limit: 100 });
+            setRegisterData(res);
+        } catch (e) {
+            setError(e?.message || 'Could not load wallet register.');
+            setRegisterRow(null);
+        } finally {
+            setRegisterLoading(false);
+        }
+    }, []);
+
+    const closeStaffRegister = () => {
+        setRegisterRow(null);
+        setRegisterData(null);
+        setRegisterLoading(false);
+    };
+
+    const registerStaff = registerData?.staff ?? registerRow?.user ?? null;
+    const registerWallet = registerData?.wallet ?? null;
+    const registerTransactions = registerData?.transactions ?? [];
+
     return (
         <div className="accounting-page module-container">
             <header className="cash-bank-header">
@@ -226,9 +278,11 @@ export default function WorkshopPettyCashManagement({ selectedBranchId = 'all' }
                     </select>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
-                    <button type="button" className="btn-portal" onClick={() => setIssueOpen(true)}>
-                        <Plus size={16} /> Issue Petty Cash
-                    </button>
+                    {canIssue && (
+                        <button type="button" className="btn-portal" onClick={() => setIssueOpen(true)}>
+                            <Plus size={16} /> Issue Petty Cash
+                        </button>
+                    )}
                     <button type="button" className="btn-portal-outline" onClick={loadAll} disabled={loading}>
                         <RefreshCw size={16} /> Refresh
                     </button>
@@ -294,6 +348,9 @@ export default function WorkshopPettyCashManagement({ selectedBranchId = 'all' }
             <section className="premium-table cash-bank-table">
                 <header style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0' }}>
                     <strong>Staff Wallets</strong>
+                    <p className="form-help-text" style={{ margin: '4px 0 0', fontWeight: 400 }}>
+                        Click a staff row to open their petty cash wallet register.
+                    </p>
                 </header>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
@@ -302,24 +359,83 @@ export default function WorkshopPettyCashManagement({ selectedBranchId = 'all' }
                             <th className="table-th">Role</th>
                             <th className="table-th">Branch</th>
                             <th className="table-th">Balance</th>
+                            <th className="table-th" style={{ width: 40 }} aria-label="Open register" />
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={4} className="table-cell table-empty">Loading…</td></tr>
+                            <tr><td colSpan={5} className="table-cell table-empty">Loading…</td></tr>
                         ) : wallets.length === 0 ? (
-                            <tr><td colSpan={4} className="table-cell table-empty">No staff wallets yet. Issue petty cash to create one.</td></tr>
+                            <tr><td colSpan={5} className="table-cell table-empty">No staff wallets yet. Issue petty cash to create one.</td></tr>
                         ) : wallets.map((w) => (
-                            <tr key={w.user?.id ?? w.walletId}>
+                            <tr
+                                key={w.user?.id ?? w.walletId}
+                                onClick={() => openStaffRegister(w)}
+                                style={{
+                                    cursor: w.user?.id ? 'pointer' : 'default',
+                                    background: registerRow?.user?.id === w.user?.id ? '#F8FAFC' : undefined,
+                                }}
+                                title={w.user?.id ? 'Open wallet register' : undefined}
+                            >
                                 <td className="table-cell">{w.user?.name ?? '—'}</td>
                                 <td className="table-cell">{w.user?.role ? String(w.user.role).replace(/_/g, ' ') : '—'}</td>
                                 <td className="table-cell">{w.branch?.name ?? '—'}</td>
                                 <td className="table-cell"><strong>SAR {formatSar(w.currentBalance)}</strong></td>
+                                <td className="table-cell" style={{ color: '#94A3B8' }}>
+                                    {w.user?.id ? <ChevronRight size={16} /> : null}
+                                </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </section>
+
+            {registerRow ? (
+                <Modal
+                    title="Petty Cash Wallet Register"
+                    onClose={closeStaffRegister}
+                    width={920}
+                    contentClassName="cash-bank-table"
+                >
+                    <div style={{ marginBottom: 16 }}>
+                        <p style={{ margin: '0 0 4px', fontSize: '1.05rem', fontWeight: 600 }}>
+                            {registerStaff?.name ?? 'Staff member'}
+                        </p>
+                        <p className="form-help-text" style={{ margin: 0 }}>
+                            {registerStaff?.role ? String(registerStaff.role).replace(/_/g, ' ') : 'Staff'}
+                            {registerWallet?.branch?.name ? ` · ${registerWallet.branch.name}` : registerRow?.branch?.name ? ` · ${registerRow.branch.name}` : ''}
+                        </p>
+                    </div>
+
+                    <div className="cash-bank-stat-card" style={{ marginBottom: 16, display: 'flex', gap: 12, alignItems: 'center' }}>
+                        <div className="cash-bank-stat-icon"><Wallet size={22} /></div>
+                        <div>
+                            <p className="cash-bank-stat-label">Current Balance</p>
+                            <p className="cash-bank-stat-value">
+                                SAR {formatSar(registerWallet?.currentBalance ?? registerRow?.currentBalance ?? 0)}
+                            </p>
+                            <p className="cash-bank-stat-meta">
+                                {registerWallet?.coaAccount?.code ?? registerRow?.coaCode ?? '—'}
+                                {' · '}
+                                {registerWallet?.name ?? registerRow?.walletName ?? 'Petty Cash Wallet'}
+                            </p>
+                        </div>
+                    </div>
+
+                    <header style={{ padding: '0 0 8px', borderBottom: '1px solid #E2E8F0', marginBottom: 0 }}>
+                        <strong>Wallet Register — Top-ups & Expenses</strong>
+                    </header>
+                    <WalletTransactionsTable
+                        transactions={registerTransactions}
+                        loading={registerLoading}
+                        emptyMessage={
+                            registerWallet
+                                ? 'No transactions yet.'
+                                : 'No wallet register yet. Issue petty cash or approve a fund top-up to create one.'
+                        }
+                    />
+                </Modal>
+            ) : null}
 
             <section className="premium-table cash-bank-table" style={{ marginTop: 16 }}>
                 <header style={{ padding: '12px 16px', borderBottom: '1px solid #E2E8F0' }}>

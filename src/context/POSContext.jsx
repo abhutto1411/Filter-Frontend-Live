@@ -35,7 +35,7 @@ export const POSProvider = ({ children }) => {
     const refreshOrders = useCallback(async () => {
         try {
             const d = await apiFetch(
-                `/cashier/orders?limit=100&utcOffsetMinutes=${clientUtcOffsetMinutes()}`,
+                `/cashier/orders?utcOffsetMinutes=${clientUtcOffsetMinutes()}`,
             );
             setOrders(sortCashierOrdersOldestFirst(d.orders || d.data || []));
         } catch (err) {

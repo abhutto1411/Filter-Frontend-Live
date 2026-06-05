@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Mail, Lock, ChevronRight, Loader } from 'lucide-react';
+import { Mail, Lock, ChevronRight, Loader, Eye, EyeOff } from 'lucide-react';
 import '../styles/SignInPage.css';
 import { adminLogin } from '../services/authApi';
 import { useAuth } from '../context/AuthContext';
@@ -24,6 +24,7 @@ const SignInPage = () => {
     const { login, user, isAuthenticated } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -181,17 +182,27 @@ const SignInPage = () => {
 
                         <div className="form-group">
                             <label htmlFor="password">Password</label>
-                            <div className="input-wrapper">
+                            <div className="input-wrapper" style={{ position: 'relative' }}>
                                 <Lock size={18} />
                                 <input
-                                    type="password"
+                                    type={showPassword ? 'text' : 'password'}
                                     id="password"
                                     className="signin-input"
                                     placeholder="••••••••"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     required
+                                    style={{ paddingRight: 36 }}
                                 />
+                                <button
+                                    type="button"
+                                    className="password-toggle-btn"
+                                    onClick={() => setShowPassword((v) => !v)}
+                                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                    title={showPassword ? 'Hide password' : 'Show password'}
+                                >
+                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
                             </div>
                         </div>
 

@@ -113,6 +113,43 @@ export function assignRoleToUser(userId, roleId, opts = {}) {
     );
 }
 
+// ───────── Per-user permission overrides ─────────
+
+/**
+ * Get a user's effective permissions + which codes come from their role
+ * vs override. Response shape:
+ *   { success, effectiveCodes: string[], roleCodes: string[],
+ *     source: 'override' | 'role' | 'none', hasOverride: boolean }
+ */
+export function getUserPermissions(userId) {
+    return apiFetch(
+        `/super-admin/permissions/users/${encodeURIComponent(userId)}/permissions`,
+    );
+}
+
+/**
+ * Override a user's permissions with a hand-picked list. Replaces any
+ * existing override. Pass `codes = []` to clear the override (user reverts
+ * to role defaults).
+ */
+export function setUserPermissions(userId, codes) {
+    return apiFetch(
+        `/super-admin/permissions/users/${encodeURIComponent(userId)}/permissions`,
+        {
+            method: 'PUT',
+            body: JSON.stringify({ codes: Array.isArray(codes) ? codes : [] }),
+        },
+    );
+}
+
+/** Clear the user's override so they fall back to their role's defaults. */
+export function clearUserPermissions(userId) {
+    return apiFetch(
+        `/super-admin/permissions/users/${encodeURIComponent(userId)}/permissions`,
+        { method: 'DELETE' },
+    );
+}
+
 // ───────── Maintenance ─────────
 
 /** Idempotent — re-runs the Super Admin permission seeder. Safe to call repeatedly. */

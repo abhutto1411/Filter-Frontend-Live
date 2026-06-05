@@ -12,11 +12,13 @@ import {
   formatInvoiceIssuedTime,
   formatInvoiceLegalDate,
   normalizeCashierInvoice,
+  resolveInvoicePublicQrUrl,
   sar,
   sellerVatRegistration,
   thermalInvoiceQrPayload,
   thermalR2,
 } from '../../../utils/thermalInvoiceTotals';
+import { buildZatcaPhase2QrPayloadFromInvoice } from '../../../utils/zatcaQr';
 import './CashierTaxInvoiceView.css';
 
 function dash(s) {
@@ -65,18 +67,39 @@ export default function CashierTaxInvoiceView({ invoice: rawInvoice }) {
 
   useEffect(() => {
     let cancelled = false;
-    const payload = thermalInvoiceQrPayload(invoice, totals.totalInvoiceAmount);
-    QRCode.toDataURL(payload, { width: 112, margin: 1, errorCorrectionLevel: 'M' })
-      .then((url) => {
+    (async () => {
+      // Real invoices with a public link keep their URL QR. Otherwise (e.g.
+      // demo invoices) build a ZATCA Phase-2 TLV QR (tags 1–9) whose timestamp
+      // is the INVOICE date (not the creation date) — so a scan shows the date
+      // printed on the invoice. Tags 6–9 are base64 text (clean), with the
+      // cryptographic stamp values still placeholders until real ZATCA signing
+      // is integrated. Falls back to the plain text payload if seller VAT
+      // details are missing.
+      let payload = resolveInvoicePublicQrUrl(invoice);
+      if (!payload) {
+        payload = await buildZatcaPhase2QrPayloadFromInvoice({
+          sellerName: invoice.workshop?.name || invoice.workshopName || 'FILTER',
+          vatNumber: sellerVatRegistration(invoice),
+          invoiceDate: invoice.invoiceDate || invoice.issuedAt,
+          invoiceNumber: invoice.invoiceNo,
+          grandTotal: totals.totalInvoiceAmount,
+          vatAmount: totals.vatAmount,
+        });
+      }
+      if (!payload) {
+        payload = thermalInvoiceQrPayload(invoice, totals.totalInvoiceAmount);
+      }
+      try {
+        const url = await QRCode.toDataURL(payload, { width: 112, margin: 1, errorCorrectionLevel: 'M' });
         if (!cancelled) setQrDataUrl(url);
-      })
-      .catch(() => {
+      } catch {
         if (!cancelled) setQrDataUrl('');
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, [invoice, totals.totalInvoiceAmount]);
+  }, [invoice, totals.totalInvoiceAmount, totals.vatAmount]);
 
   if (!invoice) return null;
 
