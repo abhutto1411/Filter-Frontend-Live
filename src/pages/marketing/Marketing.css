@@ -1,0 +1,478 @@
+/* ─────────────────────────────────────────────
+   MARKETING LAYOUT BASE
+───────────────────────────────────────────── */
+
+.marketing-layout-root,
+.admin-layout.marketing-layout-root {
+    display: flex;
+    width: 100%;
+    min-height: 100vh;
+    background: #f3f4f6;
+    overflow: hidden;
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.marketing-main-content,
+.main-content.marketing-main-content {
+    flex: 1;
+    min-width: 0;
+    height: 100vh;
+    overflow-y: auto;
+    background: #f3f4f6;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.marketing-layout-root .top-bar {
+    display: none !important;
+}
+
+/* ─────────────────────────────────────────────
+   MARKETING YELLOW SIDEBAR
+───────────────────────────────────────────── */
+
+.mk-sidebar {
+    width: 210px;
+    min-width: 210px;
+    max-width: 210px;
+    height: 100vh;
+    background: #ffc107 !important;
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 0;
+    left: 0;
+    overflow: hidden;
+    z-index: 100;
+    box-sizing: border-box;
+}
+
+/* ── Brand ── */
+
+.mk-brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 11px 8px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+
+.mk-brand-icon {
+    width: 30px;
+    height: 30px;
+    background: #1a1a1a;
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffc107;
+    flex-shrink: 0;
+}
+
+.mk-brand-icon svg {
+    width: 15px;
+    height: 15px;
+}
+
+.mk-brand-title {
+    font-size: 12px;
+    font-weight: 800;
+    color: #1a1a1a;
+    line-height: 1.05;
+}
+
+.mk-brand-sub {
+    font-size: 8.5px;
+    font-weight: 500;
+    color: #6b5200;
+    line-height: 1.1;
+}
+
+/* ── Wallet box ── */
+
+.mk-wallet-box {
+    margin: 0 9px 10px;
+    background: #e6ac00 !important;
+    border-radius: 8px;
+    padding: 7px 10px;
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+
+.mk-wallet-label {
+    font-size: 7.8px;
+    color: #5a4200;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    line-height: 1;
+}
+
+.mk-wallet-val {
+    font-size: 10.8px;
+    font-weight: 800;
+    color: #1a1a1a;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    line-height: 1;
+}
+
+.mk-wallet-val svg {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+}
+
+/* ── Nav with scrollbar / slider ── */
+
+.mk-nav {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-bottom: 8px;
+    box-sizing: border-box;
+
+    scrollbar-width: thin;
+    scrollbar-color: rgba(26, 26, 26, 0.35) transparent;
+}
+
+.mk-nav::-webkit-scrollbar {
+    width: 5px;
+}
+
+.mk-nav::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.mk-nav::-webkit-scrollbar-thumb {
+    background: rgba(26, 26, 26, 0.28);
+    border-radius: 20px;
+}
+
+.mk-nav::-webkit-scrollbar-thumb:hover {
+    background: rgba(26, 26, 26, 0.45);
+}
+
+.mk-section-label {
+    font-size: 7.5px;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    color: #7a6200;
+    padding: 7px 11px 3px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.mk-nav-group {
+    margin-bottom: 0;
+}
+
+.mk-nav-link {
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 11px;
+    font-size: 10.3px;
+    font-weight: 500;
+    color: #2e2200;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.12s ease, color 0.12s ease;
+    border-radius: 0;
+    line-height: 1.25;
+    box-sizing: border-box;
+}
+
+.mk-nav-link:hover {
+    background: rgba(0, 0, 0, 0.06);
+    color: #1a1a1a;
+    text-decoration: none;
+}
+
+.mk-nav-link.active {
+    background: rgba(0, 0, 0, 0.12);
+    color: #1a1a1a;
+    font-weight: 800;
+}
+
+.mk-nav-link-inner {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+}
+
+.mk-nav-link-inner span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.mk-nav-link svg {
+    width: 12.5px;
+    height: 12.5px;
+    flex-shrink: 0;
+}
+
+/* ── Submenu ── */
+
+.nav-submenu {
+    overflow: hidden;
+}
+
+/* Scoped to .marketing-layout-root — the unscoped versions were leaking
+   into the regular Admin sidebar and forcing sub-items to 9.8px. */
+.marketing-layout-root .nav-sub-link {
+    display: block;
+    padding: 5px 12px 5px 32px;
+    font-size: 9.8px;
+    font-weight: 500;
+    color: #3b2d00;
+    text-decoration: none;
+}
+
+.marketing-layout-root .nav-sub-link:hover,
+.marketing-layout-root .nav-sub-link.active {
+    background: rgba(0, 0, 0, 0.08);
+    color: #1a1a1a;
+    font-weight: 700;
+}
+
+/* ── User row ── */
+
+.mk-user-row {
+    height: 50px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 10px;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    background: #e6ac00 !important;
+    position: relative;
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+
+.mk-avatar {
+    width: 23px;
+    height: 23px;
+    border-radius: 50%;
+    background: #1a1a1a;
+    color: #ffc107;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 800;
+    flex-shrink: 0;
+}
+
+.mk-user-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.mk-user-name {
+    font-size: 9.8px;
+    font-weight: 800;
+    color: #1a1a1a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.05;
+}
+
+.mk-user-role {
+    font-size: 7.8px;
+    color: #5a4200;
+    line-height: 1.05;
+    margin-top: 2px;
+}
+
+.mk-logout-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #4a3800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px;
+    border-radius: 4px;
+    transition: color 0.12s ease, background 0.12s ease;
+}
+
+.mk-logout-btn:hover {
+    color: #1a1a1a;
+    background: rgba(0, 0, 0, 0.06);
+}
+
+.mk-logout-btn svg {
+    width: 13px;
+    height: 13px;
+}
+
+/* ─────────────────────────────────────────────
+   HEADER
+───────────────────────────────────────────── */
+
+.marketing-simple-header {
+    height: 50px;
+    background: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    box-sizing: border-box;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.marketing-header-left,
+.marketing-header-right {
+    display: flex;
+    align-items: center;
+}
+
+.marketing-header-left {
+    gap: 7px;
+}
+
+.marketing-header-right {
+    gap: 13px;
+}
+
+.marketing-header-title {
+    font-size: 14px;
+    font-weight: 800;
+    color: #111827;
+    line-height: 1;
+}
+
+.marketing-header-subtitle {
+    font-size: 12px;
+    font-weight: 400;
+    color: #94a3b8;
+    line-height: 1;
+}
+
+.marketing-header-user {
+    font-size: 13px;
+    font-weight: 800;
+    color: #111827;
+}
+
+.marketing-header-logout {
+    border: none;
+    background: transparent;
+    color: #6b7280;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 0;
+}
+
+.marketing-header-logout:hover {
+    color: #111827;
+}
+
+.marketing-add-btn,
+.btn-portal {
+    height: 30px;
+    padding: 0 11px;
+    border: none;
+    border-radius: 6px;
+    background: #111827;
+    color: #ffffff;
+    font-size: 10.5px;
+    font-weight: 800;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.marketing-mobile-toggle,
+.mobile-menu-toggle {
+    display: none;
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin-right: 8px;
+    color: #111827;
+    cursor: pointer;
+}
+
+/* ─────────────────────────────────────────────
+   SIDEBAR OVERLAY
+───────────────────────────────────────────── */
+
+.sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.35);
+    z-index: 90;
+}
+
+/* ─────────────────────────────────────────────
+   MOBILE
+───────────────────────────────────────────── */
+
+@media (max-width: 768px) {
+    .marketing-layout-root,
+    .admin-layout.marketing-layout-root {
+        display: block;
+    }
+
+    .mk-sidebar {
+        position: fixed;
+        left: -210px;
+        top: 0;
+        height: 100vh;
+        transition: left 0.25s ease;
+        z-index: 100;
+    }
+
+    .mk-sidebar.open {
+        left: 0;
+    }
+
+    .marketing-main-content,
+    .main-content.marketing-main-content {
+        width: 100%;
+        height: 100vh;
+    }
+
+    .marketing-mobile-toggle,
+    .mobile-menu-toggle {
+        display: inline-flex !important;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .marketing-simple-header {
+        padding: 0 15px;
+    }
+
+    .marketing-header-subtitle {
+        display: none;
+    }
+
+    .marketing-header-user {
+        font-size: 12px;
+    }
+
+    .marketing-header-logout {
+        font-size: 10.5px;
+    }
+}
