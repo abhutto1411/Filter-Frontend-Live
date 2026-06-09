@@ -1,190 +1,185 @@
 // staging url
 //export const BASE_URL = 'https://filterbackend-production.up.railway.app';
 // staging url (production default when VITE_API_BASE_URL is unset)
-const PRODUCTION_BASE_URL = 'https://filterbackend-production.up.railway.app';
+export const BASE_URL  = 'https://filterbackend-production.up.railway.app';
 
 // production url
-// const PRODUCTION_BASE_URL = 'https://api.filtercarservices.com';
+// export const BASE_URL  = 'https://api.filtercarservices.com';der it should be approved already
 
 // development url
 //export const BASE_URL = 'http://localhost:3000';
-//const PRODUCTION_BASE_URL = 'http://localhost:3000';
 
-/** Prefer Vite env in dev (see filter-web/.env.development → localhost:3000). */
-export const BASE_URL = (
-    typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL
-        ? String(import.meta.env.VITE_API_BASE_URL).trim()
-        : PRODUCTION_BASE_URL
-).replace(/\/$/, '');
 
 const API_LOADING_EVENT = 'filter-api-loading';
 
 /** Device UTC offset in minutes (e.g. 300 Pakistan, 240 UAE) for cashier order timestamps. */
 export function clientUtcOffsetMinutes() {
-    return -new Date().getTimezoneOffset();
+  return -new Date().getTimezoneOffset();
 }
+
 let activeApiRequests = 0;
 
 function notifyApiLoading() {
-    if (typeof window === 'undefined') return;
-    window.dispatchEvent(
-        new CustomEvent(API_LOADING_EVENT, {
-            detail: {
-                pending: activeApiRequests,
-                loading: activeApiRequests > 0,
-            },
-        }),
-    );
+  if (typeof window === "undefined") return;
+
+  window.dispatchEvent(
+    new CustomEvent(API_LOADING_EVENT, {
+      detail: {
+        pending: activeApiRequests,
+        loading: activeApiRequests > 0,
+      },
+    })
+  );
 }
 
-/** Super-admin multipart CSV import routes (single `file` field). */
-const traceCsvImportLabel = (path) => {
-    if (path === '/super-admin/products/import' || path.endsWith('/super-admin/products/import')) {
-        return 'products/import';
-    }
-    if (path === '/super-admin/services/import' || path.endsWith('/super-admin/services/import')) {
-        return 'services/import';
-    }
-    return null;
-};
+export function getAuthToken() {
+  if (typeof localStorage === "undefined") return "";
 
+  return (
+    localStorage.getItem("filter_auth_token") ||
+    localStorage.getItem("token") ||
+    localStorage.getItem("accessToken") ||
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("adminToken") ||
+    ""
+  );
+}
+
+export function clearAuthSession() {
+  if (typeof localStorage === "undefined") return;
+
+  localStorage.removeItem("filter_auth_token");
+  localStorage.removeItem("filter_auth_user");
+  localStorage.removeItem("filter_auth_workshop");
+  localStorage.removeItem("token");
+  localStorage.removeItem("accessToken");
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("adminToken");
+}
+
+function buildUrl(path) {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  return `${BASE_URL}${normalized}`;
+}
+
+function shouldRedirectToLogin() {
+  if (typeof window === "undefined") return false;
+
+  const pathname = window.location.pathname.toLowerCase();
+
+  return !(
+    pathname.includes("login") ||
+    pathname.includes("signin") ||
+    pathname === "/"
+  );
+}
+
+function getErrorMessage(errorBody, status, statusText, method, path) {
+  const rawMessage = errorBody?.message;
+
+  if (Array.isArray(rawMessage)) {
+    const message = rawMessage.filter(Boolean).map(String).join(" ");
+    if (message.trim()) return message;
+  }
+
+  if (typeof rawMessage === "string" && rawMessage.trim()) {
+    return rawMessage.trim();
+  }
+
+  if (typeof errorBody?.error === "string" && errorBody.error.trim()) {
+    return errorBody.error.trim();
+  }
+
+  return `Request failed: ${status} ${statusText} (${method} ${path})`;
+}
+
+/**
+ * Central secure API client.
+ * - Uses VITE_API_BASE_URL
+ * - Adds Bearer token automatically
+ * - Supports JSON and FormData
+ * - Handles 401 globally
+ */
 export async function apiFetch(path, options = {}) {
-    activeApiRequests += 1;
+  activeApiRequests += 1;
+  notifyApiLoading();
+
+  const method = options.method || "GET";
+  const token = getAuthToken();
+  const customHeaders = options.headers || {};
+  const isFormData =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
+
+  const headers = {
+    Accept: "application/json",
+    ...(token ? { Authorization: `Bearer ${token.trim()}` } : {}),
+    ...(!isFormData ? { "Content-Type": "application/json" } : {}),
+    ...customHeaders,
+  };
+
+  const url = buildUrl(path);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
+
+    const contentType = response.headers.get("content-type") || "";
+
+    const responseBody = contentType.includes("application/json")
+      ? await response.json().catch(() => null)
+      : await response.text().catch(() => "");
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        clearAuthSession();
+
+        if (shouldRedirectToLogin()) {
+          window.location.replace("/signin");
+        }
+      }
+
+      const detail = {
+        path,
+        method,
+        status: response.status,
+        statusText: response.statusText,
+        response: responseBody,
+        requestBody:
+          options.body instanceof FormData
+            ? "[FormData]"
+            : options.body
+              ? safeJsonParse(options.body)
+              : undefined,
+      };
+
+      console.error("[apiFetch] Request failed", detail);
+
+      throw new Error(
+        getErrorMessage(
+          responseBody,
+          response.status,
+          response.statusText,
+          method,
+          path
+        )
+      );
+    }
+
+    return responseBody;
+  } finally {
+    activeApiRequests = Math.max(0, activeApiRequests - 1);
     notifyApiLoading();
-    const token = localStorage.getItem('filter_auth_token');
-    const customHeaders = options.headers || {};
-    const isFormData =
-        typeof FormData !== 'undefined' && options.body instanceof FormData;
-    const headers = {
-        accept: '*/*',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(!isFormData ? { 'Content-Type': 'application/json' } : {}),
-        ...customHeaders,
-    };
-    const url = `${BASE_URL}${path}`;
-    const method = options.method || 'GET';
-    const csvImportLabel = traceCsvImportLabel(path);
-    const traceImport = !!csvImportLabel;
-    const t0 = traceImport ? performance.now() : 0;
-    const requestId = traceImport
-        ? `import-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
-        : '';
-
-    if (traceImport) {
-        const file = isFormData ? options.body.get?.('file') : null;
-        console.log(`[apiFetch] ${csvImportLabel} — single POST`, {
-            requestId,
-            url,
-            method,
-            hasAuthHeader: !!token,
-            body: 'multipart/form-data (field file)',
-            fileName: file?.name,
-            fileSize: file?.size,
-            fileType: file?.type,
-        });
-    }
-
-    try {
-        const res = await fetch(url, {
-            ...options,
-            headers,
-        });
-
-        if (traceImport) {
-            console.log(`[apiFetch] ${csvImportLabel} — response headers`, {
-                requestId,
-                status: res.status,
-                statusText: res.statusText,
-                msToHeaders: `${(performance.now() - t0).toFixed(0)}ms`,
-                contentType: res.headers.get('content-type'),
-            });
-        }
-
-        if (!res.ok) {
-            // Expired/invalid token while using supplier portal → send to supplier login (not on login POST itself).
-            if (res.status === 401) {
-                const pathname =
-                    typeof window !== 'undefined' && window.location ? window.location.pathname : '';
-                const hadSession =
-                    typeof localStorage !== 'undefined' && localStorage.getItem('filter_auth_token');
-                if (
-                    hadSession &&
-                    pathname.startsWith('/supplier') &&
-                    !pathname.startsWith('/supplier/login')
-                ) {
-                    localStorage.removeItem('filter_auth_token');
-                    localStorage.removeItem('filter_auth_user');
-                    localStorage.removeItem('filter_auth_workshop');
-                    window.location.replace('/supplier/login');
-                }
-            }
-
-            const err = await res.json().catch(() => ({}));
-            const detail = {
-                path,
-                method: options.method || 'GET',
-                status: res.status,
-                statusText: res.statusText,
-                response: err,
-                requestBody:
-                    options.body instanceof FormData
-                        ? '[FormData]'
-                        : options.body
-                            ? safeJsonParse(options.body)
-                            : undefined,
-            };
-            if (traceImport) {
-                console.error(`[apiFetch] ${csvImportLabel} — error body`, {
-                    requestId,
-                    ...detail,
-                    msTotal: `${(performance.now() - t0).toFixed(0)}ms`,
-                });
-            }
-            // Keep a full object log to make backend debugging easier.
-            console.error('[apiFetch] Request failed', detail);
-            const msgRaw = err.message;
-            const msgStr = Array.isArray(msgRaw)
-                ? msgRaw.filter(Boolean).map(String).join(' ')
-                : typeof msgRaw === 'string'
-                    ? msgRaw.trim()
-                    : '';
-            throw new Error(
-                msgStr ||
-                (typeof err.error === 'string' ? err.error : '') ||
-                `Request failed: ${res.status} ${res.statusText} (${options.method || 'GET'} ${path})`,
-            );
-        }
-
-        const json = await res.json().catch((e) => {
-            if (traceImport) {
-                console.error(`[apiFetch] ${csvImportLabel} — JSON parse failed`, {
-                    requestId,
-                    err: e,
-                    msTotal: `${(performance.now() - t0).toFixed(0)}ms`,
-                });
-            }
-            throw e;
-        });
-
-        if (traceImport) {
-            console.log(`[apiFetch] ${csvImportLabel} — JSON body (same request)`, {
-                requestId,
-                body: json,
-                msTotal: `${(performance.now() - t0).toFixed(0)}ms`,
-            });
-        }
-
-        return json;
-    } finally {
-        activeApiRequests = Math.max(0, activeApiRequests - 1);
-        notifyApiLoading();
-    }
+  }
 }
 
 function safeJsonParse(value) {
-    try {
-        return JSON.parse(value);
-    } catch {
-        return value;
-    }
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
 }
+
+export default apiFetch;

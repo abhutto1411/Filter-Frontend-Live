@@ -2,7 +2,7 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-const ProtectedRoute = ({ children, requiredType, redirectTo = "/" }) => {
+const ProtectedRoute = ({ children, requiredType }) => {
     const { isAuthenticated, user, loading } = useAuth();
     const location = useLocation();
 
@@ -15,8 +15,11 @@ const ProtectedRoute = ({ children, requiredType, redirectTo = "/" }) => {
     }
 
     if (!isAuthenticated) {
-        // Redirect to login page but save the current location to redirect back after login
-        return <Navigate to={redirectTo} state={{ from: location }} replace />;
+        // Always return to the unified sign-in hub — logout or session expiry
+        // from ANY portal lands in the same place (not the per-portal login).
+        // This also wins the race against the portal's own logout navigate().
+        // The per-portal `/login` routes still exist for direct navigation.
+        return <Navigate to="/" state={{ from: location }} replace />;
     }
 
     const normalizeUserType = (value) => String(value || '').trim().toLowerCase();

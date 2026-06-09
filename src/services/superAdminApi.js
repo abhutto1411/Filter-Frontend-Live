@@ -457,6 +457,7 @@ export const getSalesOrder = (id) =>
 export const getInvoices = ({
     workshopId,
     branchId,
+    corporateAccountId,
     paymentStatus,
     search,
     startDate,
@@ -470,6 +471,7 @@ export const getInvoices = ({
         `/super-admin/invoices${qs({
             workshopId,
             branchId,
+            corporateAccountId,
             paymentStatus,
             search,
             startDate,
@@ -480,6 +482,10 @@ export const getInvoices = ({
             orderStatus,
         })}`,
     );
+
+/** Corporate companies (accounts) for the Sales pages' Company filter. */
+export const getSuperAdminCorporateCompanies = ({ workshopId } = {}) =>
+    apiFetch(`/super-admin/corporate-accounts${qs({ workshopId })}`);
 
 export const getInvoice = (id) =>
     apiFetch(`/super-admin/invoices/${encodeURIComponent(String(id))}`);
@@ -509,6 +515,7 @@ export const deleteDemoInvoice = (id) =>
 export const getSuperAdminSalesReturns = ({
     workshopId,
     branchId,
+    corporateAccountId,
     status,
     search,
     startDate,
@@ -520,6 +527,7 @@ export const getSuperAdminSalesReturns = ({
         `/super-admin/sales-returns${qs({
             workshopId,
             branchId,
+            corporateAccountId,
             status,
             search,
             startDate,
@@ -537,6 +545,7 @@ export const getSuperAdminSalesReturn = (id) =>
 export const getSuperAdminReceipts = ({
     workshopId,
     branchId,
+    corporateAccountId,
     search,
     startDate,
     endDate,
@@ -547,6 +556,7 @@ export const getSuperAdminReceipts = ({
         `/super-admin/receipts${qs({
             workshopId,
             branchId,
+            corporateAccountId,
             search,
             startDate,
             endDate,
@@ -618,6 +628,24 @@ export const rejectCorporatePaymentApproval = (id, reason) =>
     apiFetch(`/super-admin/corporate-payment-approvals/${encodeURIComponent(String(id))}/reject`, {
         method: 'POST',
         body: JSON.stringify({ reason }),
+    });
+
+// ─── Corporate Billing (Super Admin) ─────────────────────────────────────────
+
+export const getCorporateBillingStatement = ({ corporateAccountId, startDate, endDate, dueDate } = {}) =>
+    apiFetch(
+        `/super-admin/corporate-billing/statement${qs({
+            corporateAccountId,
+            startDate,
+            endDate,
+            dueDate,
+        })}`,
+    );
+
+export const generateCorporateBill = ({ corporateAccountId, startDate, endDate, dueDate }) =>
+    apiFetch('/super-admin/corporate-billing/generate', {
+        method: 'POST',
+        body: JSON.stringify({ corporateAccountId, startDate, endDate, dueDate }),
     });
 
 /** Same bilingual simplified-tax-invoice shape used by the corporate portal modal. */

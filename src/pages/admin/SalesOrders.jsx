@@ -10,8 +10,33 @@ import {
     getSalesOrders,
     getWorkshopOptions,
 } from '../../services/superAdminApi';
+import { ExportMenu } from '../../components/admin/SalesExportControls';
+import { exportRowsToPdf, exportRowsToExcel } from '../../utils/tableExport';
 
 const PAGE_SIZE = 25;
+const EXPORT_LIMIT = 5000;
+
+/** Build {headers, rows} mirroring the on-screen table — used for PDF/Excel export. */
+function buildSalesOrderExportRows(orders) {
+    const headers = [
+        'Invoice No', 'Order #', 'Date / Time', 'Workshop', 'Branch',
+        'Customer', 'Mobile', 'Vehicle', 'Technicians', 'Total (SAR)', 'Status',
+    ];
+    const rows = (orders || []).map((order) => [
+        order.invoiceNo ?? 'Pending invoice',
+        order.id,
+        formatInvoiceDateTime(order),
+        order.workshopName ?? '—',
+        order.branchName ?? '—',
+        order.customerName ?? 'Walk-in',
+        order.customerMobile ?? '—',
+        order.plateNo ?? '—',
+        order.technicianNames ?? '—',
+        order.totalAmount != null ? Number(Number(order.totalAmount).toFixed(2)) : '',
+        formatStatusLabel(order.status),
+    ]);
+    return { headers, rows };
+}
 
 const STATUS_VARIANT = {
     completed: { class: 'so-status-completed', icon: CheckCircle2, label: 'Completed' },
@@ -116,6 +141,7 @@ export default function SalesOrders() {
     const [detailData, setDetailData] = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailError, setDetailError] = useState('');
+    const [exporting, setExporting] = useState(false);
 
     // Load workshops once.
     useEffect(() => {
@@ -232,6 +258,39 @@ export default function SalesOrders() {
         void fetchOrders();
     }, [fetchOrders]);
 
+    // Export the FULL filtered set (one bounded re-fetch with the active filters).
+    const runExport = useCallback(async (kind) => {
+        setExporting(true);
+        setLoadError('');
+        try {
+            const res = await getSalesOrders({
+                workshopId: selectedWorkshopId || undefined,
+                branchId: selectedBranchId || undefined,
+                status: statusFilter || undefined,
+                search: searchDebounced || undefined,
+                startDate: localDateTimeToIso(dateFrom) || undefined,
+                endDate: localDateTimeToIso(dateTo) || undefined,
+                limit: String(EXPORT_LIMIT),
+                offset: '0',
+            });
+            const list = Array.isArray(res?.salesOrders) ? res.salesOrders
+                : Array.isArray(res?.data?.salesOrders) ? res.data.salesOrders : [];
+            const { headers, rows } = buildSalesOrderExportRows(list);
+            const subtitle = `${rows.length} order(s)`
+                + (dateFrom || dateTo ? ` · ${dateFrom || '…'} → ${dateTo || '…'}` : '')
+                + (statusFilter ? ` · status: ${statusFilter}` : '');
+            if (kind === 'pdf') {
+                exportRowsToPdf({ title: 'Sales Orders', subtitle, headers, rows, filenameBase: 'sales-orders' });
+            } else {
+                exportRowsToExcel({ sheetName: 'Sales Orders', headers, rows, filenameBase: 'sales-orders' });
+            }
+        } catch (e) {
+            setLoadError(e?.message || 'Export failed');
+        } finally {
+            setExporting(false);
+        }
+    }, [selectedWorkshopId, selectedBranchId, statusFilter, searchDebounced, dateFrom, dateTo]);
+
     const openDetails = useCallback(async (orderId) => {
         if (!orderId) return;
         setDetailId(String(orderId));
@@ -301,7 +360,15 @@ export default function SalesOrders() {
                     </h2>
                     <p className="so-sub">POS sales across all workshops &amp; branches</p>
                 </div>
-                <div className="so-order-count-badge">{total.toLocaleString()} orders</div>
+                <div style={{ display: 'inline-flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <ExportMenu
+                        onPdf={() => runExport('pdf')}
+                        onExcel={() => runExport('excel')}
+                        busy={exporting}
+                        disabled={loading}
+                    />
+                    <div className="so-order-count-badge">{total.toLocaleString()} orders</div>
+                </div>
             </header>
 
             <div className="so-kpi-grid">

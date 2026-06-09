@@ -106,8 +106,7 @@ const NAV_CONFIG = [
                 icon: Users,
                 subItems: [
                     { label: 'All Customers', path: 'all-customers' },
-                    // TODO: Re-enable when Corporate Billing flow is ready.
-                    // { label: 'Corporate Billing', path: 'corporate-billing' },
+                    { label: 'Corporate Billing', path: 'corporate-billing' },
                 ],
             },
             { label: 'Suppliers', path: 'suppliers', icon: Truck },

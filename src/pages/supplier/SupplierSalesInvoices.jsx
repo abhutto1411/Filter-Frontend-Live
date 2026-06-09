@@ -1603,6 +1603,12 @@ export default function SupplierSalesInvoices() {
                 return;
             }
             setEditingInvoiceStatus(inv.status || 'pending_payment');
+            const wpiFromMeta =
+                m.workshopPurchaseInvoiceId ?? m.workshop_purchase_invoice_id;
+            workshopPurchaseSourceIdRef.current =
+                wpiFromMeta != null && String(wpiFromMeta).trim() !== ''
+                    ? String(wpiFromMeta).trim()
+                    : null;
             setIssueDate(inv.invoiceDate || issueDate);
             const m =
                 inv.salesInvoiceMeta != null && typeof inv.salesInvoiceMeta === 'object'

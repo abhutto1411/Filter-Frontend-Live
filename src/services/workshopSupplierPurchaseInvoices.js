@@ -312,9 +312,17 @@ export function extractWorkshopPurchaseInvoiceUiFromPayload(raw) {
     return {};
 }
 
+function purchaseInvoiceCreatedAtMs(row) {
+    const raw = row?._raw && typeof row._raw === 'object' ? row._raw : {};
+    const parsed = Date.parse(String(raw.createdAt ?? raw.created_at ?? ''));
+    if (Number.isFinite(parsed)) return parsed;
+    const id = Number(row?.id);
+    return Number.isFinite(id) ? id : 0;
+}
+
 /**
  * Newest-first sort for merged workshop purchase-invoice tables (affiliated + non-affiliated).
- * Same issue date is common; tie-break with created time, then numeric id / invoice number.
+ * Primary key is record creation time (not issue date — users may backdate or future-date invoices).
  *
  * @param {ReturnType<typeof normalizeWorkshopSupplierPurchaseInvoiceRow>} a
  * @param {ReturnType<typeof normalizeWorkshopSupplierPurchaseInvoiceRow>} b
@@ -322,16 +330,9 @@ export function extractWorkshopPurchaseInvoiceUiFromPayload(raw) {
  */
 export function compareWorkshopPurchaseInvoiceListRowsDesc(a, b) {
     if (!a || !b) return 0;
-    const dateA = String(a.date || '').slice(0, 10);
-    const dateB = String(b.date || '').slice(0, 10);
-    if (dateA !== dateB) {
-        return dateB.localeCompare(dateA);
-    }
-    const rawA = a._raw && typeof a._raw === 'object' ? a._raw : {};
-    const rawB = b._raw && typeof b._raw === 'object' ? b._raw : {};
-    const tA = Date.parse(String(rawA.createdAt ?? rawA.created_at ?? ''));
-    const tB = Date.parse(String(rawB.createdAt ?? rawB.created_at ?? ''));
-    if (Number.isFinite(tA) && Number.isFinite(tB) && tA !== tB) {
+    const tA = purchaseInvoiceCreatedAtMs(a);
+    const tB = purchaseInvoiceCreatedAtMs(b);
+    if (tA !== tB) {
         return tB - tA;
     }
     const idA = Number(a.id);

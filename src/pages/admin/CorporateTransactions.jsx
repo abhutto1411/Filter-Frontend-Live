@@ -7,8 +7,15 @@ import {
     getWorkshopOptions,
     getBranches,
     getInvoices,
+    getSuperAdminCorporateCompanies,
 } from '../../services/superAdminApi';
 import InvoiceDetailsModal from '../../components/pos/modern/InvoiceDetailsModal';
+import { ExportMenu, DateTimeRange } from '../../components/admin/SalesExportControls';
+import { exportRowsToPdf, exportRowsToExcel } from '../../utils/tableExport';
+
+// Upper bound for the one-shot "export everything matching the filters" fetch.
+const EXPORT_LIMIT = 5000;
+const round2 = (n) => Number(Number(n ?? 0).toFixed(2));
 
 const num = (v) =>
     `SAR ${Number(v ?? 0).toLocaleString(undefined, {
@@ -25,6 +32,56 @@ function formatDate(raw) {
         month: 'short',
         year: 'numeric',
     });
+}
+
+/** Client-side search predicate — shared by the table filter and export-all. */
+function matchesInvoiceSearch(r, q) {
+    if (!q) return true;
+    const hay = [
+        r.invoiceNo, r.invoice_no,
+        r.corporateAccountName, r.corporate?.companyName,
+        r.workshopName, r.workshop?.name,
+        r.branchName, r.branch?.name,
+        r.paymentStatus,
+        r.totalAmount, r.balance, r.amountPaid,
+    ].map((x) => String(x ?? '').toLowerCase()).join(' ');
+    return hay.includes(q);
+}
+
+/** Build {headers, rows} mirroring the on-screen table — used for PDF/Excel export. */
+function buildCorporateExportRows(list) {
+    const headers = [
+        'Invoice Date', 'Invoice No', 'Customer', 'Order Type',
+        'Workshop', 'Branch', 'Status', 'Invoice Amount', 'Receipt Amount', 'Balance',
+    ];
+    const rows = (list || []).map((r) => {
+        const total = Number(r.totalAmount ?? r.grandTotal ?? 0);
+        const realPaid = r.realPaid != null
+            ? Number(r.realPaid)
+            : Math.max(0, total - Number(r.balance ?? 0));
+        const realBalance = r.realBalance != null ? Number(r.realBalance) : Number(r.balance ?? 0);
+        const realStatus = String(r.realPaymentStatus ?? r.paymentStatus ?? '').toLowerCase();
+        const statusLabel = realStatus === 'paid' || realBalance <= 0.01
+            ? 'Paid'
+            : realPaid > 0.01 ? 'Partially Paid' : 'Not Paid';
+        const src = String(r.orderSource ?? '').toLowerCase();
+        const orderType = src === 'walk_in_corporate'
+            ? 'Walk-in Corporate'
+            : src === 'corporate_app' ? 'Corporate Booking' : 'Corporate';
+        return [
+            formatDate(r.invoiceDate ?? r.invoice_date ?? r.createdAt),
+            r.invoiceNo ?? r.invoice_no ?? '—',
+            r.corporateAccountName ?? r.corporate?.companyName ?? '—',
+            orderType,
+            r.workshopName ?? r.workshop?.name ?? '—',
+            r.branchName ?? r.branch?.name ?? '—',
+            statusLabel,
+            round2(total),
+            round2(realPaid),
+            round2(realBalance),
+        ];
+    });
+    return { headers, rows };
 }
 
 /** Normalize backend invoice payload into the shape InvoiceDetailsModal expects. */
@@ -59,8 +116,17 @@ export default function CorporateTransactions() {
     const [search, setSearch] = useState('');
     const [workshopOptions, setWorkshopOptions] = useState([]);
     const [branchOptions, setBranchOptions] = useState([]);
+    const [companyOptions, setCompanyOptions] = useState([]);
     const [selectedWorkshopId, setSelectedWorkshopId] = useState('');
     const [selectedBranchId, setSelectedBranchId] = useState('');
+    const [selectedCompanyId, setSelectedCompanyId] = useState('');
+    // Date+time range → passed as startDate/endDate to getInvoices (backend
+    // honours full ISO datetimes, so this filters to the minute).
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
+    const [exporting, setExporting] = useState(false);
+    // Server-computed KPI totals across ALL pages (not just this page's rows).
+    const [summary, setSummary] = useState(null);
     const [invoice, setInvoice] = useState(null);
     const [invoiceLoadingId, setInvoiceLoadingId] = useState(null);
     // Error from the last invoice fetch (kept so we can surface it to the user
@@ -79,6 +145,9 @@ export default function CorporateTransactions() {
             const res = await getInvoices({
                 workshopId: selectedWorkshopId || undefined,
                 branchId:   selectedBranchId   || undefined,
+                corporateAccountId: selectedCompanyId || undefined,
+                startDate: dateFrom || undefined,
+                endDate:   dateTo   || undefined,
                 limit: PAGE_SIZE,
                 offset: (page - 1) * PAGE_SIZE,
                 corporateOnly: true,     // only corporate invoices
@@ -91,14 +160,16 @@ export default function CorporateTransactions() {
                 : [];
             setRows(list);
             setTotal(Number(res?.total) || list.length);
+            setSummary(res?.summary ?? null);
         } catch (e) {
             setError(e?.message || 'Could not load invoices');
             setRows([]);
             setTotal(0);
+            setSummary(null);
         } finally {
             setLoading(false);
         }
-    }, [selectedWorkshopId, selectedBranchId, page]);
+    }, [selectedWorkshopId, selectedBranchId, selectedCompanyId, dateFrom, dateTo, page]);
 
     useEffect(() => {
         void load();
@@ -108,7 +179,25 @@ export default function CorporateTransactions() {
     // than the new total returns nothing and the user sees an empty table.
     useEffect(() => {
         setPage(1);
-    }, [selectedWorkshopId, selectedBranchId]);
+    }, [selectedWorkshopId, selectedBranchId, selectedCompanyId, dateFrom, dateTo]);
+
+    // Companies for the Company filter (scoped to the selected workshop).
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const res = await getSuperAdminCorporateCompanies({ workshopId: selectedWorkshopId || undefined });
+                const list = Array.isArray(res?.companies) ? res.companies : [];
+                if (!cancelled) {
+                    setCompanyOptions(list.map((c) => ({ id: String(c.id), name: String(c.companyName || '').trim() || 'Company' })));
+                    setSelectedCompanyId('');
+                }
+            } catch {
+                if (!cancelled) { setCompanyOptions([]); setSelectedCompanyId(''); }
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [selectedWorkshopId]);
 
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -176,24 +265,59 @@ export default function CorporateTransactions() {
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
         if (!q) return rows;
-        return rows.filter((r) => {
-            const hay = [
-                r.invoiceNo, r.invoice_no,
-                // Search matches the displayed company name only — keep aligned
-                // with what the Customer column shows so search results aren't
-                // surprising (no hits on hidden contact-person names).
-                r.corporateAccountName, r.corporate?.companyName,
-                r.workshopName, r.workshop?.name,
-                r.branchName, r.branch?.name,
-                r.paymentStatus,
-                r.totalAmount, r.balance, r.amountPaid,
-            ].map((x) => String(x ?? '').toLowerCase()).join(' ');
-            return hay.includes(q);
-        });
+        return rows.filter((r) => matchesInvoiceSearch(r, q));
     }, [rows, search]);
 
+    // Export the FULL filtered set (not just the current page): one bounded
+    // re-fetch with the active filters, then the same client-side search.
+    const runExport = useCallback(async (kind) => {
+        setExporting(true);
+        setError('');
+        try {
+            const res = await getInvoices({
+                workshopId: selectedWorkshopId || undefined,
+                branchId:   selectedBranchId   || undefined,
+                corporateAccountId: selectedCompanyId || undefined,
+                startDate: dateFrom || undefined,
+                endDate:   dateTo   || undefined,
+                limit: EXPORT_LIMIT,
+                offset: 0,
+                corporateOnly: true,
+                orderStatus: 'invoiced',
+            });
+            const all = Array.isArray(res?.invoices) ? res.invoices
+                : Array.isArray(res?.items) ? res.items
+                : Array.isArray(res) ? res : [];
+            const q = search.trim().toLowerCase();
+            const list = q ? all.filter((r) => matchesInvoiceSearch(r, q)) : all;
+            const { headers, rows: outRows } = buildCorporateExportRows(list);
+            const subtitle = `${outRows.length} row(s)`
+                + (dateFrom || dateTo ? ` · ${dateFrom || '…'} → ${dateTo || '…'}` : '');
+            if (kind === 'pdf') {
+                exportRowsToPdf({ title: 'Corporate Transactions', subtitle, headers, rows: outRows, filenameBase: 'corporate-transactions' });
+            } else {
+                exportRowsToExcel({ sheetName: 'Corporate Transactions', headers, rows: outRows, filenameBase: 'corporate-transactions' });
+            }
+        } catch (e) {
+            setError(e?.message || 'Export failed');
+        } finally {
+            setExporting(false);
+        }
+    }, [selectedWorkshopId, selectedBranchId, selectedCompanyId, dateFrom, dateTo, search]);
+
     // KPI totals — billed, collected (real, non-phantom) and outstanding.
-    const { totalBilled, totalCollected, totalOutstanding } = useMemo(() => {
+    // Prefer the server `summary` (across ALL pages). When a client-side search
+    // is active it only narrows the current page, so fall back to summing the
+    // visible rows so the KPIs match what's on screen.
+    const { totalBilled, totalCollected, totalOutstanding, kpiCount } = useMemo(() => {
+        if (summary && !search.trim()) {
+            return {
+                totalBilled: Number(summary.totalBilled ?? 0),
+                totalCollected: Number(summary.totalCollected ?? 0),
+                totalOutstanding: Number(summary.totalOutstanding ?? 0),
+                kpiCount: Number(summary.count ?? 0),
+            };
+        }
         let billed = 0;
         let collected = 0;
         let outstanding = 0;
@@ -209,8 +333,8 @@ export default function CorporateTransactions() {
             collected += paid;
             outstanding += bal;
         }
-        return { totalBilled: billed, totalCollected: collected, totalOutstanding: outstanding };
-    }, [filtered]);
+        return { totalBilled: billed, totalCollected: collected, totalOutstanding: outstanding, kpiCount: filtered.length };
+    }, [filtered, summary, search]);
 
     const openInvoice = async (invoiceId) => {
         if (!invoiceId) return;
@@ -250,29 +374,37 @@ export default function CorporateTransactions() {
                         All invoices across workshops — paid, unpaid, partial, and overdue. Filter by workshop / branch.
                     </p>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => load()}
-                    disabled={loading}
-                    style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 6,
-                        padding: '8px 14px',
-                        borderRadius: 10,
-                        border: '1px solid #cbd5e1',
-                        background: '#fff',
-                        cursor: loading ? 'wait' : 'pointer',
-                        fontSize: '0.8125rem',
-                        fontWeight: 600,
-                    }}
-                >
-                    <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
-                </button>
+                <div style={{ display: 'inline-flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <ExportMenu
+                        onPdf={() => runExport('pdf')}
+                        onExcel={() => runExport('excel')}
+                        busy={exporting}
+                        disabled={loading}
+                    />
+                    <button
+                        type="button"
+                        onClick={() => load()}
+                        disabled={loading}
+                        style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            padding: '8px 14px',
+                            borderRadius: 10,
+                            border: '1px solid #cbd5e1',
+                            background: '#fff',
+                            cursor: loading ? 'wait' : 'pointer',
+                            fontSize: '0.8125rem',
+                            fontWeight: 600,
+                        }}
+                    >
+                        <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
+                    </button>
+                </div>
             </header>
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
-                <KpiCard label="Invoices" value={loading ? '—' : filtered.length.toLocaleString()} accent="#0f172a" />
+                <KpiCard label="Invoices" value={loading ? '—' : Number(kpiCount).toLocaleString()} accent="#0f172a" />
                 <KpiCard label="Total Billed" value={loading ? '—' : num(totalBilled)} accent="#0f172a" />
                 <KpiCard label="Collected" value={loading ? '—' : num(totalCollected)} accent="#15803d" />
                 <KpiCard label="Outstanding" value={loading ? '—' : num(totalOutstanding)} accent={totalOutstanding > 0 ? '#b91c1c' : '#15803d'} />
@@ -322,6 +454,33 @@ export default function CorporateTransactions() {
                         ))}
                     </select>
                 </div>
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 200 }}>
+                    <label style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 4 }}>Company</label>
+                    <select
+                        value={selectedCompanyId}
+                        onChange={(e) => setSelectedCompanyId(e.target.value)}
+                        style={{
+                            padding: '10px 12px',
+                            borderRadius: 10,
+                            border: '1px solid #cbd5e1',
+                            fontSize: '0.875rem',
+                            background: '#fff',
+                            minWidth: 200,
+                        }}
+                    >
+                        <option value="">All companies</option>
+                        {companyOptions.map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                    </select>
+                </div>
+                <DateTimeRange
+                    from={dateFrom}
+                    to={dateTo}
+                    onFrom={setDateFrom}
+                    onTo={setDateTo}
+                    onClear={() => { setDateFrom(''); setDateTo(''); }}
+                />
                 <input
                     type="search"
                     value={search}

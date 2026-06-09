@@ -1682,8 +1682,8 @@
 }
 
 .ws-pi-td-uom {
-    vertical-align: top;
-    min-width: 72px;
+    vertical-align: middle;
+    min-width: 96px;
 }
 
 .ws-pi-td-tax {
@@ -2259,27 +2259,62 @@
     }
 }
 
-/* ─── Purchase invoice: UOM conversion hint under Qty ─── */
+/* ─── Purchase invoice: UOM conversion hint (full-width sub-row) ─── */
 .ws-pi-td-qty {
+    vertical-align: middle;
+    min-width: 72px;
+}
+
+.ws-pi-conversion-subrow td {
+    padding: 0 10px 10px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #fff;
     vertical-align: top;
-    min-width: 108px;
+}
+
+.ws-pi-conversion-subrow:hover td {
+    background: #fafafa;
 }
 
 .ws-pi-uom-conversion-hint {
-    font-size: 0.6875rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 14px;
+    font-size: 0.75rem;
     font-weight: 500;
     color: #475569;
-    line-height: 1.45;
-    margin-top: 6px;
-    padding: 7px 9px;
-    background: linear-gradient(180deg, #fafbfc 0%, #f1f5f9 100%);
-    border-radius: 6px;
-    border: 1px solid #e2e8f0;
-    border-left: 3px solid #ea580c;
-    white-space: normal;
-    max-width: 248px;
+    line-height: 1.4;
+    padding: 8px 12px;
+    background: linear-gradient(180deg, #fffbeb 0%, #fff7ed 100%);
+    border-radius: 8px;
+    border: 1px solid #fed7aa;
     text-align: left;
-    letter-spacing: -0.01em;
+}
+
+.ws-pi-uom-conversion-rule {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #ffedd5;
+    color: #9a3412;
+    font-weight: 700;
+    font-size: 0.6875rem;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.ws-pi-uom-conversion-stock {
+    color: #1e293b;
+    font-weight: 600;
+}
+
+.ws-pi-uom-conversion-prices {
+    color: #64748b;
+    font-size: 0.6875rem;
+    white-space: nowrap;
 }
 
 /* ─── Manage inventory: UOM column + edit modal ─── */

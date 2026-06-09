@@ -31,3 +31,17 @@ export const reject = (entityType, id, reason) =>
             body: JSON.stringify({ reason: reason ?? '' }),
         },
     );
+
+/**
+ * Global master switch for auto-approving corporate walk-in bookings. When ON,
+ * every cashier-submitted corporate walk-in auto-approves regardless of each
+ * corporate account's own per-account toggle.
+ */
+export const getWalkInSettings = () =>
+    apiFetch('/super-admin/approvals/walk-in-settings');
+
+export const updateWalkInSettings = ({ autoApproveCorporateWalkIns }) =>
+    apiFetch('/super-admin/approvals/walk-in-settings', {
+        method: 'PATCH',
+        body: JSON.stringify({ autoApproveCorporateWalkIns: !!autoApproveCorporateWalkIns }),
+    });

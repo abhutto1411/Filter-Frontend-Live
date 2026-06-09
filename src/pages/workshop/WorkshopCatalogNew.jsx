@@ -413,6 +413,79 @@ function isInSelectedBranch(row, branchId) {
     return false;
 }
 
+/** Pick the branch used for added / not-added lists (role scope + sidebar). */
+function resolveCatalogBranchScope({
+    branchLockedId,
+    selectedBranchId,
+    branchScopeId,
+    branchList,
+    allowAllBranches = false,
+}) {
+    if (branchLockedId) return String(branchLockedId);
+    if (selectedBranchId && selectedBranchId !== 'all') return String(selectedBranchId);
+    if (branchScopeId && branchScopeId !== 'all') return String(branchScopeId);
+    if (allowAllBranches) return null;
+    if (branchList.length === 1) return String(branchList[0].id);
+    if (branchList.length > 1) return String(branchList[0].id);
+    return null;
+}
+
+/** Never omit branchIds on adopt — empty means every workshop branch on the BE. */
+function resolveAdoptBranchIds(targetBranchIds, catalogBranchId, branchList) {
+    if (Array.isArray(targetBranchIds) && targetBranchIds.length > 0) {
+        return targetBranchIds.map(String);
+    }
+    if (catalogBranchId) return [String(catalogBranchId)];
+    if (branchList.length === 1) return [String(branchList[0].id)];
+    if (branchList.length > 1) return branchList.map((b) => String(b.id));
+    return [];
+}
+
+function CatalogBranchFilter({
+    branchList,
+    value,
+    onChange,
+    locked,
+    labelId,
+    allowAllBranches = false,
+}) {
+    const selectedName =
+        value === 'all'
+            ? 'All branches'
+            : branchList.find((b) => String(b.id) === String(value))?.name ?? 'Branch';
+    if (locked || (branchList.length <= 1 && !allowAllBranches)) {
+        return (
+            <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                Branch: <strong>{selectedName}</strong>
+            </div>
+        );
+    }
+    return (
+        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Filter size={14} />
+            <select
+                id={labelId}
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                style={{
+                    padding: '6px 10px',
+                    borderRadius: 8,
+                    border: '1px solid var(--color-border)',
+                    fontSize: '0.875rem',
+                    minWidth: 200,
+                }}
+            >
+                {allowAllBranches ? <option value="all">All branches</option> : null}
+                {branchList.map((b) => (
+                    <option key={String(b.id)} value={String(b.id)}>
+                        {b.name}
+                    </option>
+                ))}
+            </select>
+        </div>
+    );
+}
+
 function matchesCatalogSearch(row, q) {
     const query = String(q || '').trim().toLowerCase();
     if (!query) return true;
@@ -469,7 +542,13 @@ function SubTabToggle({ value, counts, onChange }) {
     );
 }
 
-export default function WorkshopCatalogNew({ branches: branchesProp = [], selectedBranchId = 'all' }) {
+export default function WorkshopCatalogNew({
+    branches: branchesProp = [],
+    selectedBranchId = 'all',
+    branchLockedId = null,
+    /** Workshop owner / admin with every branch — may browse catalog workshop-wide. */
+    allowAllBranches = false,
+}) {
     const { hasPermission } = useAuth();
     const visibleTabs = TABS.filter((t) => hasPermission(t.permission));
     // Per-tab "add" permission gates the + icon on each card AND the
@@ -490,17 +569,77 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
         }
     }, [visibleTabs, activeTab]);
 
-    // Local branch filter for this page (shown next to Already added / Not added)
-    const [branchScopeId, setBranchScopeId] = useState(selectedBranchId || 'all');
-    useEffect(() => {
-        setBranchScopeId(selectedBranchId || 'all');
-    }, [selectedBranchId]);
-
-    const effectiveBranchScopeId = branchScopeId || 'all';
-    const catalogBranchId = useMemo(
-        () => (!effectiveBranchScopeId || effectiveBranchScopeId === 'all' ? undefined : String(effectiveBranchScopeId)),
-        [effectiveBranchScopeId],
+    const branchList = useMemo(
+        () => filterPortalVisibleBranches(Array.isArray(branchesProp) ? branchesProp : []),
+        [branchesProp],
     );
+
+    const [branchScopeId, setBranchScopeId] = useState(() => {
+        const resolved = resolveCatalogBranchScope({
+            branchLockedId,
+            selectedBranchId,
+            branchScopeId: selectedBranchId,
+            branchList,
+            allowAllBranches,
+        });
+        if (resolved) return resolved;
+        if (allowAllBranches) return 'all';
+        return branchList[0] ? String(branchList[0].id) : 'all';
+    });
+
+    useEffect(() => {
+        if (branchLockedId) {
+            setBranchScopeId(String(branchLockedId));
+            return;
+        }
+        if (selectedBranchId && selectedBranchId !== 'all') {
+            setBranchScopeId(String(selectedBranchId));
+            return;
+        }
+        if (allowAllBranches && (!selectedBranchId || selectedBranchId === 'all')) {
+            setBranchScopeId('all');
+            return;
+        }
+        // Role-scoped employee: pick first allowed branch once the list arrives.
+        if (branchList.length > 0) {
+            setBranchScopeId((prev) => {
+                if (prev && prev !== 'all' && branchList.some((b) => String(b.id) === String(prev))) {
+                    return prev;
+                }
+                return String(branchList[0].id);
+            });
+        }
+    }, [branchLockedId, selectedBranchId, branchList, allowAllBranches]);
+
+    const catalogBranchScopeId = useMemo(
+        () =>
+            resolveCatalogBranchScope({
+                branchLockedId,
+                selectedBranchId,
+                branchScopeId,
+                branchList,
+                allowAllBranches,
+            }),
+        [branchLockedId, selectedBranchId, branchScopeId, branchList, allowAllBranches],
+    );
+
+    const catalogBranchId = catalogBranchScopeId ?? undefined;
+    const effectiveBranchScopeId = catalogBranchScopeId ?? 'all';
+    const branchPickerLocked =
+        Boolean(branchLockedId) || (branchList.length <= 1 && !allowAllBranches);
+
+    const defaultAdoptBranchIds = useMemo(
+        () => resolveAdoptBranchIds([], catalogBranchId, branchList),
+        [catalogBranchId, branchList],
+    );
+
+    /** Wait until branch scope is known before the first catalog fetch (avoids empty first paint for employees). */
+    const isCatalogBranchReady = useMemo(() => {
+        if (branchLockedId) return true;
+        if (allowAllBranches) return true;
+        if (branchList.length === 0) return false;
+        return Boolean(catalogBranchScopeId);
+    }, [branchLockedId, allowAllBranches, branchList.length, catalogBranchScopeId]);
 
     const [subTab, setSubTab] = useState({
         departments: 'not_added',
@@ -509,15 +648,6 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
         services: 'not_added',
     });
     const activeSubTab = subTab[activeTab] || 'not_added';
-
-    // Corporate master catalog via GET /workshop-catalog/catalog/* (same rows as super-admin
-    // tables; workshop JWT). We omit branchId on list calls for full master browse—branchId only
-    // affects per-row inBranch on the API, not which rows are returned. Branch pickers here
-    // are only inside adopt modals.
-    const branchList = useMemo(
-        () => filterPortalVisibleBranches(Array.isArray(branchesProp) ? branchesProp : []),
-        [branchesProp],
-    );
 
     const [deptCounts, setDeptCounts] = useState({ added: null, not_added: null });
     const [catCounts, setCatCounts] = useState({ added: null, not_added: null });
@@ -793,21 +923,31 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
 
     // ─── Effects: load when tab/filters change ──────────────────────────────
     useEffect(() => {
+        if (!isCatalogBranchReady) return undefined;
         const ctrl = new AbortController();
         if (activeTab === 'departments') loadDepartments(ctrl.signal);
         if (activeTab === 'categories')  loadCategories(ctrl.signal);
         if (activeTab === 'products')    loadProducts(ctrl.signal);
         if (activeTab === 'services')    loadServices(ctrl.signal);
         return () => ctrl.abort();
-    }, [activeTab, loadDepartments, loadCategories, loadProducts, loadServices]);
+    }, [
+        activeTab,
+        loadDepartments,
+        loadCategories,
+        loadProducts,
+        loadServices,
+        isCatalogBranchReady,
+        catalogBranchId,
+    ]);
 
     // Always have the department list ready for filter dropdowns and category modal.
-    // We attempt the warm-up load exactly once per `loadDepartments` identity
-    // (i.e. once per branch context). Without this guard, an empty catalog
-    // would loop forever: deptRows.length stays 0, deptLoading flips false →
-    // effect re-fires → fetch → re-renders with deptLoading false again.
     const deptWarmupRef = useRef(null);
     useEffect(() => {
+        deptWarmupRef.current = null;
+    }, [catalogBranchId, effectiveBranchScopeId]);
+
+    useEffect(() => {
+        if (!isCatalogBranchReady) return undefined;
         if (deptWarmupRef.current === loadDepartments) return undefined;
         if (deptLoading || deptRows.length > 0) {
             deptWarmupRef.current = loadDepartments;
@@ -817,7 +957,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
         const ctrl = new AbortController();
         loadDepartments(ctrl.signal);
         return () => ctrl.abort();
-    }, [loadDepartments, deptLoading, deptRows.length]);
+    }, [loadDepartments, deptLoading, deptRows.length, isCatalogBranchReady]);
 
     // Reset to page 1 when filters or adoption branch context changes.
     useEffect(() => { setProdPage(1); }, [prodFilter.departmentId, prodFilter.categoryId, prodFilter.q]);
@@ -872,7 +1012,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
         setDeptCatModal({
             departments: selectedRows,
             selections,
-            targetBranchIds: [],
+            targetBranchIds: [...defaultAdoptBranchIds],
             loading: false,
             error: '',
         });
@@ -895,7 +1035,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
                 /* leave categories empty for this dept */
             }
         }
-    }, [deptSelected, deptRows]);
+    }, [deptSelected, deptRows, defaultAdoptBranchIds]);
 
     const submitDepartmentsAdopt = async () => {
         if (!deptCatModal) return;
@@ -919,7 +1059,11 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
             const body = {
                 departmentIds,
                 ...(categorySelections.length ? { categorySelections } : {}),
-                ...(deptCatModal.targetBranchIds?.length ? { branchIds: deptCatModal.targetBranchIds } : {}),
+                branchIds: resolveAdoptBranchIds(
+                    deptCatModal.targetBranchIds,
+                    catalogBranchId,
+                    branchList,
+                ),
             };
             const res = await adoptDepartmentsToBranches(body);
             setBanner(summarizeAdoptResponse(res, 'departments'));
@@ -940,7 +1084,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
         if (catSelected.size === 0) return;
         setCategoryAdopt({
             ids: [...catSelected].map(String),
-            targetBranchIds: [],
+            targetBranchIds: [...defaultAdoptBranchIds],
             loading: false,
             error: '',
         });
@@ -952,7 +1096,11 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
         try {
             const body = {
                 categoryIds: categoryAdopt.ids,
-                ...(categoryAdopt.targetBranchIds?.length ? { branchIds: categoryAdopt.targetBranchIds } : {}),
+                branchIds: resolveAdoptBranchIds(
+                    categoryAdopt.targetBranchIds,
+                    catalogBranchId,
+                    branchList,
+                ),
             };
             const res = await adoptCategoriesToBranches(body);
             setBanner(summarizeAdoptResponse(res, 'categories'));
@@ -1004,7 +1152,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
                 criticalStockPoint: '',
             })),
             bulkCriticalStockPoint: '',
-            targetBranchIds: [],
+            targetBranchIds: [...defaultAdoptBranchIds],
             loading: true,
             error: '',
         });
@@ -1023,7 +1171,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
         } catch (err) {
             setProductAdopt((prev) => prev && { ...prev, loading: false, error: err.message || 'Could not check dependencies.' });
         }
-    }, [prodSelected, prodRows, prodFilter, catalogBranchId]);
+    }, [prodSelected, prodRows, prodFilter, catalogBranchId, defaultAdoptBranchIds]);
 
     const submitProductsAdopt = async () => {
         if (!productAdopt) return;
@@ -1036,7 +1184,11 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
             }));
             const body = {
                 items,
-                ...(productAdopt.targetBranchIds?.length ? { branchIds: productAdopt.targetBranchIds } : {}),
+                branchIds: resolveAdoptBranchIds(
+                    productAdopt.targetBranchIds,
+                    catalogBranchId,
+                    branchList,
+                ),
             };
             const res = await adoptProductsToBranches(body);
             setBanner(summarizeAdoptResponse(res, 'products'));
@@ -1082,7 +1234,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
             rows: selectedRows,
             missing: { departments: [], categories: [] },
             resolveNote,
-            targetBranchIds: [],
+            targetBranchIds: [...defaultAdoptBranchIds],
             loading: true,
             error: '',
         });
@@ -1101,7 +1253,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
         } catch (err) {
             setServiceAdopt((prev) => prev && { ...prev, loading: false, error: err.message || 'Could not check dependencies.' });
         }
-    }, [svcSelected, svcRows, svcFilter, catalogBranchId]);
+    }, [svcSelected, svcRows, svcFilter, catalogBranchId, defaultAdoptBranchIds]);
 
     const submitServicesAdopt = async () => {
         if (!serviceAdopt) return;
@@ -1110,7 +1262,11 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
             const items = serviceAdopt.rows.map((r) => ({ serviceId: String(r.id) }));
             const body = {
                 items,
-                ...(serviceAdopt.targetBranchIds?.length ? { branchIds: serviceAdopt.targetBranchIds } : {}),
+                branchIds: resolveAdoptBranchIds(
+                    serviceAdopt.targetBranchIds,
+                    catalogBranchId,
+                    branchList,
+                ),
             };
             const res = await adoptServicesToBranches(body);
             setBanner(summarizeAdoptResponse(res, 'services'));
@@ -1230,24 +1386,14 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
                     counts={deptCounts}
                     onChange={(v) => setSubTab((prev) => ({ ...prev, departments: v }))}
                 />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                        <Filter size={14} />
-                        <select
-                            value={effectiveBranchScopeId}
-                            onChange={(e) => setBranchScopeId(e.target.value)}
-                            style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--color-border)', fontSize: '0.875rem', minWidth: 200 }}
-                        >
-                            <option value="all">All branches</option>
-                            {branchList.map((b) => (
-                                <option key={String(b.id)} value={String(b.id)}>{b.name}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                        Branch: <strong>{catalogBranchLabel}</strong>
-                    </div>
-                </div>
+                <CatalogBranchFilter
+                    branchList={branchList}
+                    value={catalogBranchScopeId ?? branchScopeId ?? 'all'}
+                    onChange={setBranchScopeId}
+                    locked={branchPickerLocked}
+                    allowAllBranches={allowAllBranches}
+                    labelId="mc-catalog-branch-departments"
+                />
             </div>
             {subTab.departments === 'not_added' &&
                 renderToolbar(
@@ -1293,24 +1439,14 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
                     counts={catCounts}
                     onChange={(v) => setSubTab((prev) => ({ ...prev, categories: v }))}
                 />
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                        <Filter size={14} />
-                        <select
-                            value={effectiveBranchScopeId}
-                            onChange={(e) => setBranchScopeId(e.target.value)}
-                            style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--color-border)', fontSize: '0.875rem', minWidth: 200 }}
-                        >
-                            <option value="all">All branches</option>
-                            {branchList.map((b) => (
-                                <option key={String(b.id)} value={String(b.id)}>{b.name}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                        Branch: <strong>{catalogBranchLabel}</strong>
-                    </div>
-                </div>
+                <CatalogBranchFilter
+                    branchList={branchList}
+                    value={catalogBranchScopeId ?? branchScopeId ?? 'all'}
+                    onChange={setBranchScopeId}
+                    locked={branchPickerLocked}
+                    allowAllBranches={allowAllBranches}
+                    labelId="mc-catalog-branch-categories"
+                />
             </div>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1447,24 +1583,14 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
                         counts={kind === 'product' ? prodCounts : svcCounts}
                         onChange={(v) => setSubTab((prev) => ({ ...prev, [kind === 'product' ? 'products' : 'services']: v }))}
                     />
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                            <Filter size={14} />
-                            <select
-                                value={effectiveBranchScopeId}
-                                onChange={(e) => setBranchScopeId(e.target.value)}
-                                style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--color-border)', fontSize: '0.875rem', minWidth: 200 }}
-                            >
-                                <option value="all">All branches</option>
-                                {branchList.map((b) => (
-                                    <option key={String(b.id)} value={String(b.id)}>{b.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                            Branch: <strong>{catalogBranchLabel}</strong>
-                        </div>
-                    </div>
+                    <CatalogBranchFilter
+                        branchList={branchList}
+                        value={catalogBranchScopeId ?? branchScopeId ?? 'all'}
+                        onChange={setBranchScopeId}
+                        locked={branchPickerLocked}
+                        allowAllBranches={allowAllBranches}
+                        labelId={`mc-catalog-branch-${kind}`}
+                    />
                 </div>
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12, alignItems: 'center' }}>
                     <div style={{ position: 'relative', flex: 1, minWidth: 240 }}>
@@ -1558,11 +1684,6 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
         );
     };
 
-    const catalogBranchLabel = useMemo(() => {
-        if (!catalogBranchId) return 'All branches';
-        return branchList.find((b) => String(b.id) === String(catalogBranchId))?.name || 'Branch';
-    }, [branchList, catalogBranchId]);
-
     return (
         <div className="mc-container">
             <div className="mc-header">
@@ -1601,9 +1722,10 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
             <ResultBanner banner={banner} onClose={() => setBanner(null)} />
 
             <div key={activeTab}>
-                {activeTab === 'departments' && renderDepartmentsTab()}
-                {activeTab === 'categories' && renderCategoriesTab()}
-                {activeTab === 'products' && renderListTab({
+                {!isCatalogBranchReady ? renderLoading('Loading master catalog…') : null}
+                {isCatalogBranchReady && activeTab === 'departments' && renderDepartmentsTab()}
+                {isCatalogBranchReady && activeTab === 'categories' && renderCategoriesTab()}
+                {isCatalogBranchReady && activeTab === 'products' && renderListTab({
                     rows: prodRows, loading: prodLoading, error: prodError,
                     selected: prodSelected, setSelected: setProdSelected,
                     filter: prodFilter, setFilter: setProdFilter,
@@ -1615,7 +1737,7 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
                     selectAllBusy: prodSelectAllBusy,
                     canAdd: canAddProd,
                 })}
-                {activeTab === 'services' && renderListTab({
+                {isCatalogBranchReady && activeTab === 'services' && renderListTab({
                     rows: svcRows, loading: svcLoading, error: svcError,
                     selected: svcSelected, setSelected: setSvcSelected,
                     filter: svcFilter, setFilter: setSvcFilter,
@@ -1667,17 +1789,19 @@ export default function WorkshopCatalogNew({ branches: branchesProp = [], select
 /* ─── Modals ────────────────────────────────────────────────────────────── */
 
 /**
- * Reusable branch-target multi-select. Empty `value` means "all branches"
- * (BE resolves to every active branch in the workshop). Filling values means
- * "only these branches".
+ * Reusable branch-target multi-select.
+ * `scopeOnly` — only branches passed in `branches` (role / sidebar scope).
+ * Empty value with scopeOnly=false lets the BE adopt to every workshop branch.
  */
-function BranchTargetPicker({ branches, value, onChange }) {
-    const allSelected = !value || value.length === 0;
-    const setAll = () => onChange([]);
+function BranchTargetPicker({ branches, value, onChange, scopeOnly = false }) {
+    const scopedIds = branches.map((b) => String(b.id));
+    const allSelected = scopeOnly
+        ? scopedIds.length > 0 && scopedIds.every((id) => value.includes(id))
+        : !value || value.length === 0;
+    const setAll = () => onChange(scopeOnly ? [...scopedIds] : []);
     const togglePick = (branchId) => {
         const id = String(branchId);
         if (allSelected) {
-            // Switching from "all" to "specific" — start with the toggled one.
             onChange([id]);
             return;
         }
@@ -1691,7 +1815,7 @@ function BranchTargetPicker({ branches, value, onChange }) {
             </div>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.875rem', fontWeight: allSelected ? 700 : 500 }}>
                 <input type="radio" checked={allSelected} onChange={setAll} />
-                All branches in this workshop
+                {scopeOnly ? 'All branches you can access' : 'All branches in this workshop'}
             </label>
             <div style={{ marginTop: 8 }}>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.875rem', fontWeight: !allSelected ? 700 : 500 }}>
@@ -1757,6 +1881,7 @@ function CategoryAdoptModal({ state, onChange, onClose, onSubmit, branches }) {
                         branches={branches}
                         value={state.targetBranchIds}
                         onChange={(v) => onChange((prev) => prev && { ...prev, targetBranchIds: v })}
+                        scopeOnly
                     />
                 </Modal>
             )}
@@ -1796,6 +1921,7 @@ function CategorySelectionModal({ state, onChange, onClose, onSubmit, branches }
                             branches={branches}
                             value={state.targetBranchIds}
                             onChange={(v) => onChange((prev) => prev && { ...prev, targetBranchIds: v })}
+                            scopeOnly
                         />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -1939,6 +2065,7 @@ function ProductAdoptModal({ state, onChange, onClose, onSubmit, branches }) {
                                     branches={branches}
                                     value={state.targetBranchIds}
                                     onChange={(v) => onChange((prev) => prev && { ...prev, targetBranchIds: v })}
+                                    scopeOnly
                                 />
                             </div>
 
@@ -2058,6 +2185,7 @@ function ServiceAdoptModal({ state, onChange, onClose, onSubmit, branches }) {
                                     branches={branches}
                                     value={state.targetBranchIds}
                                     onChange={(v) => onChange((prev) => prev && { ...prev, targetBranchIds: v })}
+                                    scopeOnly
                                 />
                             </div>
                             <div style={{ marginTop: 14, fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>

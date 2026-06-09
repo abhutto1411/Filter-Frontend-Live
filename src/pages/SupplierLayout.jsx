@@ -94,7 +94,7 @@ export default function SupplierLayout() {
     const performLogout = () => {
         setLogoutConfirmOpen(false);
         logout();
-        navigate('/supplier/login', { replace: true });
+        navigate('/', { replace: true });
     };
 
     const userType = String(user?.userType || user?.type || '').toLowerCase();

@@ -36,6 +36,7 @@ import {
     isWorkshopPortalBranchInactive,
 } from '../services/workshopStaffApi';
 import { useAuth } from '../context/AuthContext';
+import { firstVisibleWorkshopPath, workshopTabToPath } from '../utils/permissions';
 import './workshop/Workshop.css';
 import '../styles/admin/AccountingPage.css';
 import '../styles/admin/ApprovalsPage.css';
@@ -63,24 +64,36 @@ export default function WorkshopLayout() {
 
     /**
      * Branch-restriction rules for the workshop portal (priority top-down):
-     *   1. User has a non-system custom role AND `User.branchId` set → SINGLE
-     *      branch HARD LOCK. Sidebar hides "All Branches" + dropdown disabled.
-     *   2. User has a non-system custom role AND `role.branchIds` non-empty →
-     *      MULTI-branch scope. Dropdown shows only those branches; "All
-     *      Branches" still selectable but means "all branches I have access to".
-     *   3. Workshop owners + system-role users + roleless users → full access.
+     *   1. Custom role with exactly one `role.branchIds` entry → HARD LOCK to
+     *      that branch (wins over the user's stored `branchId`).
+     *   2. Custom role with multiple `role.branchIds` → scoped dropdown only.
+     *   3. Custom role with no branch scope but `User.branchId` set → legacy
+     *      single-branch lock.
+     *   4. Owners / system roles / roleless users → full access.
      */
-    const userBranchLock =
-        user?.role && !user.role.isSystem && user.branchId
-            ? String(user.branchId)
-            : null;
-    /** Set of allowed branch IDs from role.branchIds (only when no hard lock). */
-    const roleBranchScope = useMemo(() => {
-        if (userBranchLock) return null; // hard lock overrides scope
+    const roleBranchIds = useMemo(() => {
+        if (!user?.role || user.role.isSystem) return [];
+        return (user.role.branchIds ?? []).map(String);
+    }, [user?.role]);
+
+    const userBranchLock = useMemo(() => {
         if (!user?.role || user.role.isSystem) return null;
-        const ids = (user.role.branchIds ?? []).map(String);
-        return ids.length > 0 ? new Set(ids) : null;
-    }, [user?.role, userBranchLock]);
+        if (roleBranchIds.length === 1) return roleBranchIds[0];
+        if (roleBranchIds.length > 1) return null;
+        if (user.branchId) return String(user.branchId);
+        return null;
+    }, [user?.role, user?.branchId, roleBranchIds]);
+
+    /** Allowed branches when the role scopes to more than one branch. */
+    const roleBranchScope = useMemo(() => {
+        if (userBranchLock) return null;
+        if (!user?.role || user.role.isSystem) return null;
+        if (roleBranchIds.length > 1) return new Set(roleBranchIds);
+        return null;
+    }, [user?.role, userBranchLock, roleBranchIds]);
+
+    /** Owner / system role / no branch scope — full workshop branch picker. */
+    const hasFullBranchAccess = !userBranchLock && !roleBranchScope;
 
     /**
      * Filter sidebar items by the current user's permissions.
@@ -109,7 +122,7 @@ export default function WorkshopLayout() {
             console.warn('[workshop] logout API failed (session cleared locally anyway)', e);
         }
         logout();
-        navigate('/workshop/login', { replace: true });
+        navigate('/', { replace: true });
     };
 
     const getActiveTabFromUrl = () => {
@@ -152,6 +165,21 @@ export default function WorkshopLayout() {
         return first.id;
     })();
 
+    const canViewDashboard = hasPermission('workshop.dashboard.view');
+
+    /** `/workshop` and `/workshop/dashboard` default to dashboard — redirect restricted users. */
+    useEffect(() => {
+        const parts = location.pathname.split('/').filter(Boolean);
+        if (parts[0] !== 'workshop') return;
+        const segment = parts[1];
+        const onDashboardRoute = !segment || segment === 'dashboard';
+        if (!onDashboardRoute || canViewDashboard) return;
+        const target = firstVisibleWorkshopPath(user);
+        if (target && location.pathname !== target) {
+            navigate(target, { replace: true });
+        }
+    }, [location.pathname, canViewDashboard, user, navigate]);
+
     /**
      * Auto-snap activeTab to the first visible tab if user lacks permission
      * for the current tab (e.g. legacy URL, role change mid-session).
@@ -162,8 +190,12 @@ export default function WorkshopLayout() {
         const allVisible = visibleNavItems.flatMap((i) => i.subItems ? i.subItems.map((s) => s.id) : [i.id]);
         if (!allVisible.includes(activeTab)) {
             setActiveTab(firstVisibleTabId);
+            const target = workshopTabToPath(firstVisibleTabId);
+            if (location.pathname !== target) {
+                navigate(target, { replace: true });
+            }
         }
-    }, [activeTab, firstVisibleTabId, visibleNavItems]);
+    }, [activeTab, firstVisibleTabId, visibleNavItems, location.pathname, navigate]);
 
     useEffect(() => {
         const tabFromUrl = getActiveTabFromUrl();
@@ -359,10 +391,13 @@ export default function WorkshopLayout() {
         if (selectedBranch === 'all') return 'All Branches';
         const b = activeBranches.find((branch) => String(branch.id) === String(selectedBranch));
         if (b) return b.name ?? 'Branch';
-        // Fallback for branch-locked users when the branches list hasn't loaded yet.
+        const fromRole = user?.role?.branches?.find(
+            (br) => String(br.id) === String(selectedBranch),
+        );
+        if (fromRole?.name) return fromRole.name;
         if (userBranchLock && user?.branchName) return user.branchName;
         return 'All Branches';
-    }, [activeBranches, selectedBranch, userBranchLock, user?.branchName]);
+    }, [activeBranches, selectedBranch, userBranchLock, user?.branchName, user?.role?.branches]);
 
     useEffect(() => {
         if (activeTab !== 'dashboard') setDashboardLowStockCount(0);
@@ -394,14 +429,22 @@ export default function WorkshopLayout() {
             case 'acc-payroll':       
             case 'acc-approvals':     
             case 'acc-ledger':        return <WorkshopAccountingPage activeTab={activeTab} selectedBranchId={selectedBranch} branches={activeBranches} />;
-            case 'dashboard':         return (
-                <WorkshopDashboard
-                    onTabChange={handleTabChange}
-                    selectedBranchId={selectedBranch}
-                    branches={activeBranches}
-                    onLowStockAlertsChange={setDashboardLowStockCount}
-                />
-            );
+            case 'dashboard':
+                if (!canViewDashboard) {
+                    return (
+                        <div style={{ padding: 24, color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+                            You don&apos;t have permission to view the dashboard.
+                        </div>
+                    );
+                }
+                return (
+                    <WorkshopDashboard
+                        onTabChange={handleTabChange}
+                        selectedBranchId={selectedBranch}
+                        branches={activeBranches}
+                        onLowStockAlertsChange={setDashboardLowStockCount}
+                    />
+                );
             case 'employees':   return <WorkshopEmployees selectedBranchId={selectedBranch} branches={activeBranches} />;
             case 'departments': return <WorkshopDepartments selectedBranchId={selectedBranch} branches={activeBranches} />;
             case 'catalog':
@@ -451,7 +494,12 @@ export default function WorkshopLayout() {
             case 'pos-monitoring': return <WorkshopPosMonitoring selectedBranchId={selectedBranch} branches={activeBranches} />;
             case 'locker-management': return <WorkshopLockerManagement />;
             case 'catalog-new': return (
-                <WorkshopCatalogNew branches={activeBranches} selectedBranchId={selectedBranch} />
+                <WorkshopCatalogNew
+                    branches={activeBranches}
+                    selectedBranchId={selectedBranch}
+                    branchLockedId={userBranchLock}
+                    allowAllBranches={hasFullBranchAccess}
+                />
             );
             case 'promo-codes': return <WorkshopPromoCodes selectedBranchId={selectedBranch} branches={activeBranches} />;
             case 'corporate-management': return <WorkshopCorporateManagement selectedBranchId={selectedBranch} branches={activeBranches} />;

@@ -3,6 +3,7 @@ import { useParams, NavLink } from 'react-router-dom';
 import { Search, Plus, Users, Building, Pencil, FileText, Loader } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import Modal from '../../components/Modal';
+import CorporateBillingSection from '../../components/admin/CorporateBillingSection';
 import { useAuth } from '../../context/AuthContext';
 import '../../styles/admin/CustomersPage.css';
 import {
@@ -97,7 +98,6 @@ export default function CustomersPage() {
     const [editOpen, setEditOpen] = useState(false);
     const [editingCustomer, setEditingCustomer] = useState(null);
     const [saving, setSaving] = useState(false);
-    const [billingTab, setBillingTab] = useState('All');
     const [newCustomer, setNewCustomer] = useState({
         customerName: '',
         type: 'Corporate',
@@ -197,28 +197,6 @@ export default function CustomersPage() {
                 .filter(Boolean)
                 .some((v) => String(v).toLowerCase().includes(q)));
     }, [customers, search]);
-    const corporateRows = useMemo(
-        () => customers.filter((c) => c.customerType === 'corporate' || !!c.corporateAccount),
-        [customers],
-    );
-    const billingRows = useMemo(() => {
-        if (billingTab === 'All') return corporateRows;
-        return corporateRows.filter((c) => {
-            const status = String(c.corporateAccount?.status ?? '').toLowerCase();
-            if (billingTab === 'Pending') return status === 'pending';
-            if (billingTab === 'Partial Paid') return status === 'partial_paid' || status === 'partial paid';
-            if (billingTab === 'Overdue') return status === 'overdue';
-            return true;
-        });
-    }, [corporateRows, billingTab]);
-    const billingOutstanding = useMemo(
-        () => corporateRows.reduce((sum, c) => sum + Number(c.corporateAccount?.dueBalance ?? 0), 0),
-        [corporateRows],
-    );
-    const overdueCount = useMemo(
-        () => corporateRows.filter((c) => String(c.corporateAccount?.status ?? '').toLowerCase() === 'overdue').length,
-        [corporateRows],
-    );
 
     useEffect(() => {
         let cancelled = false;
@@ -543,73 +521,7 @@ export default function CustomersPage() {
             </>
             )}
 
-            {activeSub === 'corporate-billing' && (
-                <>
-                    <header className="corporate-billing-header">
-                        <div>
-                            <h1 className="corporate-billing-title">Corporate Billing</h1>
-                            <p className="corporate-billing-subtitle">Manage monthly bills and payments</p>
-                        </div>
-                        <button type="button" className="btn-portal"><FileText size={16} /> Generate Bills</button>
-                    </header>
-                    <div className="billing-stats">
-                        <div className="billing-stat-card"><span className="billing-stat-label">Total Billed</span><span className="billing-stat-val">Pending API</span></div>
-                        <div className="billing-stat-card"><span className="billing-stat-label">Total Received</span><span className="billing-stat-val">Pending API</span></div>
-                        <div className="billing-stat-card"><span className="billing-stat-label">Outstanding</span><span className="billing-stat-val">SAR {billingOutstanding.toFixed(2)}</span></div>
-                        <div className="billing-stat-card"><span className="billing-stat-label">Overdue Bills</span><span className="billing-stat-val">{overdueCount}</span></div>
-                    </div>
-                    <div className="billing-tabs">
-                        {['All', 'Pending', 'Partial Paid', 'Overdue'].map((t) => (
-                            <button key={t} type="button" className={`billing-tab ${billingTab === t ? 'active' : ''}`} onClick={() => setBillingTab(t)}>{t}</button>
-                        ))}
-                    </div>
-                    <div className="billing-empty" style={{ padding: '16px 20px', textAlign: 'left' }}>
-                        Billing-specific endpoints (`/super-admin/corporate-billing/*`) pending. Using `/customers` + `/customers/:id/details` for now.
-                    </div>
-                    <section className="premium-table">
-                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                            <thead>
-                                <tr className="table-header-row">
-                                    <th className="table-th">COMPANY</th>
-                                    <th className="table-th">CONTACT</th>
-                                    <th className="table-th">CREDIT LIMIT</th>
-                                    <th className="table-th">DUE BALANCE</th>
-                                    <th className="table-th">STATUS</th>
-                                    <th className="table-th">ACTIONS</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {loading ? (
-                                    <tr><td colSpan={6} className="table-cell table-empty"><Loader size={18} className="spin" /> Loading…</td></tr>
-                                ) : billingRows.length === 0 ? (
-                                    <tr><td colSpan={6} className="table-cell table-empty">No corporate accounts.</td></tr>
-                                ) : billingRows.map((c) => (
-                                    <tr key={`bill-${c.id}`} className="table-row">
-                                        <td className="table-cell">
-                                            <div className="cell-main-text">{c.corporateAccount?.companyName ?? c.name}</div>
-                                            <div className="cell-sub-text">{c.workshopName}</div>
-                                        </td>
-                                        <td className="table-cell">
-                                            <div className="cell-main-text">{c.corporateAccount?.contactPerson ?? c.name}</div>
-                                            <div className="cell-sub-text">{c.mobile}</div>
-                                        </td>
-                                        <td className="table-cell font-bold">SAR {Number(c.corporateAccount?.creditLimit ?? 0).toFixed(2)}</td>
-                                        <td className="table-cell font-bold">SAR {Number(c.corporateAccount?.dueBalance ?? 0).toFixed(2)}</td>
-                                        <td className="table-cell">
-                                            <span className="status-badge status-warning">
-                                                {String(c.corporateAccount?.status ?? 'unknown')}
-                                            </span>
-                                        </td>
-                                        <td className="table-cell">
-                                            <button type="button" className="btn-edit" onClick={() => openDetails(c.id)}><FileText size={14} /> View</button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </section>
-                </>
-            )}
+            {activeSub === 'corporate-billing' && <CorporateBillingSection />}
 
             <AnimatePresence>
                 {createOpen && (

@@ -145,7 +145,7 @@ export default function TechnicianLayout() {
                                 onClick={() => {
                                     setLogoutConfirmOpen(false);
                                     logout();
-                                    navigate('/technician/login');
+                                    navigate('/');
                                 }}
                             >
                                 Log out

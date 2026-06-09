@@ -26,7 +26,11 @@ import {
     getAdminSalesRecentOrders,
 } from '../../services/adminSalesReportsApi';
 import { getBranches, getTechnicians, getWorkshopOptions } from '../../services/superAdminApi';
+import { ExportMenu } from '../../components/admin/SalesExportControls';
+import { exportRowsToPdf, exportRowsToExcel } from '../../utils/tableExport';
 import '../workshop/Workshop.css';
+
+const EXPORT_LIMIT = 5000;
 
 const toNumber = (value) => {
     const parsed = Number(value);
@@ -154,6 +158,22 @@ function formatInvoiceDateTimeForDisplay(row) {
         hour: '2-digit',
         minute: '2-digit',
     });
+}
+
+/** Build {headers, rows} for the Recent Orders list — used for PDF/Excel export. */
+function buildRecentOrdersExportRows(rows) {
+    const headers = ['Invoice No', 'Order #', 'Type', 'Status', 'Date / Time', 'Customer', 'Plate No', 'Total (SAR)'];
+    const out = (rows || []).map((row) => [
+        row.invoiceNo ?? (row.salesOrderId != null ? 'Pending invoice' : '—'),
+        row.salesOrderId ?? '—',
+        formatOrderSourceLabel(row.orderSource),
+        formatOrderStatusLabel(row.orderStatus),
+        formatInvoiceDateTimeForDisplay(row),
+        row.customerName ?? '—',
+        row.plateNo ?? '—',
+        Number(toNumber(row.invoiceTotal).toFixed(2)),
+    ]);
+    return { headers, rows: out };
 }
 
 function formatReportInstant(iso) {
@@ -320,6 +340,7 @@ export default function SalesReports() {
     const [ordersSearchDebounced, setOrdersSearchDebounced] = useState('');
     const [ordersListLoading, setOrdersListLoading] = useState(false);
     const [ordersListError, setOrdersListError] = useState('');
+    const [exporting, setExporting] = useState(false);
 
     const [summaryData, setSummaryData] = useState({
         by_technician: [],
@@ -372,7 +393,7 @@ export default function SalesReports() {
                         list.map((w) => ({ id: String(w.id), name: String(w.name || '').trim() || 'Workshop' })),
                     );
                 }
-            } catch (e) {
+            } catch {
                 if (!cancelled) setWorkshopOptions([]);
             } finally {
                 if (!cancelled) setWorkshopOptionsLoading(false);
@@ -406,7 +427,7 @@ export default function SalesReports() {
                     );
                     setSelectedBranchId('all');
                 }
-            } catch (e) {
+            } catch {
                 if (!cancelled) {
                     setBranchOptions([]);
                     setSelectedBranchId('all');
@@ -473,6 +494,40 @@ export default function SalesReports() {
 
     const fetchRecentOrdersListRef = useRef(fetchRecentOrdersList);
     fetchRecentOrdersListRef.current = fetchRecentOrdersList;
+
+    // Export the FULL recent-orders list for the current scope + date range.
+    const runOrdersExport = useCallback(async (kind) => {
+        if (!hasWorkshop) {
+            setOrdersListError('Select a workshop first to export its orders.');
+            return;
+        }
+        setExporting(true);
+        setOrdersListError('');
+        try {
+            const { startDate, endDate } = rangeToApiIso(rangeFromLocal, rangeToLocal);
+            const params = adminSalesReportsParams(selectedWorkshopId, selectedBranchId, { startDate, endDate });
+            const q = ordersSearchDebounced.trim();
+            const res = await getAdminSalesRecentOrders({
+                ...params,
+                limit: EXPORT_LIMIT,
+                offset: 0,
+                ...(q ? { search: q } : {}),
+            });
+            const list = Array.isArray(res?.rows) ? res.rows
+                : Array.isArray(res?.data?.rows) ? res.data.rows : [];
+            const { headers, rows } = buildRecentOrdersExportRows(list);
+            const subtitle = `${rows.length} order(s) · ${rangeFromLocal || '…'} → ${rangeToLocal || '…'}`;
+            if (kind === 'pdf') {
+                exportRowsToPdf({ title: 'Sales Reports — Orders', subtitle, headers, rows, filenameBase: 'sales-reports-orders' });
+            } else {
+                exportRowsToExcel({ sheetName: 'Orders', headers, rows, filenameBase: 'sales-reports-orders' });
+            }
+        } catch (e) {
+            setOrdersListError(e?.message || 'Export failed');
+        } finally {
+            setExporting(false);
+        }
+    }, [hasWorkshop, selectedWorkshopId, selectedBranchId, rangeFromLocal, rangeToLocal, ordersSearchDebounced]);
 
     const loadReports = useCallback(async () => {
         if (!hasWorkshop) {
@@ -1775,7 +1830,7 @@ export default function SalesReports() {
 
                         {activeTab === 'recent_orders' && (
                             <>
-                                <div className="ws-report-tab-toolbar">
+                                <div className="ws-report-tab-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                                     <input
                                         type="search"
                                         className="ws-report-tab-search"
@@ -1785,6 +1840,12 @@ export default function SalesReports() {
                                         aria-label="Search orders"
                                     />
                                     <TabSortSelect value={tabSort.recent_orders} onChange={setSortFor('recent_orders')} ariaLabel="Sort orders by total" />
+                                    <ExportMenu
+                                        onPdf={() => runOrdersExport('pdf')}
+                                        onExcel={() => runOrdersExport('excel')}
+                                        busy={exporting}
+                                        disabled={ordersListLoading || !hasWorkshop}
+                                    />
                                 </div>
                                 {ordersListError ? (
                                     <div

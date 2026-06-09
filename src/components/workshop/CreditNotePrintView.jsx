@@ -88,7 +88,7 @@ const CreditNotePrintView = forwardRef(function CreditNotePrintView({ data }, re
                     <img src={qrDataUrl} alt="ZATCA QR" style={{ width: 96, height: 96 }} />
                 ) : (
                     <div style={{ width: 96, height: 96, border: '1px dashed #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#64748b', textAlign: 'center', padding: 8 }}>
-                        ZATCA Phase 2<br />QR Code<br />(needs branch VAT no.)
+                        ZATCA Phase 2<br />QR Code<br />(set branch/workshop VAT no.)
                     </div>
                 )}
             </div>

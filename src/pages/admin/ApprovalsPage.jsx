@@ -9,6 +9,8 @@ import {
     list as listApprovals,
     approve as approveApi,
     reject as rejectApi,
+    getWalkInSettings,
+    updateWalkInSettings,
 } from '../../services/approvalsApi';
 import {
     approveSuperAdminCorporatePriceQuotation,
@@ -818,6 +820,84 @@ function Toast({ toast }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Global auto-approve toggle (corporate walk-ins)                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Platform-wide master switch. When ON, every cashier-submitted corporate
+ * walk-in auto-approves on submission (bypasses this queue) regardless of each
+ * corporate account's own per-account toggle. Optimistic flip; parent rolls
+ * back on backend error.
+ */
+function GlobalAutoApproveToggle({ value, busy, disabled, onChange }) {
+    return (
+        <label
+            style={{
+                position: 'relative',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 10,
+                marginLeft: 'auto',
+                padding: '8px 14px',
+                borderRadius: 999,
+                border: `1px solid ${value ? '#10b981' : '#cbd5e1'}`,
+                background: value ? '#ecfdf5' : '#f8fafc',
+                cursor: disabled ? 'not-allowed' : busy ? 'wait' : 'pointer',
+                userSelect: 'none',
+                fontSize: '0.8125rem',
+                fontWeight: 700,
+                color: value ? '#065f46' : '#475569',
+                opacity: disabled ? 0.6 : busy ? 0.85 : 1,
+                transition: 'background 0.15s, border-color 0.15s, opacity 0.15s',
+            }}
+            title={
+                disabled
+                    ? 'You do not have permission to change this.'
+                    : busy
+                        ? 'Saving…'
+                        : value
+                            ? 'Global auto-approve is ON — all corporate walk-ins skip this queue.'
+                            : 'Global auto-approve is OFF — corporate walk-ins follow each account\'s own setting.'
+            }
+        >
+            <input
+                type="checkbox"
+                checked={!!value}
+                disabled={busy || disabled}
+                onChange={(e) => { e.stopPropagation(); if (!disabled) onChange?.(); }}
+                style={{ display: 'none' }}
+            />
+            <span style={{
+                width: 36, height: 20, borderRadius: 999,
+                background: value ? '#10b981' : '#cbd5e1',
+                position: 'relative', transition: 'background 0.15s',
+            }}>
+                <span style={{
+                    position: 'absolute', top: 2, left: value ? 18 : 2,
+                    width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                    boxShadow: '0 1px 3px rgba(0,0,0,0.15)', transition: 'left 0.15s',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                    {busy ? (
+                        <Loader size={11} className="spin" style={{ color: value ? '#10b981' : '#64748b' }} />
+                    ) : null}
+                </span>
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                Auto-approve corporate walk-ins
+                <span style={{
+                    fontSize: '0.65rem', fontWeight: 800, padding: '2px 8px', borderRadius: 999,
+                    background: busy ? '#64748b' : value ? '#10b981' : '#94a3b8', color: '#fff',
+                    minWidth: 36, textAlign: 'center',
+                }}>
+                    {busy ? 'Saving' : value ? 'ON' : 'OFF'}
+                </span>
+            </span>
+        </label>
+    );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Main page                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -871,6 +951,42 @@ export default function ApprovalsPage({ isTab = false, onlySettings = false }) {
         setToast({ msg, type });
         setTimeout(() => setToast(null), 3000);
     }, []);
+
+    // Global auto-approve master switch for corporate walk-ins. Visible to users
+    // who can approve corporate_walk_in_booking; toggling it bypasses this queue
+    // for ALL corporate accounts.
+    const canManageWalkInToggle = canApproveType('corporate_walk_in_booking');
+    const canSeeWalkInToggle = canViewType('corporate_walk_in_booking');
+    const [autoApproveWalkIns, setAutoApproveWalkIns] = useState(false);
+    const [walkInToggleBusy, setWalkInToggleBusy] = useState(false);
+
+    useEffect(() => {
+        if (!canSeeWalkInToggle) return;
+        let cancelled = false;
+        getWalkInSettings()
+            .then((res) => {
+                if (!cancelled) setAutoApproveWalkIns(Boolean(res?.autoApproveCorporateWalkIns));
+            })
+            .catch(() => { /* non-fatal — leave toggle at default OFF */ });
+        return () => { cancelled = true; };
+    }, [canSeeWalkInToggle]);
+
+    const handleToggleAutoApproveWalkIns = useCallback(async () => {
+        const next = !autoApproveWalkIns;
+        setWalkInToggleBusy(true);
+        setAutoApproveWalkIns(next); // optimistic
+        try {
+            await updateWalkInSettings({ autoApproveCorporateWalkIns: next });
+            showToast(next
+                ? 'Corporate walk-ins will now auto-approve globally.'
+                : 'Global auto-approval of corporate walk-ins turned off.');
+        } catch (err) {
+            setAutoApproveWalkIns(!next); // rollback
+            showToast(`Could not update setting: ${err.message}`, 'error');
+        } finally {
+            setWalkInToggleBusy(false);
+        }
+    }, [autoApproveWalkIns, showToast]);
 
     const [moduleSettings, setModuleSettings] = useState({
         inventory: { enabled: true, sub: { adjustments: true, transfers: true, uomChanges: false, priceOverrides: true, safetyStock: false } },
@@ -1158,6 +1274,14 @@ export default function ApprovalsPage({ isTab = false, onlySettings = false }) {
                     >
                         <RefreshCcw size={14} className={loading ? 'spin' : ''} /> Refresh
                     </button>
+                    {canSeeWalkInToggle && (
+                        <GlobalAutoApproveToggle
+                            value={autoApproveWalkIns}
+                            busy={walkInToggleBusy}
+                            disabled={!canManageWalkInToggle}
+                            onChange={handleToggleAutoApproveWalkIns}
+                        />
+                    )}
                 </div>
             )}
 

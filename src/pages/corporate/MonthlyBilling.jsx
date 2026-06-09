@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { apiFetch, BASE_URL } from '../../services/api';
 import InvoiceDetailsModal from '../../components/pos/modern/InvoiceDetailsModal';
+import BillGenerated from './BillGenerated';
 
 const SETTLEMENT_FILTERS = [
     { value: 'all', label: 'All' },
@@ -112,6 +113,7 @@ export default function MonthlyBilling({ onTabChange, onWalletBalanceChange }) {
     const [activeInvoice, setActiveInvoice] = useState(null);
     const [invoiceViewLoadingId, setInvoiceViewLoadingId] = useState(null);
     const [invoiceViewError, setInvoiceViewError] = useState('');
+    const [billingSection, setBillingSection] = useState('settlement');
 
     const qs = useMemo(() => {
         const p = new URLSearchParams();
@@ -539,6 +541,38 @@ export default function MonthlyBilling({ onTabChange, onWalletBalanceChange }) {
 
     return (
         <div style={{ width: '100%', maxWidth: 'none', margin: 0, paddingBottom: 32 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+                {[
+                    { id: 'settlement', label: 'Monthly Settlement' },
+                    { id: 'generated', label: 'Bill Generated' },
+                ].map((tab) => {
+                    const active = billingSection === tab.id;
+                    return (
+                        <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setBillingSection(tab.id)}
+                            style={{
+                                padding: '10px 18px',
+                                borderRadius: 10,
+                                border: active ? '1px solid #0d9488' : '1px solid #e2e8f0',
+                                background: active ? '#f0fdfa' : '#fff',
+                                color: active ? '#115e59' : '#475569',
+                                fontWeight: 700,
+                                fontSize: '0.8125rem',
+                                cursor: 'pointer',
+                            }}
+                        >
+                            {tab.label}
+                        </button>
+                    );
+                })}
+            </div>
+
+            {billingSection === 'generated' ? (
+                <BillGenerated onWalletBalanceChange={onWalletBalanceChange} />
+            ) : (
+            <>
             <header
                 style={{
                     marginBottom: 20,
@@ -1936,6 +1970,8 @@ export default function MonthlyBilling({ onTabChange, onWalletBalanceChange }) {
                     setActiveInvoice(null);
                 }}
             />
+            </>
+            )}
         </div>
     );
 }

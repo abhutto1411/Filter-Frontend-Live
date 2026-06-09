@@ -399,7 +399,10 @@ export default function SupplierStockInventory() {
                     supplierProductId: String(s.id),
                     name: s.name || '',
                     sku: !s.sku || s.sku === '-' ? '' : String(s.sku),
-                    unit: s.unit || 'pcs',
+                    unit: s.warehouseUnit || s.unit || 'Box',
+                    warehouseUnit: s.warehouseUnit || 'Box',
+                    workshopUnit: s.unit || 'pcs',
+                    conversionFactor: s.conversionFactor || 1,
                     price: Number(s.price) || 0,
                 }),
             );
@@ -442,11 +445,13 @@ export default function SupplierStockInventory() {
         if (!adjustItem || adjustConfirming) return;
         const qtyDelta = Number.parseFloat(String(adjustQty).replace(/,/g, '')) || 0;
         if (qtyDelta <= 0 || !Number.isFinite(qtyDelta)) return;
-        const currentQty = adjustItem.qty || 0;
-        const newQty =
+        const cf = Number(adjustItem.conversionFactor) || 1;
+        const currentWh = Number(adjustItem.warehouseQty) || 0;
+        const newWarehouseQty =
             adjustmentType === 'add'
-                ? currentQty + qtyDelta
-                : Math.max(0, currentQty - qtyDelta);
+                ? currentWh + qtyDelta
+                : Math.max(0, currentWh - qtyDelta);
+        const newWorkshopQty = Math.round(newWarehouseQty * cf * 1000) / 1000;
         const savedId = adjustItem.id;
         setAdjustConfirming(true);
         try {
@@ -455,10 +460,16 @@ export default function SupplierStockInventory() {
                 supplierLocationId: String(
                     adjustItem.locationId || adjustItem.byLocation?.[0]?.supplierLocationId || '',
                 ),
-                currentQuantity: newQty,
+                currentQuantity: newWarehouseQty,
                 ...(adjustNotes.trim() ? { notes: adjustNotes.trim() } : {}),
             });
-            setStock((prev) => prev.map((s) => (s.id === adjustItem.id ? { ...s, qty: newQty } : s)));
+            setStock((prev) =>
+                prev.map((s) =>
+                    s.id === adjustItem.id
+                        ? { ...s, warehouseQty: newWarehouseQty, qty: newWorkshopQty }
+                        : s,
+                ),
+            );
             setAdjustModalOpen(false);
             setAdjustItem(null);
             setAdjustQty('');
@@ -2232,9 +2243,28 @@ export default function SupplierStockInventory() {
                                         margin: 0,
                                     }}
                                 >
-                                    {fmtQty(adjustItem.qty)}{' '}
-                                    {adjustItem.unit || 'unit'}
+                                    {formatDualUomQty(
+                                        adjustItem.warehouseQty,
+                                        adjustItem.warehouseUnit || 'Box',
+                                        adjustItem.qty,
+                                        adjustItem.unit,
+                                    )}
                                 </p>
+                                {adjustItem.unit &&
+                                adjustItem.warehouseUnit &&
+                                String(adjustItem.warehouseUnit).toLowerCase() !==
+                                    String(adjustItem.unit).toLowerCase() ? (
+                                    <p
+                                        style={{
+                                            margin: '6px 0 0',
+                                            fontSize: '0.75rem',
+                                            color: 'var(--color-text-muted)',
+                                        }}
+                                    >
+                                        1 {adjustItem.warehouseUnit} ={' '}
+                                        {adjustItem.conversionFactor || 1} {adjustItem.unit}
+                                    </p>
+                                ) : null}
                             </div>
                             <div>
                                 <label
@@ -2297,7 +2327,7 @@ export default function SupplierStockInventory() {
                                         marginBottom: 6,
                                     }}
                                 >
-                                    Quantity *
+                                    Quantity ({adjustItem.warehouseUnit || 'Box'}) *
                                 </label>
                                 <input
                                     type="number"
@@ -2305,7 +2335,7 @@ export default function SupplierStockInventory() {
                                     step="any"
                                     value={adjustQty}
                                     onChange={(e) => setAdjustQty(e.target.value)}
-                                    placeholder={`in ${adjustItem.unit || 'unit'}`}
+                                    placeholder={`How many ${adjustItem.warehouseUnit || 'Box'}?`}
                                     style={{
                                         width: '100%',
                                         padding: '10px 12px',
@@ -2314,6 +2344,39 @@ export default function SupplierStockInventory() {
                                         fontSize: '0.875rem',
                                     }}
                                 />
+                                {(() => {
+                                    const delta =
+                                        Number.parseFloat(String(adjustQty).replace(/,/g, '')) ||
+                                        0;
+                                    if (!(delta > 0)) return null;
+                                    const cf = Number(adjustItem.conversionFactor) || 1;
+                                    const curWh = Number(adjustItem.warehouseQty) || 0;
+                                    const newWh =
+                                        adjustmentType === 'add'
+                                            ? curWh + delta
+                                            : Math.max(0, curWh - delta);
+                                    const newWs = Math.round(newWh * cf * 1000) / 1000;
+                                    const whUnit = adjustItem.warehouseUnit || 'Box';
+                                    const wsUnit = adjustItem.unit || 'Liter';
+                                    const hasSplit =
+                                        cf > 1 &&
+                                        wsUnit.toLowerCase() !== whUnit.toLowerCase();
+                                    return (
+                                        <p
+                                            style={{
+                                                margin: '8px 0 0',
+                                                fontSize: '0.8125rem',
+                                                color: 'var(--color-text-body)',
+                                                fontWeight: 600,
+                                            }}
+                                        >
+                                            After adjustment: {fmtQty(newWh)} {whUnit}
+                                            {hasSplit
+                                                ? ` (= ${fmtQty(newWs)} ${wsUnit})`
+                                                : ''}
+                                        </p>
+                                    );
+                                })()}
                             </div>
                             <div>
                                 <label

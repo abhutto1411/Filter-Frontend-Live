@@ -44,11 +44,11 @@ export function findUomCapsForLine(line, supplierUomByProductId, branchProductOp
     return null;
 }
 
-/** Workshop PI line hint — matches invoice table copy (e.g. 1 Box = 12 Liter at workshop ~ SAR …/Box ~ SAR …/Liter). */
-export function formatWorkshopPurchaseLineUomHint(line, caps) {
-    if (!caps) return '';
+/** Structured conversion hint for purchase invoice line rows. */
+export function parseWorkshopPurchaseLineUomHint(line, caps) {
+    if (!caps) return null;
     const cf = Number(caps.conversionFactor) || 1;
-    if (!(cf > 1)) return '';
+    if (!(cf > 1)) return null;
     const wu = String(caps.warehouseUnit || 'Box').trim() || 'Box';
     const wsu = String(caps.workshopUnit || 'pcs').trim() || 'pcs';
     const qtyRaw = parseFloat(String(line?.qty ?? '').replace(',', '.'));
@@ -57,21 +57,32 @@ export function formatWorkshopPurchaseLineUomHint(line, caps) {
 
     if (isWarehouseUomLine(line, caps)) {
         const wsQty = roundMoney2(qty * cf);
-        let text = `${qty} ${wu} = ${wsQty} ${wsu} at workshop`;
-        if (price > 0) {
-            const wsPrice = roundMoney2(price / cf);
-            text += ` ~ SAR ${price.toFixed(2)}/${wu} ~ SAR ${wsPrice.toFixed(2)}/${wsu}`;
-        }
-        return text;
+        return {
+            rule: `1 ${wu} = ${cf} ${wsu}`,
+            stock: `${qty} ${wu} on invoice → +${wsQty} ${wsu} in branch inventory`,
+            prices:
+                price > 0
+                    ? `SAR ${price.toFixed(2)}/${wu} · SAR ${roundMoney2(price / cf).toFixed(2)}/${wsu}`
+                    : null,
+        };
     }
 
     const whQty = roundMoney2(qty / cf);
-    let text = `${qty} ${wsu} = ${whQty} ${wu} warehouse`;
-    if (price > 0) {
-        const whPrice = roundMoney2(price * cf);
-        text += ` ~ SAR ${price.toFixed(2)}/${wsu} ~ SAR ${whPrice.toFixed(2)}/${wu}`;
-    }
-    return text;
+    return {
+        rule: `1 ${wu} = ${cf} ${wsu}`,
+        stock: `${qty} ${wsu} on invoice → +${qty} ${wsu} in branch inventory (${whQty} ${wu})`,
+        prices:
+            price > 0
+                ? `SAR ${price.toFixed(2)}/${wsu} · SAR ${roundMoney2(price * cf).toFixed(2)}/${wu}`
+                : null,
+    };
+}
+
+/** Workshop PI line hint — plain text fallback. */
+export function formatWorkshopPurchaseLineUomHint(line, caps) {
+    const parts = parseWorkshopPurchaseLineUomHint(line, caps);
+    if (!parts) return '';
+    return [parts.rule, parts.stock, parts.prices].filter(Boolean).join(' · ');
 }
 
 export {

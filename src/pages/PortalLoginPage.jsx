@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Mail, Lock, ChevronRight, Loader } from 'lucide-react';
 import '../styles/SignInPage.css';
 import { adminLogin, corporateLogin, workshopLogin, cashierLogin, supplierLogin, technicianLogin } from '../services/authApi';
+import { workshopLandingPath } from '../utils/permissions';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
 
@@ -94,7 +95,11 @@ const PortalLoginPage = () => {
     useEffect(() => {
         if (isAuthenticated && !location.state?.forceLogout) {
             if (hasPortalRoleAccess(portalId, user?.userType || user?.type, user)) {
-                const origin = location.state?.from?.pathname || `/${portalId}`;
+                const defaultLanding =
+                    portalId === 'workshop'
+                        ? workshopLandingPath(user)
+                        : `/${portalId}`;
+                const origin = location.state?.from?.pathname || defaultLanding;
                 navigate(origin, { replace: true });
             }
         }

@@ -312,7 +312,146 @@
 .customer-branch-option {
     display: flex;
     align-items: center;
+}
+
+/* Corporate Billing — account selection + ledger */
+.billing-search-row {
+    margin-bottom: 16px;
+}
+
+.corporate-billing-accounts-table {
+    margin-bottom: 32px;
+}
+
+.corporate-billing-account-row {
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.corporate-billing-account-row:hover {
+    background: #F9FAFB;
+}
+
+.corporate-billing-account-row.selected {
+    background: #FFFBEB;
+    outline: 2px solid var(--color-primary);
+    outline-offset: -2px;
+}
+
+.corporate-billing-back-btn {
+    display: inline-flex;
+    align-items: center;
     gap: 8px;
-    font-size: 0.8125rem;
-    color: #111827;
+    margin-bottom: 20px;
+    padding: 8px 14px;
+    border: 1px solid #E5E7EB;
+    border-radius: 10px;
+    background: #FFFFFF;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #374151;
+    cursor: pointer;
+}
+
+.corporate-billing-back-btn:hover {
+    background: #F9FAFB;
+}
+
+.corporate-billing-detail {
+    margin-top: 8px;
+}
+
+.corporate-billing-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.corporate-billing-detail-title {
+    font-size: 1.25rem;
+    font-weight: 900;
+    margin: 0 0 4px 0;
+}
+
+.corporate-billing-detail-sub {
+    font-size: 0.875rem;
+    color: var(--color-text-muted);
+    margin: 0;
+}
+
+.corporate-billing-detail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px;
+}
+
+.billing-date-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--color-text-muted);
+}
+
+.billing-date-field input {
+    padding: 8px 10px;
+    border: 1px solid #E5E7EB;
+    border-radius: 10px;
+    font-size: 0.875rem;
+}
+
+.billing-stat-balance .billing-stat-val {
+    color: #DC2626;
+}
+
+.billing-due-date-banner {
+    margin: 0 0 16px 0;
+    padding: 12px 16px;
+    background: #FFFBEB;
+    border-radius: 12px;
+    font-size: 0.875rem;
+    border: 1px solid #FDE68A;
+}
+
+.billing-error {
+    color: #DC2626;
+    font-size: 0.875rem;
+    margin-bottom: 12px;
+}
+
+.billing-th-num,
+.billing-td-num {
+    text-align: right;
+}
+
+.billing-type-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.billing-type-invoice {
+    background: #DBEAFE;
+    color: #1D4ED8;
+}
+
+.billing-type-sales-return {
+    background: #FEE2E2;
+    color: #B91C1C;
+}
+
+.billing-type-receipt {
+    background: #D1FAE5;
+    color: #047857;
+}
+
+.corporate-billing-ledger-table {
+    margin-top: 8px;
 }

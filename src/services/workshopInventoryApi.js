@@ -31,6 +31,7 @@ function qs(params) {
  * ── GET adjustment history ───────────────────────────────────────────────────
  *   Path:   GET /workshop-catalog/branches/:branchId/products/:productId/inventory-adjustments
  *   Query:  limit?, offset?, sort?: 'asc'|'desc' (default desc by time)
+ *           Pass limit=0 for the complete timeline (no cap).
  *   Response (example):
  *     {
  *       success: true,

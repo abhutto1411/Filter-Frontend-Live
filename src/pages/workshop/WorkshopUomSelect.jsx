@@ -32,6 +32,8 @@ export default function WorkshopUomSelect({
             ? value
             : invoiceLineUomSelectValue(line ?? { uom: value, uomProfileId: null }, options);
 
+    const selectedOption = options.find((o) => o.value === selectValue);
+
     const handleChange = (selectVal) => {
         if (variant === 'product') {
             onChange(parseProductUomSelectValue(selectVal));
@@ -47,6 +49,7 @@ export default function WorkshopUomSelect({
             className={className}
             value={selectValue}
             disabled={disabled}
+            title={selectedOption?.title || selectedOption?.label || ''}
             onChange={(e) => handleChange(e.target.value)}
             onKeyDown={onKeyDown}
         >
@@ -54,8 +57,12 @@ export default function WorkshopUomSelect({
                 <option value="unit:pcs">pcs (each)</option>
             ) : null}
             {options.map((opt) => (
-                <option key={`${variant}-${opt.value}`} value={opt.value}>
-                    {opt.label}
+                <option
+                    key={`${variant}-${opt.value}`}
+                    value={opt.value}
+                    title={opt.title || opt.label}
+                >
+                    {variant === 'invoice-line' ? opt.shortLabel || opt.label : opt.label}
                 </option>
             ))}
         </select>

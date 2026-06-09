@@ -1,3 +1,5 @@
+import { NAV_ITEMS } from '../pages/workshop/constants';
+
 /**
  * Pure helpers for the Roles & Permissions UI.
  *
@@ -155,6 +157,75 @@ export function firstVisibleAdminPath(user) {
         entry.permission ? codes.has(entry.permission) : true,
     );
     return match?.path ?? '/admin/dashboard';
+}
+
+const WORKSHOP_ACC_TAB_SLUG = {
+    'acc-chart': 'chart-of-accounts',
+    'acc-cash': 'cash-bank',
+    'acc-transactions': 'transactions',
+    'acc-journal': 'journal-entries',
+    'acc-expenses': 'expenses',
+    'acc-receipts': 'receipts',
+    'acc-payments': 'payments',
+    'acc-advances': 'advances',
+    'acc-payroll': 'payroll',
+    'acc-approvals': 'approvals',
+    'acc-ledger': 'ledger',
+};
+
+/** Map a workshop sidebar tab id to its URL path. */
+export function workshopTabToPath(tabId) {
+    if (tabId.startsWith('acc-')) {
+        const slug = WORKSHOP_ACC_TAB_SLUG[tabId] || 'cash-bank';
+        return `/workshop/accounting/${slug}`;
+    }
+    return `/workshop/${tabId}`;
+}
+
+function workshopUserCanAccessCode(user, codes, permission) {
+    if (!permission) return true;
+    if (!user) return false;
+    if (user.userType === 'workshop_owner' && (!user.role || user.role?.isSystem)) {
+        return true;
+    }
+    if (!codes) return true;
+    if (!user.role) return true;
+    return codes.has(permission);
+}
+
+/**
+ * Landing path after workshop login — first sidebar tab the user may view.
+ * Mirrors `firstVisibleAdminPath` + `AuthContext.userHas` bootstrap rules.
+ */
+export function firstVisibleWorkshopPath(user) {
+    if (!user) return '/workshop/dashboard';
+
+    const codes = Array.isArray(user.permissions) ? new Set(user.permissions) : null;
+
+    if (user.userType === 'workshop_owner' && (!user.role || user.role?.isSystem)) {
+        return '/workshop/dashboard';
+    }
+    if (!codes || !user.role) return '/workshop/dashboard';
+
+    for (const item of NAV_ITEMS) {
+        if (item.subItems?.length) {
+            const visibleSubs = item.subItems.filter((s) =>
+                workshopUserCanAccessCode(user, codes, s.permission),
+            );
+            if (visibleSubs.length > 0) {
+                return workshopTabToPath(visibleSubs[0].id);
+            }
+        } else if (workshopUserCanAccessCode(user, codes, item.permission)) {
+            return workshopTabToPath(item.id);
+        }
+    }
+
+    return null;
+}
+
+/** Safe navigate target after workshop login (never `/workshop/dashboard` unless allowed). */
+export function workshopLandingPath(user) {
+    return firstVisibleWorkshopPath(user) ?? '/workshop';
 }
 
 /** Portal-aware userType inference, mirrors backend `createUserWithRole`. */

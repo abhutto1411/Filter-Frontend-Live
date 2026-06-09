@@ -25,6 +25,7 @@ import '../styles/AdminLayout.css';
 import './marketing/Marketing.css';
 import { useMarketingState } from './marketing/MarketingUtils';
 import { getWorkshops } from '../services/superAdminApi';
+import { marketingGetWallet } from '../services/superAdminMarketingApi';
 
 function normalizeWorkshopsPayload(payload) {
     if (!payload) return [];
@@ -34,6 +35,46 @@ function normalizeWorkshopsPayload(payload) {
     if (Array.isArray(payload.data)) return payload.data;
     if (Array.isArray(payload.data?.workshops)) return payload.data.workshops;
     return [];
+}
+
+function normalizeWalletPayload(payload) {
+    const wallet =
+        payload?.wallet ||
+        payload?.data?.wallet ||
+        payload?.marketingWallet ||
+        payload?.data?.marketingWallet ||
+        payload;
+
+    const balance = Number(
+        wallet?.balance ??
+        payload?.balance ??
+        payload?.data?.balance ??
+        0
+    );
+
+    const currencyCode =
+        wallet?.currencyCode ||
+        wallet?.currency_code ||
+        payload?.currencyCode ||
+        payload?.currency_code ||
+        'SAR';
+
+    return {
+        balance: Number.isFinite(balance) ? balance : 0,
+        currencyCode,
+    };
+}
+
+function formatWalletBalance(value, currency = 'SAR') {
+    const amount = Number(value);
+
+    if (!Number.isFinite(amount)) {
+        return `0 ${currency}`;
+    }
+
+    return `${amount.toLocaleString(undefined, {
+        maximumFractionDigits: 0,
+    })} ${currency}`;
 }
 
 const PAGE_TITLES = {
@@ -51,7 +92,9 @@ const PAGE_TITLES = {
     'customer-insights': 'Customer Insight',
     'referrer-management': 'Referrer Management',
     'marketing-promotions': 'Promotions',
+    'promo-codes': 'Promo Codes',
 };
+
 function getPageTitle(pathname) {
     const parts = pathname.split('/').filter(Boolean);
     const last = parts[parts.length - 1] || 'dashboard';
@@ -69,7 +112,7 @@ const NAV_CONFIG = [
         section: 'CAMPAIGNS',
         items: [
             { label: 'Campaigns', path: 'promotions', icon: Megaphone },
-           { label: 'Campaign Requests', path: 'campaign-requests', icon: Ticket },
+            { label: 'Campaign Requests', path: 'campaign-requests', icon: Ticket },
         ],
     },
     {
@@ -82,7 +125,7 @@ const NAV_CONFIG = [
     {
         section: 'ANALYTICS',
         items: [
-           { label: 'Analytics & ROI', path: 'analytics-roi', icon: LineChart },
+            { label: 'Analytics & ROI', path: 'analytics-roi', icon: LineChart },
             { label: 'Campaign Reports', path: 'campaign-reports', icon: FileText },
             { label: 'Ad Platforms', path: 'ad-platforms', icon: Shield },
             { label: 'Budget Optimizer', path: 'budget-optimizer', icon: Gift },
@@ -121,12 +164,18 @@ export default function MarketingLayout() {
     const location = useLocation();
     const navigate = useNavigate();
 
-    const [locale, setLocale] = useState(() => localStorage.getItem('marketing-locale') || 'en');
+    const [locale, setLocale] = useState(
+        () => localStorage.getItem('marketing-locale') || 'en'
+    );
     const [showAddModal, setShowAddModal] = useState(false);
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [workshops, setWorkshops] = useState([]);
     const [marketingWorkshopId, setMarketingWorkshopId] = useState('');
+
+    const [walletBalance, setWalletBalance] = useState(0);
+    const [walletCurrency, setWalletCurrency] = useState('SAR');
+    const [walletLoading, setWalletLoading] = useState(true);
 
     const {
         promotions,
@@ -148,6 +197,40 @@ export default function MarketingLayout() {
             .then((data) => setWorkshops(normalizeWorkshopsPayload(data)))
             .catch(() => setWorkshops([]));
     }, []);
+
+    useEffect(() => {
+        let mounted = true;
+
+        const loadWalletBalance = async () => {
+            try {
+                setWalletLoading(true);
+
+                const data = await marketingGetWallet();
+                const normalized = normalizeWalletPayload(data);
+
+                if (!mounted) return;
+
+                setWalletBalance(normalized.balance);
+                setWalletCurrency(normalized.currencyCode);
+            } catch (error) {
+                if (!mounted) return;
+
+                console.error('Failed to load marketing wallet balance:', error);
+                setWalletBalance(0);
+                setWalletCurrency('SAR');
+            } finally {
+                if (mounted) {
+                    setWalletLoading(false);
+                }
+            }
+        };
+
+        loadWalletBalance();
+
+        return () => {
+            mounted = false;
+        };
+    }, [location.pathname]);
 
     useEffect(() => {
         setIsMobileMenuOpen(false);
@@ -203,7 +286,11 @@ export default function MarketingLayout() {
                     <div className="marketing-wallet-label">WALLET BALANCE</div>
                     <div className="marketing-wallet-value">
                         <Wallet size={12} strokeWidth={2} />
-                        <span>0 SAR</span>
+                        <span>
+                            {walletLoading
+                                ? 'Loading...'
+                                : formatWalletBalance(walletBalance, walletCurrency)}
+                        </span>
                     </div>
                 </div>
 
@@ -265,7 +352,9 @@ export default function MarketingLayout() {
                         </button>
 
                         <span className="marketing-header-title">{pageTitle}</span>
-                        <span className="marketing-header-subtitle">Marketing &amp; Care Portal</span>
+                        <span className="marketing-header-subtitle">
+                            Marketing &amp; Care Portal
+                        </span>
                     </div>
 
                     <div className="marketing-header-right">
@@ -312,6 +401,9 @@ export default function MarketingLayout() {
 
                         locale,
                         setLocale,
+
+                        walletBalance,
+                        walletCurrency,
                     }}
                 />
             </main>

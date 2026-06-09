@@ -1,221 +1,299 @@
-import React from 'react';
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { 
-    Building2, 
-    Wrench, 
-    Monitor, 
-    UserCheck, 
-    Package, 
-    Share2, 
-    Box, 
-    ArrowRight,
-    Lock,
-} from 'lucide-react';
-import '../styles/SignInPage.css'; // Reusing branding styles
+import { Mail, Lock, ChevronRight, Loader, Eye, EyeOff, LayoutGrid } from 'lucide-react';
+import '../styles/SignInPage.css';
+import {
+    adminLogin,
+    corporateLogin,
+    workshopLogin,
+    cashierLogin,
+    supplierLogin,
+    technicianLogin,
+} from '../services/authApi';
+import { useAuth } from '../context/AuthContext';
+import { apiFetch } from '../services/api';
+import { firstVisibleAdminPath, workshopLandingPath } from '../utils/permissions';
 
-const PORTALS = [
-    {
-        id: 'corporate',
-        name: 'Filter Corporate Portal',
-        description: 'Fleet management, billing, and company account controls for corporate clients.',
-        icon: Building2,
-        color: '#8B5CF6', // Purple
-    },
-    {
-        id: 'workshop',
-        name: 'Filter Admin Workshop Portal',
-        description: 'Internal management for service centers, inventory, and technician assignment.',
-        icon: Wrench,
-        color: '#059669', // Emerald
-    },
-    {
-        id: 'pos',
-        name: 'Filter POS Portal',
-        description: 'Point of Sale system for front-desk operations and instant invoicing.',
-        icon: Monitor,
-        color: '#3B82F6', // Blue
-    },
-    {
-        id: 'technician',
-        name: 'Filter Technician Portal',
-        description: 'Real-time job tracking, service checklists, and quality assurance for our mechanics.',
-        icon: UserCheck,
-        color: '#D97706', // Amber
-    },
-    {
-        id: 'locker',
-        name: 'Filter Locker Portal',
-        description: 'Secure terminal management for our contactless vehicle drop-off/pick-up points.',
-        icon: Box,
-        color: '#DC2626', // Red
-    },
-    {
-        id: 'supplier',
-        name: 'Filter Supplier Portal',
-        description: 'Inventory supply chain management and warehouse procurement system.',
-        icon: Package,
-        color: '#4B5563', // Gray
-    },
-    {
-        id: 'referrer-portal',
-        name: 'Filter Referrer Portal',
-        description: 'Track referrals, manage earnings, and see client conversion metrics.',
-        icon: Share2,
-        color: '#EC4899', // Pink
-    }
+/**
+ * Unified sign-in hub.
+ *
+ * One login form for every portal — the user picks a destination from the
+ * dropdown and the form dispatches to the matching login API, then routes to
+ * that portal's landing page. Mirrors the per-portal logic that still lives in
+ * PortalLoginPage / SignInPage (those remain the `redirectTo` targets used by
+ * ProtectedRoute), so behaviour stays consistent whichever entry point is used.
+ */
+const PORTAL_OPTIONS = [
+    { id: 'admin', name: 'Filter ERP · Super Admin' },
+    { id: 'workshop', name: 'Filter Admin Workshop Portal' },
+    { id: 'pos', name: 'Filter POS Portal' },
+    { id: 'corporate', name: 'Filter Corporate Portal' },
+    { id: 'technician', name: 'Filter Technician Portal' },
+    { id: 'locker', name: 'Filter Locker Portal' },
+    { id: 'supplier', name: 'Filter Supplier Portal' },
+    { id: 'referrer-portal', name: 'Filter Referrer Portal' },
 ];
+
+// Default userType assumed when the login response omits one (mirrors PortalLoginPage).
+const PORTAL_USER_TYPES = {
+    admin: 'admin',
+    corporate: 'corporate_user',
+    workshop: 'workshop_owner',
+    pos: 'cashier_user',
+    technician: 'technician_user',
+    locker: 'workshop_user',
+    supplier: 'supplier_user',
+    'referrer-portal': 'referrer_user',
+};
+
+// Landing path after a successful login. `admin` resolves dynamically to the
+// first sidebar page the user can view.
+const PORTAL_LANDING = {
+    workshop: '/workshop',
+    pos: '/pos',
+    corporate: '/corporate',
+    technician: '/technician',
+    locker: '/locker',
+    supplier: '/supplier',
+    'referrer-portal': '/referrer-portal',
+};
 
 export default function PortalHubPage() {
     const navigate = useNavigate();
+    const { login } = useAuth();
+    const [portalId, setPortalId] = useState('workshop');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const portalName =
+        PORTAL_OPTIONS.find((p) => p.id === portalId)?.name || 'Portal';
+
+    const loginFor = (portal, mail, pass) => {
+        switch (portal) {
+            case 'corporate':
+                return corporateLogin(mail, pass);
+            case 'pos':
+                return cashierLogin(mail, pass);
+            case 'workshop':
+            case 'locker':
+                // Locker users are workshop_user rows; reuse the workshop login endpoint.
+                return workshopLogin(mail, pass);
+            case 'technician':
+                return technicianLogin(mail, pass);
+            case 'supplier':
+                return supplierLogin(mail, pass);
+            default:
+                // admin + referrer-portal fall back to the admin endpoint.
+                return adminLogin(mail, pass);
+        }
+    };
+
+    const handleSignIn = async (e) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+
+        // DEMO LOGIN BYPASS — same credentials accepted by the per-portal pages.
+        if (email.toLowerCase() === 'demo@filtercars.com' && password === 'password123') {
+            const demoUser = {
+                id: 'demo-id-' + portalId,
+                name: 'Demo ' + portalName.split(' ')[0],
+                email: 'demo@filtercars.com',
+                userType: PORTAL_USER_TYPES[portalId] || 'admin',
+                isDemo: true,
+            };
+            const demoToken = 'demo-token-' + Date.now();
+            setTimeout(() => {
+                login(demoUser, demoToken);
+                navigate(
+                    portalId === 'admin'
+                        ? firstVisibleAdminPath(demoUser)
+                        : portalId === 'workshop'
+                          ? workshopLandingPath(demoUser)
+                          : PORTAL_LANDING[portalId] || `/${portalId}`,
+                    { replace: true },
+                );
+                setLoading(false);
+            }, 600);
+            return;
+        }
+
+        try {
+            const data = await loginFor(portalId, email, password);
+            if (!data || !data.token) {
+                throw new Error('Invalid response from server.');
+            }
+
+            const userData = data.user || data;
+            const userToken = data.token;
+            const effectiveUserType =
+                userData.userType ||
+                userData.type ||
+                PORTAL_USER_TYPES[portalId] ||
+                'admin';
+
+            // Locker portal needs a supervisor/collector role (or workshop owner).
+            if (portalId === 'locker') {
+                const role = userData.lockerPortalRole;
+                const isOwner = effectiveUserType === 'workshop_owner';
+                if (!isOwner && role !== 'supervisor' && role !== 'collector') {
+                    throw new Error(
+                        'This account does not have locker portal access. Ask your workshop admin to create a locker user.',
+                    );
+                }
+            }
+
+            const workshopMeta = data.workshop || userData.workshop || null;
+
+            login(
+                { ...userData, userType: effectiveUserType },
+                userToken,
+                { workshop: workshopMeta },
+            );
+
+            if (portalId === 'pos') {
+                apiFetch('/cashier/session/open', { method: 'POST' }).catch(() => {});
+            }
+
+            const sessionUser = { ...userData, userType: effectiveUserType };
+            navigate(
+                portalId === 'admin'
+                    ? firstVisibleAdminPath(sessionUser)
+                    : portalId === 'workshop'
+                      ? workshopLandingPath(sessionUser)
+                      : PORTAL_LANDING[portalId] || `/${portalId}`,
+                { replace: true },
+            );
+        } catch (err) {
+            console.error('Login error:', err);
+            setError(err.message || 'Login failed. Please check your credentials.');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     return (
-        <div className="signin-container" style={{ overflowY: 'auto', padding: '40px 20px' }}>
-            <div className="hub-content" style={{ maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
-                
-                {/* Header Section */}
-                <motion.div 
-                    initial={{ opacity: 0, y: -20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.6 }}
-                    style={{ textAlign: 'center', marginBottom: '60px' }}
+        <div className="signin-container">
+            {/* Left Side: Branding */}
+            <div className="signin-branding">
+                <motion.div
+                    initial={{ opacity: 0, x: -50 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.8 }}
                 >
-                    <h1 className="brand-main-title" style={{ fontSize: '3.5rem', marginBottom: '12px' }}>
+                    <h1 className="brand-main-title">
                         FILTER <span>HUB</span>
                     </h1>
-                    <p className="brand-subtitle" style={{ maxWidth: '700px', margin: '0 auto', fontSize: '1.1rem' }}>
-                        Select your destination portal below. Secure access to the Filter Services management ecosystem. 
-                        Professional tools for every part of the journey.
+                    <p className="brand-subtitle">
+                        One secure entry point for the Filter Services management ecosystem.
+                        Choose your portal and sign in.
                     </p>
+
+                    <div className="brand-stats" style={{ marginTop: '36px' }}>
+                        <div className="stat-item"><h4>250+</h4><p>Global Hubs</p></div>
+                        <div className="stat-item"><h4>1M+</h4><p>Services</p></div>
+                        <div className="stat-item"><h4>99.9%</h4><p>Uptime</p></div>
+                    </div>
                 </motion.div>
+            </div>
 
-                {/* Portals Grid */}
-                <div className="portals-grid" style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', 
-                    gap: '24px',
-                    paddingBottom: '40px'
-                }}>
-                    {PORTALS.map((portal, index) => (
-                        <motion.div
-                            key={portal.id}
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={{ duration: 0.4, delay: index * 0.05 }}
-                            whileHover={{ y: -8 }}
-                            className="portal-card"
-                            onClick={() => navigate(`/${portal.id}/login`)}
-                            style={{
-                                background: 'white',
-                                borderRadius: '24px',
-                                padding: '32px',
-                                boxShadow: '0 10px 30px rgba(0,0,0,0.05)',
-                                cursor: 'pointer',
-                                border: '1px solid rgba(0,0,0,0.05)',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                height: '100%',
-                                position: 'relative',
-                                overflow: 'hidden'
-                            }}
-                        >
-                            {/* Accent Background */}
-                            <div style={{
-                                position: 'absolute',
-                                top: 0,
-                                right: 0,
-                                width: '120px',
-                                height: '120px',
-                                background: `${portal.color}08`,
-                                borderRadius: '0 0 0 100%',
-                                zIndex: 0
-                            }} />
-
-                            <div style={{ position: 'relative', zIndex: 1 }}>
-                                <div style={{ 
-                                    width: '56px', 
-                                    height: '56px', 
-                                    borderRadius: '16px', 
-                                    background: `${portal.color}15`, 
-                                    color: portal.color,
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    marginBottom: '24px'
-                                }}>
-                                    <portal.icon size={28} />
-                                </div>
-
-                                <h3 style={{ 
-                                    fontSize: '1.5rem', 
-                                    fontWeight: '800', 
-                                    color: '#111827', 
-                                    marginBottom: '12px' 
-                                }}>
-                                    {portal.name}
-                                </h3>
-                                
-                                <p style={{ 
-                                    color: '#6B7280', 
-                                    lineHeight: '1.6', 
-                                    fontSize: '0.9375rem',
-                                    marginBottom: '32px',
-                                    flexGrow: 1
-                                }}>
-                                    {portal.description}
-                                </p>
-
-                                <div style={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    gap: '8px',
-                                    fontWeight: '700',
-                                    color: portal.color,
-                                    fontSize: '0.875rem',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '0.05em'
-                                }}>
-                                    <span>Access Portal</span>
-                                    <ArrowRight size={16} />
-                                </div>
-                            </div>
-                        </motion.div>
-                    ))}
-                </div>
-
-                {/* Admin Access Footer */}
+            {/* Right Side: Form */}
+            <div className="signin-form-wrapper">
                 <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.8 }}
-                    style={{ 
-                        textAlign: 'center', 
-                        marginTop: '40px', 
-                        padding: '30px',
-                        borderTop: '1px solid rgba(0,0,0,0.08)'
-                    }}
+                    className="signin-card"
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: 0.2 }}
                 >
-                    <div style={{ display: 'inline-flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
-                        <button
-                            onClick={() => navigate('/admin/login')}
-                            style={{
-                                background: 'transparent',
-                                border: '1px solid #E5E7EB',
-                                padding: '12px 24px',
-                                borderRadius: '12px',
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                gap: '10px',
-                                fontSize: '0.875rem',
-                                fontWeight: '600',
-                                color: '#6B7280',
-                                transition: 'all 0.2s'
-                            }}
-                        >
-                            <Lock size={14} />
-                            Filter ERP Access
+                    <div className="signin-header">
+                        <h2>Welcome to Filter</h2>
+                        <p>Select your portal and enter your credentials</p>
+                    </div>
+
+                    {error && <div className="error-message">{error}</div>}
+
+                    <form onSubmit={handleSignIn}>
+                        <div className="form-group" style={{ marginBottom: '16px' }}>
+                            <label htmlFor="portal">Portal</label>
+                            <div className="input-wrapper">
+                                <LayoutGrid size={18} />
+                                <select
+                                    id="portal"
+                                    className="signin-input"
+                                    value={portalId}
+                                    onChange={(e) => { setPortalId(e.target.value); setError(''); }}
+                                    style={{ appearance: 'auto', cursor: 'pointer' }}
+                                >
+                                    {PORTAL_OPTIONS.map((p) => (
+                                        <option key={p.id} value={p.id}>{p.name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="form-group" style={{ marginBottom: '26px' }}>
+                            <label htmlFor="email">Email Address</label>
+                            <div className="input-wrapper">
+                                <Mail size={18} />
+                                <input
+                                    type="email"
+                                    id="email"
+                                    className="signin-input"
+                                    placeholder="name@filtercars.com"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    required
+                                />
+                            </div>
+                        </div>
+
+                        <div className="form-group" style={{ marginBottom: '26px' }}>
+                            <label htmlFor="password">Password</label>
+                            <div className="input-wrapper" style={{ position: 'relative' }}>
+                                <Lock size={18} />
+                                <input
+                                    type={showPassword ? 'text' : 'password'}
+                                    id="password"
+                                    className="signin-input"
+                                    placeholder="••••••••"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    required
+                                    style={{ paddingRight: 36 }}
+                                />
+                                <button
+                                    type="button"
+                                    className="password-toggle-btn"
+                                    onClick={() => setShowPassword((v) => !v)}
+                                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                                    title={showPassword ? 'Hide password' : 'Show password'}
+                                >
+                                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="form-options">
+                            <label className="remember-me">
+                                <input type="checkbox" />
+                                Remember me
+                            </label>
+                            <a href="#" className="forgot-password">Forgot Password?</a>
+                        </div>
+
+                        <button type="submit" className="btn-signin" disabled={loading}>
+                            {loading ? <Loader size={18} className="spin" /> : <><span>SIGN IN NOW</span> <ChevronRight size={18} /></>}
                         </button>
+                    </form>
+
+                    <div style={{ marginTop: '28px', textAlign: 'center' }}>
+                        <p style={{ fontSize: '0.8125rem', color: '#666' }}>
+                            Need technical support? <a href="#" style={{ color: '#000', fontWeight: '700' }}>Contact IT Hub</a>
+                        </p>
                     </div>
                 </motion.div>
             </div>

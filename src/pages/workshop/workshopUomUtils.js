@@ -127,21 +127,24 @@ export function buildInvoiceLineUomOptions(capsRow, profiles = []) {
     if (capsRow?.warehouseUnit) {
         const cf = Number(capsRow.conversionFactor) || 1;
         const rule = formatUomRule(capsRow.warehouseUnit, capsRow.workshopUnit, cf);
+        const wh = String(capsRow.warehouseUnit).trim() || 'Box';
+        const ws = String(capsRow.workshopUnit || '').trim();
         push({
             value: 'uom:wh',
-            label: `Product default — ${rule} (invoice in ${capsRow.warehouseUnit})`,
-            unit: capsRow.warehouseUnit,
+            label: `Product default — ${rule} (invoice in ${wh})`,
+            shortLabel: wh,
+            title: `Invoice in ${wh}; branch stock in ${ws || wh}. ${rule}`,
+            unit: wh,
             uomProfileId: capsRow.uomProfileId ?? null,
             mode: 'warehouse',
         });
-        if (
-            capsRow.workshopUnit &&
-            normUomKey(capsRow.workshopUnit) !== normUomKey(capsRow.warehouseUnit)
-        ) {
+        if (ws && normUomKey(ws) !== normUomKey(wh)) {
             push({
                 value: 'uom:ws',
-                label: `Product default — stock in ${capsRow.workshopUnit}`,
-                unit: capsRow.workshopUnit,
+                label: `Product default — stock in ${ws}`,
+                shortLabel: ws,
+                title: `Invoice in ${ws}; same unit as branch stock. ${rule}`,
+                unit: ws,
                 uomProfileId: capsRow.uomProfileId ?? null,
                 mode: 'workshop',
             });
@@ -151,21 +154,24 @@ export function buildInvoiceLineUomOptions(capsRow, profiles = []) {
     for (const p of profiles) {
         if (p.isActive === false) continue;
         const rule = p.ruleLabel || formatUomRule(p.warehouseUnit, p.workshopUnit, p.conversionFactor);
+        const wh = String(p.warehouseUnit || '').trim() || 'Box';
+        const ws = String(p.workshopUnit || '').trim();
         push({
             value: `profile:${p.id}:wh`,
-            label: `${p.name} — ${rule} (invoice in ${p.warehouseUnit})`,
-            unit: p.warehouseUnit,
+            label: `${p.name} — ${rule} (invoice in ${wh})`,
+            shortLabel: wh,
+            title: `${p.name}: invoice in ${wh}, stock in ${ws || wh}. ${rule}`,
+            unit: wh,
             uomProfileId: p.id,
             mode: 'warehouse',
         });
-        if (
-            p.workshopUnit &&
-            normUomKey(p.workshopUnit) !== normUomKey(p.warehouseUnit)
-        ) {
+        if (ws && normUomKey(ws) !== normUomKey(wh)) {
             push({
                 value: `profile:${p.id}:ws`,
-                label: `${p.name} — ${rule} (invoice in ${p.workshopUnit})`,
-                unit: p.workshopUnit,
+                label: `${p.name} — ${rule} (invoice in ${ws})`,
+                shortLabel: ws,
+                title: `${p.name}: invoice in ${ws}. ${rule}`,
+                unit: ws,
                 uomProfileId: p.id,
                 mode: 'workshop',
             });
@@ -175,6 +181,8 @@ export function buildInvoiceLineUomOptions(capsRow, profiles = []) {
     push({
         value: 'uom:pcs',
         label: 'pcs',
+        shortLabel: 'pcs',
+        title: 'Pieces (each)',
         unit: 'pcs',
         uomProfileId: null,
         mode: 'warehouse',

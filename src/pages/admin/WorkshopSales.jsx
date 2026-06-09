@@ -10,8 +10,34 @@ import {
     getInvoices,
     getWorkshopOptions,
 } from '../../services/superAdminApi';
+import { ExportMenu } from '../../components/admin/SalesExportControls';
+import { exportRowsToPdf, exportRowsToExcel } from '../../utils/tableExport';
 
 const PAGE_SIZE = 25;
+const EXPORT_LIMIT = 5000;
+
+/** Build {headers, rows} mirroring the on-screen table — used for PDF/Excel export. */
+function buildWorkshopSalesExportRows(invoices, fmtDateTime) {
+    const headers = [
+        'Invoice No', 'Order #', 'Date / Time', 'Workshop', 'Branch',
+        'Customer', 'Mobile', 'Vehicle', 'Items', 'Total (SAR)', 'Payment',
+    ];
+    const n2 = (v) => { const x = Number(v); return Number.isFinite(x) ? Number(x.toFixed(2)) : 0; };
+    const rows = (invoices || []).map((inv) => [
+        inv.invoiceNo ?? '—',
+        inv.salesOrderId ?? '—',
+        fmtDateTime(inv?.issuedAt ?? inv?.invoiceDate),
+        inv.workshopName ?? '—',
+        inv.branchName ?? '—',
+        inv.customerName ?? 'Walk-in',
+        inv.customerMobile ?? '—',
+        inv.plateNo ?? '—',
+        n2(inv.itemsCount),
+        n2(inv.totalAmount),
+        String(inv.paymentStatus ?? '—'),
+    ]);
+    return { headers, rows };
+}
 
 const PAYMENT_STATUS_OPTIONS = [
     { value: '', label: 'All Payment Status' },
@@ -105,6 +131,7 @@ export default function WorkshopSales() {
     const [detailData, setDetailData] = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailError, setDetailError] = useState('');
+    const [exporting, setExporting] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -217,6 +244,39 @@ export default function WorkshopSales() {
         void fetchInvoices();
     }, [fetchInvoices]);
 
+    // Export the FULL filtered set (one bounded re-fetch with the active filters).
+    const runExport = useCallback(async (kind) => {
+        setExporting(true);
+        setLoadError('');
+        try {
+            const res = await getInvoices({
+                workshopId: selectedWorkshopId || undefined,
+                branchId: selectedBranchId || undefined,
+                paymentStatus: paymentStatusFilter || undefined,
+                search: searchDebounced || undefined,
+                startDate: localDateTimeToIso(dateFrom) || undefined,
+                endDate: localDateTimeToIso(dateTo) || undefined,
+                limit: String(EXPORT_LIMIT),
+                offset: '0',
+            });
+            const list = Array.isArray(res?.invoices) ? res.invoices
+                : Array.isArray(res?.data?.invoices) ? res.data.invoices : [];
+            const { headers, rows } = buildWorkshopSalesExportRows(list, formatDateTime);
+            const subtitle = `${rows.length} invoice(s)`
+                + (dateFrom || dateTo ? ` · ${dateFrom || '…'} → ${dateTo || '…'}` : '')
+                + (paymentStatusFilter ? ` · payment: ${paymentStatusFilter}` : '');
+            if (kind === 'pdf') {
+                exportRowsToPdf({ title: 'Workshop Sales', subtitle, headers, rows, filenameBase: 'workshop-sales' });
+            } else {
+                exportRowsToExcel({ sheetName: 'Workshop Sales', headers, rows, filenameBase: 'workshop-sales' });
+            }
+        } catch (e) {
+            setLoadError(e?.message || 'Export failed');
+        } finally {
+            setExporting(false);
+        }
+    }, [selectedWorkshopId, selectedBranchId, paymentStatusFilter, searchDebounced, dateFrom, dateTo]);
+
     const openDetails = useCallback(async (invoiceId) => {
         if (!invoiceId) return;
         setDetailId(String(invoiceId));
@@ -280,7 +340,15 @@ export default function WorkshopSales() {
                     </h2>
                     <p className="so-sub">POS invoices across all workshops &amp; branches</p>
                 </div>
-                <div className="so-order-count-badge">{total.toLocaleString()} invoices</div>
+                <div style={{ display: 'inline-flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <ExportMenu
+                        onPdf={() => runExport('pdf')}
+                        onExcel={() => runExport('excel')}
+                        busy={exporting}
+                        disabled={loading}
+                    />
+                    <div className="so-order-count-badge">{total.toLocaleString()} invoices</div>
+                </div>
             </header>
 
             <div className="so-kpi-grid">

@@ -1,532 +1,1513 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-Plus,
-X,
-Megaphone,
-ChevronDown,
-Upload,
-Building2,
-MapPin,
-Package,
-Gift,
-Image,
-Hourglass,
-} from 'lucide-react';
-import './MarketingUniversal.css';
+  Plus,
+  X,
+  ChevronDown,
+  Upload,
+  Building2,
+  MapPin,
+  Package,
+  Gift,
+  Image,
+  Hourglass,
+  Search,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  Tag,
+  Edit3,
+  Trash2,
+  Clock3,
+} from "lucide-react";
+import "./MarketingUniversal.css";
 
-const initialPromotions = [];
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
+
+const ROOT = "/super-admin-marketing-protal";
+
+const ENDPOINTS = {
+  promotions: `${ROOT}/promotions`,
+  promotionOptions: `${ROOT}/promotions/options`,
+};
 
 const strategyOptions = [
-'Standard Promotion',
-'Cross-Platform Promotion',
-'Zone-Wise Offer',
-'Loyalty Reward',
-'Seasonal Campaign',
+  "Standard Promotion",
+  "Cross-Platform Promotion",
+  "Zone-Wise Offer",
+  "Loyalty Reward",
+  "Seasonal Campaign",
+  "Cross-Branch Free Service",
 ];
 
 const promotionTypeOptions = [
-'Percentage Discount',
-'Fixed Amount Discount',
-'Buy X Get Y Free',
-'Bundle Offer',
-'Free Service',
+  "Percentage Discount",
+  "Fixed Amount Discount",
+  "Buy X Get Y Free",
+  "Free Service",
+  "Free Service At Another Branch",
+  "Zone-Wide Offer",
 ];
 
-const discountTypeOptions = ['Percentage (%)', 'Fixed (SAR)'];
+const discountTypeOptions = ["Percentage (%)", "Fixed Amount (SAR)"];
 
 const customerSegmentOptions = [
-'All Customers',
-'New Customers Only',
-'Returning Customers',
-'VIP Customers',
-'Corporate Customers',
+  "All Customers",
+  "New Customers Only",
+  "Returning Customers",
+  "VIP Customers",
+  "Corporate Customers",
 ];
 
-const statusOptions = ['Draft', 'Scheduled', 'Active'];
+const statusOptions = ["Draft", "Scheduled", "Active", "Inactive"];
 
 const filterStatusOptions = [
-'All Statuses',
-'Draft',
-'Scheduled',
-'Active',
-'Inactive',
+  "All Statuses",
+  "Draft",
+  "Scheduled",
+  "Active",
+  "Inactive",
+  "Expired",
+  "Pending Approval",
+  "Approved",
+  "Rejected",
 ];
 
-const SelectField = ({ value, onChange, options, small = false }) => {
-return (
-<div className={small ? 'mk-promo-select-wrap small' : 'mk-promo-select-wrap'}>
-<select
-value={value}
-onChange={(e) => onChange(e.target.value)}
-className="mk-promo-input mk-promo-select"
->
-{options.map((option) => (
-<option key={option} value={option}>
-{option}
-</option>
-))}
-</select>
+const getHeaders = () => {
+  const token =
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("token") ||
+    localStorage.getItem("filter_auth_token") ||
+    localStorage.getItem("base44_token");
 
-<ChevronDown
-size={14}
-strokeWidth={2}
-className="mk-promo-select-icon"
-/>
-</div>
-);
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
 };
 
-const MultiSelectLikeField = ({ label, icon }) => {
-const Icon = icon;
+const buildUrl = (endpoint) => `${API_BASE_URL}${endpoint}`;
 
-return (
-<div className="mk-promo-form-group">
-<label className="mk-promo-label">
-{Icon ? <Icon size={13} strokeWidth={2} /> : null}
-{label}
-</label>
+const safeArray = (response, keys = []) => {
+  if (Array.isArray(response)) return response;
 
-<button type="button" className="mk-promo-select-like">
-<span>Select options...</span>
-<ChevronDown size={14} strokeWidth={2} />
-</button>
-</div>
-);
+  for (const key of keys) {
+    if (Array.isArray(response?.[key])) return response[key];
+    if (Array.isArray(response?.data?.[key])) return response.data[key];
+  }
+
+  if (Array.isArray(response?.data)) return response.data;
+  if (Array.isArray(response?.records)) return response.records;
+  if (Array.isArray(response?.items)) return response.items;
+  if (Array.isArray(response?.results)) return response.results;
+
+  return [];
+};
+
+const apiGet = async (endpoint, query = {}) => {
+  const params = new URLSearchParams();
+
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") {
+      params.append(key, value);
+    }
+  });
+
+  const url = `${buildUrl(endpoint)}${params.toString() ? `?${params}` : ""}`;
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: getHeaders(),
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      errorText || `GET ${endpoint} failed. Status: ${response.status}`
+    );
+  }
+
+  return response.json();
+};
+
+const apiPost = async (endpoint, body = {}) => {
+  const response = await fetch(buildUrl(endpoint), {
+    method: "POST",
+    headers: getHeaders(),
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      errorText || `POST ${endpoint} failed. Status: ${response.status}`
+    );
+  }
+
+  return response.json();
+};
+
+const apiPatch = async (endpoint, body = {}) => {
+  const response = await fetch(buildUrl(endpoint), {
+    method: "PATCH",
+    headers: getHeaders(),
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      errorText || `PATCH ${endpoint} failed. Status: ${response.status}`
+    );
+  }
+
+  return response.json();
+};
+
+const apiDelete = async (endpoint) => {
+  const response = await fetch(buildUrl(endpoint), {
+    method: "DELETE",
+    headers: getHeaders(),
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      errorText || `DELETE ${endpoint} failed. Status: ${response.status}`
+    );
+  }
+
+  return response.json();
+};
+
+const normalizeOption = (item, fallbackPrefix) => {
+  const id =
+    item?.id ||
+    item?._id ||
+    item?.uuid ||
+    item?.value ||
+    `${fallbackPrefix}-${Math.random().toString(36).slice(2)}`;
+
+  const label =
+    item?.label ||
+    item?.name ||
+    item?.title ||
+    item?.branchName ||
+    item?.branch_name ||
+    item?.zoneName ||
+    item?.zone_name ||
+    item?.productName ||
+    item?.product_name ||
+    item?.serviceName ||
+    item?.service_name ||
+    item?.code ||
+    item?.sku ||
+    `${fallbackPrefix} ${id}`;
+
+  return {
+    ...item,
+    id: String(id),
+    value: String(item?.value || id),
+    label,
+    realId: String(item?.realId || id),
+    workshopId:
+      item?.workshopId?.toString?.() ||
+      item?.workshop_id?.toString?.() ||
+      item?.workshop?.id?.toString?.() ||
+      "",
+  };
+};
+
+const normalizePromotion = (item) => {
+  const statusRaw = item?.status || "draft";
+
+  const statusMap = {
+    active: "active",
+    inactive: "inactive",
+    expired: "expired",
+    draft: "draft",
+    scheduled: "scheduled",
+    pending_approval: "pending approval",
+    approved: "approved",
+    rejected: "rejected",
+  };
+
+  const typeMap = {
+    percent: "Percentage Discount",
+    flat: "Fixed Amount Discount",
+    bogo: "Buy X Get Y Free",
+    bundle: "Free Service",
+    percentage_discount: "Percentage Discount",
+    fixed_discount: "Fixed Amount Discount",
+    buy_x_get_y: "Buy X Get Y Free",
+    free_service: "Free Service",
+    zone_offer: "Zone-Wide Offer",
+  };
+
+  return {
+    ...item,
+    id: String(item?.id || item?._id || Date.now()),
+    name: item?.name || item?.title || item?.promotionName || "Untitled Promotion",
+    strategy: item?.strategy || item?.marketingStrategy || "Standard Promotion",
+    promotionType:
+      item?.promotionType ||
+      item?.promotion_type ||
+      typeMap[item?.type] ||
+      typeMap[item?.promoType] ||
+      item?.type ||
+      item?.promoType ||
+      "Promotion",
+    discountType: item?.discountType || "Percentage (%)",
+    discountValue:
+      item?.value || item?.discountValue || item?.discount_value || 0,
+    status: statusMap[String(statusRaw).toLowerCase()] || statusRaw,
+    endDate:
+      item?.endDate ||
+      item?.end_date ||
+      item?.endAt ||
+      item?.validTo ||
+      null,
+    description: item?.description || "",
+    targetBranchIds: item?.targetBranchIds || [],
+    targetZoneIds: item?.targetZoneIds || item?.targetZones || [],
+    triggerProductIds: item?.triggerProductIds || [],
+    rewardProductIds: item?.rewardProductIds || item?.rewardItemIds || [],
+  };
+};
+
+const mapPromotionTypeToBackendType = (promotionType) => {
+  const value = String(promotionType || "").toLowerCase();
+
+  if (value.includes("percentage")) return "percentage_discount";
+  if (value.includes("fixed")) return "fixed_discount";
+  if (value.includes("buy")) return "buy_x_get_y";
+  if (value.includes("free")) return "free_service";
+  if (value.includes("zone")) return "zone_offer";
+
+  return "percentage_discount";
+};
+
+const mapCustomerSegmentToApplicableTo = (segment) => {
+  const value = String(segment || "").toLowerCase();
+
+  if (value.includes("corporate")) return "corporate";
+  if (value.includes("all")) return "all";
+  if (value.includes("new")) return "new_customers";
+  if (value.includes("returning")) return "returning_customers";
+  if (value.includes("vip")) return "high_value";
+
+  return "all";
+};
+
+const mapStatusToBackendStatus = (status) => {
+  const value = String(status || "").toLowerCase();
+
+  if (value === "draft") return "draft";
+  if (value === "scheduled") return "scheduled";
+  if (value === "active") return "active";
+  if (value === "inactive") return "inactive";
+  if (value === "expired") return "expired";
+
+  return "draft";
+};
+
+const formatEndDate = (value) => {
+  if (!value) return "No end date";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "No end date";
+
+  const diffMs = date.getTime() - Date.now();
+  const diffDays = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+
+  return `Ends ${date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "2-digit",
+    year: "2-digit",
+  })} (${diffDays}d)`;
+};
+
+const SelectField = ({ value, onChange, options, small = false }) => {
+  return (
+    <div className={small ? "mkp-select-wrap small" : "mkp-select-wrap"}>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="mkp-input mkp-select"
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+
+      <ChevronDown size={14} strokeWidth={2} className="mkp-select-icon" />
+    </div>
+  );
+};
+
+const SingleSelectApiField = ({
+  label,
+  icon,
+  options,
+  value,
+  onChange,
+  loading,
+  error,
+  placeholder = "Select...",
+}) => {
+  const Icon = icon;
+  const wrapRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    const closeOnOutside = (event) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", closeOnOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutside);
+    };
+  }, []);
+
+  const selected = useMemo(() => {
+    return options.find((item) => item.id === value) || null;
+  }, [options, value]);
+
+  const filteredOptions = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    if (!q) return options;
+
+    return options.filter((item) =>
+      String(item.label || "").toLowerCase().includes(q)
+    );
+  }, [options, search]);
+
+  return (
+    <div className="mkp-form-group mkp-dd-wrap" ref={wrapRef}>
+      <label className="mkp-label">
+        {Icon ? <Icon size={13} strokeWidth={2} /> : null}
+        {label}
+      </label>
+
+      <button
+        type="button"
+        className={`mkp-dd-button ${open ? "open" : ""}`}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <span>{loading ? "Loading..." : selected?.label || placeholder}</span>
+        <ChevronDown size={15} strokeWidth={2} />
+      </button>
+
+      {open ? (
+        <div className="mkp-dd-menu">
+          <div className="mkp-dd-search">
+            <Search size={14} />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search..."
+              autoFocus
+            />
+          </div>
+
+          <div className="mkp-dd-list">
+            {loading ? (
+              <div className="mkp-dd-empty">
+                <Loader2 size={15} className="mkp-spin" />
+                Loading options...
+              </div>
+            ) : error ? (
+              <div className="mkp-dd-empty error">
+                <AlertCircle size={15} />
+                {error}
+              </div>
+            ) : (
+              filteredOptions.map((item) => (
+                <button
+                  type="button"
+                  key={item.id}
+                  className={`mkp-dd-single-option ${
+                    value === item.id ? "selected" : ""
+                  }`}
+                  onClick={() => {
+                    onChange(item.id);
+                    setOpen(false);
+                    setSearch("");
+                  }}
+                >
+                  {item.label}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
+const MultiSelectApiField = ({
+  label,
+  icon,
+  options,
+  selectedIds,
+  onChange,
+  loading,
+  error,
+  placeholder = "Select options...",
+}) => {
+  const Icon = icon;
+  const wrapRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    const closeOnOutside = (event) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", closeOnOutside);
+
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutside);
+    };
+  }, []);
+
+  const filteredOptions = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    if (!q) return options;
+
+    return options.filter((item) =>
+      String(item.label || "").toLowerCase().includes(q)
+    );
+  }, [options, search]);
+
+  const selectedLabels = useMemo(() => {
+    return options
+      .filter((item) => selectedIds.includes(item.id))
+      .map((item) => item.label);
+  }, [options, selectedIds]);
+
+  const toggleOption = (id) => {
+    if (selectedIds.includes(id)) {
+      onChange(selectedIds.filter((itemId) => itemId !== id));
+      return;
+    }
+
+    onChange([...selectedIds, id]);
+  };
+
+  const clearSelected = () => {
+    onChange([]);
+  };
+
+  const displayText =
+    selectedLabels.length === 0
+      ? placeholder
+      : selectedLabels.length <= 2
+      ? selectedLabels.join(", ")
+      : `${selectedLabels.length} selected`;
+
+  return (
+    <div className="mkp-form-group mkp-dd-wrap" ref={wrapRef}>
+      <label className="mkp-label">
+        {Icon ? <Icon size={13} strokeWidth={2} /> : null}
+        {label}
+      </label>
+
+      <button
+        type="button"
+        className={`mkp-dd-button ${open ? "open" : ""}`}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        <span>{loading ? "Loading..." : displayText}</span>
+        <ChevronDown size={15} strokeWidth={2} />
+      </button>
+
+      {selectedLabels.length > 0 ? (
+        <div className="mkp-selected-chips">
+          {selectedLabels.slice(0, 4).map((item) => (
+            <span key={item}>{item}</span>
+          ))}
+
+          {selectedLabels.length > 4 ? (
+            <span>+{selectedLabels.length - 4} more</span>
+          ) : null}
+
+          <button type="button" onClick={clearSelected}>
+            Clear
+          </button>
+        </div>
+      ) : null}
+
+      {open ? (
+        <div className="mkp-dd-menu">
+          <div className="mkp-dd-search">
+            <Search size={14} />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search..."
+              autoFocus
+            />
+          </div>
+
+          <div className="mkp-dd-list">
+            {loading ? (
+              <div className="mkp-dd-empty">
+                <Loader2 size={15} className="mkp-spin" />
+                Loading options...
+              </div>
+            ) : error ? (
+              <div className="mkp-dd-empty error">
+                <AlertCircle size={15} />
+                {error}
+              </div>
+            ) : (
+              filteredOptions.map((item) => (
+                <label key={item.id} className="mkp-dd-option">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(item.id)}
+                    onChange={() => toggleOption(item.id)}
+                  />
+                  <span>{item.label}</span>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 };
 
 const Toggle = ({ checked, onChange, label }) => {
-return (
-<button
-type="button"
-onClick={() => onChange(!checked)}
-className="mk-promo-toggle-btn"
->
-<span className={checked ? 'mk-promo-toggle active' : 'mk-promo-toggle'}>
-<span />
-</span>
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className="mkp-toggle-btn"
+    >
+      <span className={checked ? "mkp-toggle active" : "mkp-toggle"}>
+        <span />
+      </span>
 
-{label}
-</button>
-);
+      {label}
+    </button>
+  );
 };
 
 export const MarketingPromotions = () => {
-const [promotions, setPromotions] = useState(initialPromotions);
-const [search, setSearch] = useState('');
-const [statusFilter, setStatusFilter] = useState('All Statuses');
-const [showModal, setShowModal] = useState(false);
+  const [promotions, setPromotions] = useState([]);
 
-const [form, setForm] = useState({
-name: '',
-strategy: 'Standard Promotion',
-promotionType: 'Percentage Discount',
-discountType: 'Percentage (%)',
-discountValue: '',
-customerSegment: 'All Customers',
-minPurchase: '0',
-maxUsage: '0',
-status: 'Draft',
-startDate: '',
-endDate: '',
-bannerText: '',
-description: '',
-terms: '',
-autoClose: true,
-showPos: true,
-showCustomerPortal: true,
-});
+  const [workshops, setWorkshops] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [zones, setZones] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [rewardItems, setRewardItems] = useState([]);
 
-const filteredPromotions = useMemo(() => {
-const q = search.trim().toLowerCase();
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All Statuses");
+  const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState(null);
 
-return promotions.filter((item) => {
-const matchesSearch = !q || item.name.toLowerCase().includes(q);
-const matchesStatus =
-statusFilter === 'All Statuses' || item.status === statusFilter;
+  const [loadingPage, setLoadingPage] = useState(false);
+  const [loadingDropdowns, setLoadingDropdowns] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-return matchesSearch && matchesStatus;
-});
-}, [promotions, search, statusFilter]);
+  const [dropdownError, setDropdownError] = useState("");
+  const [pageError, setPageError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
-const resetForm = () => {
-setForm({
-name: '',
-strategy: 'Standard Promotion',
-promotionType: 'Percentage Discount',
-discountType: 'Percentage (%)',
-discountValue: '',
-customerSegment: 'All Customers',
-minPurchase: '0',
-maxUsage: '0',
-status: 'Draft',
-startDate: '',
-endDate: '',
-bannerText: '',
-description: '',
-terms: '',
-autoClose: true,
-showPos: true,
-showCustomerPortal: true,
-});
-};
+  const emptyForm = {
+    name: "",
+    strategy: "Standard Promotion",
+    promotionType: "Percentage Discount",
+    discountType: "Percentage (%)",
+    discountValue: "",
 
-const updateForm = (field, value) => {
-setForm((prev) => ({
-...prev,
-[field]: value,
-}));
-};
+    sourceWorkshopId: "",
+    targetWorkshopId: "",
 
-const openModal = () => {
-resetForm();
-setShowModal(true);
-};
+    sourceBranchIds: [],
+    targetBranchIds: [],
+    targetZoneIds: [],
+    triggerProductIds: [],
+    rewardProductIds: [],
 
-const closeModal = () => {
-setShowModal(false);
-resetForm();
-};
+    customerSegment: "All Customers",
+    minPurchase: "0",
+    maxUsage: "0",
+    status: "Draft",
+    startDate: "",
+    endDate: "",
+    bannerText: "",
+    description: "",
+    terms: "",
+    autoClose: true,
+    showPos: true,
+    showCustomerPortal: true,
+  };
 
-const handleSubmit = (e) => {
-e.preventDefault();
+  const [form, setForm] = useState(emptyForm);
 
-if (!form.name.trim()) {
-alert('Promotion name is required.');
-return;
-}
+  const filteredPromotions = useMemo(() => {
+    const q = search.trim().toLowerCase();
 
-setPromotions((prev) => [
-{
-id: Date.now(),
-name: form.name.trim(),
-strategy: form.strategy,
-promotionType: form.promotionType,
-discountValue: form.discountValue,
-status: form.status,
-},
-...prev,
-]);
+    return promotions.filter((item) => {
+      const matchesSearch = !q || item.name.toLowerCase().includes(q);
+      const uiStatus =
+        String(item.status || "").charAt(0).toUpperCase() +
+        String(item.status || "").slice(1);
 
-closeModal();
-};
+      const matchesStatus =
+        statusFilter === "All Statuses" ||
+        item.status === statusFilter ||
+        uiStatus === statusFilter ||
+        String(item.status || "").toLowerCase() ===
+          statusFilter.toLowerCase().replace(/\s+/g, "_");
 
-return (
-<div className="mk-page mk-promo-page">
-<div className="mk-promo-header">
-<div>
-<h1 className="mk-promo-title">Promotions</h1>
-<p className="mk-promo-subtitle">
-Create and manage marketing promotions with banners,
-multi-branch, multi-zone &amp; multi-product support
-</p>
-</div>
+      return matchesSearch && matchesStatus;
+    });
+  }, [promotions, search, statusFilter]);
 
-<button type="button" onClick={openModal} className="mk-promo-new-btn">
-<Plus size={15} strokeWidth={2.5} />
-New Promotion
-</button>
-</div>
+  const updateForm = (field, value) => {
+    setForm((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
 
-<div className="mk-promo-filters">
-<label className="mk-promo-search">
-<input
-value={search}
-onChange={(e) => setSearch(e.target.value)}
-placeholder="Search promotions..."
-/>
-</label>
+  const resetForm = () => {
+    setForm(emptyForm);
+    setEditingId(null);
+  };
 
-<SelectField
-value={statusFilter}
-onChange={setStatusFilter}
-options={filterStatusOptions}
-small
-/>
-</div>
+  const loadPromotions = async () => {
+    try {
+      setLoadingPage(true);
+      setPageError("");
 
-<div className="mk-promo-empty-area">
-{filteredPromotions.length === 0 ? (
-<div className="mk-promo-empty-state">
-<Megaphone size={39} strokeWidth={1.8} />
-<div>No promotions found</div>
-</div>
-) : (
-<div className="mk-promo-list">
-{filteredPromotions.map((item) => (
-<div key={item.id} className="mk-promo-card">
-<div>
-<div className="mk-promo-card-title">{item.name}</div>
-<div className="mk-promo-card-sub">
-{item.strategy} • {item.promotionType}
-</div>
-</div>
+      const data = await apiGet(ENDPOINTS.promotions, {
+        limit: 200,
+        offset: 0,
+        status: "all",
+      });
 
-<span className="mk-promo-status-badge">
-{item.status}
-</span>
-</div>
-))}
-</div>
-)}
-</div>
+      setPromotions(
+        safeArray(data, ["promotions", "items", "data"]).map(normalizePromotion)
+      );
+    } catch (error) {
+      console.error("Promotion API error:", error);
+      setPageError("Promotions API load nahi hui. Network/API check karo.");
+      setPromotions([]);
+    } finally {
+      setLoadingPage(false);
+    }
+  };
 
-{showModal && (
-<div className="mk-promo-modal-overlay">
-<div className="mk-promo-modal">
-<div className="mk-promo-modal-header">
-<h2>New Promotion</h2>
+  const loadDropdownData = async () => {
+    try {
+      setLoadingDropdowns(true);
+      setDropdownError("");
 
-<button
-type="button"
-onClick={closeModal}
-className="mk-promo-close-btn"
->
-<X size={17} strokeWidth={2} />
-</button>
-</div>
+      const data = await apiGet(ENDPOINTS.promotionOptions);
 
-<form onSubmit={handleSubmit} className="mk-promo-modal-form">
-<div className="mk-promo-form-group">
-<label className="mk-promo-label">Promotion Name *</label>
-<input
-autoFocus
-value={form.name}
-onChange={(e) => updateForm('name', e.target.value)}
-placeholder="e.g. Ramadan Special Offer"
-className="mk-promo-input mk-promo-focus-input"
-/>
-</div>
+      const workshopOptions = safeArray(data, [
+        "workshops",
+        "sourceWorkshops",
+        "targetWorkshops",
+      ]).map((item) => normalizeOption(item, "workshop"));
 
-<div className="mk-promo-two-col">
-<div className="mk-promo-form-group">
-<label className="mk-promo-label">Marketing Strategy</label>
-<SelectField
-value={form.strategy}
-onChange={(value) => updateForm('strategy', value)}
-options={strategyOptions}
-/>
-</div>
+      const branchOptions = safeArray(data, [
+        "branches",
+        "sourceBranches",
+        "targetBranches",
+      ]).map((item) => normalizeOption(item, "branch"));
 
-<div className="mk-promo-form-group">
-<label className="mk-promo-label">Promotion Type</label>
-<SelectField
-value={form.promotionType}
-onChange={(value) => updateForm('promotionType', value)}
-options={promotionTypeOptions}
-/>
-</div>
-</div>
+      const zoneOptions = safeArray(data, ["zones", "targetZones"]).map((item) =>
+        normalizeOption(item, "zone")
+      );
 
-<div className="mk-promo-two-col">
-<div className="mk-promo-form-group">
-<label className="mk-promo-label">Discount Type</label>
-<SelectField
-value={form.discountType}
-onChange={(value) => updateForm('discountType', value)}
-options={discountTypeOptions}
-/>
-</div>
+      const productOptions = safeArray(data, [
+        "products",
+        "triggerProducts",
+      ]).map((item) => normalizeOption(item, "product"));
 
-<div className="mk-promo-form-group">
-<label className="mk-promo-label">Discount Value</label>
-<input
-value={form.discountValue}
-onChange={(e) => updateForm('discountValue', e.target.value)}
-placeholder="e.g. 15"
-className="mk-promo-input"
-/>
-</div>
-</div>
+      const rewardProductOptions = safeArray(data, [
+        "rewardProducts",
+        "rewardItems",
+        "products",
+      ]).map((item) => ({
+        ...normalizeOption(item, "reward"),
+        rewardKind: String(item?.type || item?.rewardKind || "product").toLowerCase(),
+      }));
 
-<MultiSelectLikeField
-label="Source Branch / Store — Created From (select multiple)"
-icon={Building2}
-/>
+      const rewardServiceOptions = safeArray(data, [
+        "rewardServices",
+        "services",
+      ]).map((item) => ({
+        ...normalizeOption(item, "service"),
+        id: `service-${item.id || item.value}`,
+        realId: String(item.id || item.value),
+        label: `${item.label || item.name || "Service"} — Service`,
+        rewardKind: "service",
+      }));
 
-<MultiSelectLikeField
-label="Target Branches (Where Applicable — select multiple)"
-icon={Building2}
-/>
+      const normalizedRewardProducts = rewardProductOptions.map((item) => {
+        const isService = String(item.type || item.rewardKind || "")
+          .toLowerCase()
+          .includes("service");
 
-<MultiSelectLikeField
-label="Target Zones (select multiple)"
-icon={MapPin}
-/>
+        const realId = item.realId || item.id;
 
-<MultiSelectLikeField
-label="Trigger Products — Customer Must Buy (select multiple)"
-icon={Package}
-/>
+        return {
+          ...item,
+          id: isService ? `service-${realId}` : `product-${realId}`,
+          realId,
+          label: isService
+            ? `${item.label} — Service`
+            : `${item.label} — Product`,
+          rewardKind: isService ? "service" : "product",
+        };
+      });
 
-<MultiSelectLikeField
-label="Reward Products / Services — Customer Gets Free or Discounted (select multiple)"
-icon={Gift}
-/>
+      setWorkshops(workshopOptions);
+      setBranches(branchOptions);
+      setZones(zoneOptions);
+      setProducts(productOptions);
+      setRewardItems([...normalizedRewardProducts, ...rewardServiceOptions]);
+    } catch (error) {
+      console.error("Dropdown API error:", error);
+      setDropdownError("Dropdown data load nahi hua.");
+      setWorkshops([]);
+      setBranches([]);
+      setZones([]);
+      setProducts([]);
+      setRewardItems([]);
+    } finally {
+      setLoadingDropdowns(false);
+    }
+  };
 
-<div className="mk-promo-two-col">
-<div className="mk-promo-form-group">
-<label className="mk-promo-label">Customer Segment</label>
-<SelectField
-value={form.customerSegment}
-onChange={(value) => updateForm('customerSegment', value)}
-options={customerSegmentOptions}
-/>
-</div>
+  useEffect(() => {
+    loadPromotions();
+    loadDropdownData();
+  }, []);
 
-<div className="mk-promo-form-group">
-<label className="mk-promo-label">
-Min. Purchase Amount (SAR)
-</label>
-<input
-type="number"
-value={form.minPurchase}
-onChange={(e) => updateForm('minPurchase', e.target.value)}
-className="mk-promo-input"
-/>
-</div>
-</div>
+  const openModal = () => {
+    resetForm();
+    setSuccessMessage("");
+    setShowModal(true);
+    loadDropdownData();
+  };
 
-<div className="mk-promo-two-col">
-<div className="mk-promo-form-group">
-<label className="mk-promo-label">
-Max Usage Count (0 = unlimited)
-</label>
-<input
-type="number"
-value={form.maxUsage}
-onChange={(e) => updateForm('maxUsage', e.target.value)}
-className="mk-promo-input"
-/>
-</div>
+  const openEditModal = (item) => {
+    setEditingId(item.id);
+    setSuccessMessage("");
 
-<div className="mk-promo-form-group">
-<label className="mk-promo-label">Status</label>
-<SelectField
-value={form.status}
-onChange={(value) => updateForm('status', value)}
-options={statusOptions}
-/>
-</div>
-</div>
+    setForm({
+      ...emptyForm,
+      name: item.name || "",
+      strategy: item.strategy || "Standard Promotion",
+      promotionType: item.promotionType || "Percentage Discount",
+      discountType: item.discountType || "Percentage (%)",
+      discountValue: item.discountValue || "",
+      status:
+        String(item.status || "").charAt(0).toUpperCase() +
+          String(item.status || "").slice(1) || "Draft",
+      description: item.description || "",
+      sourceWorkshopId: item.sourceWorkshopId || "",
+      targetWorkshopId: item.targetWorkshopId || "",
+      sourceBranchIds: item.sourceBranchId ? [item.sourceBranchId] : [],
+      targetBranchIds: item.targetBranchIds || [],
+      targetZoneIds: item.targetZoneIds || item.targetZones || [],
+      triggerProductIds: item.triggerProductIds || [],
+      rewardProductIds: item.rewardProductIds || item.rewardItemIds || [],
+      bannerText: item.invoiceBannerText || "",
+      terms: item.termsConditions || "",
+      autoClose: Boolean(item.autoCloseOnEndDate ?? true),
+      showPos: Boolean(item.showOnPosInvoice ?? true),
+      showCustomerPortal: Boolean(item.showOnCustomerPortal ?? true),
+    });
 
-<div className="mk-promo-two-col">
-<div className="mk-promo-form-group">
-<label className="mk-promo-label">Start Date &amp; Time</label>
-<input
-type="datetime-local"
-value={form.startDate}
-onChange={(e) => updateForm('startDate', e.target.value)}
-className="mk-promo-input"
-/>
-</div>
+    setShowModal(true);
+    loadDropdownData();
+  };
 
-<div className="mk-promo-form-group">
-<label className="mk-promo-label">End Date &amp; Time</label>
-<input
-type="datetime-local"
-value={form.endDate}
-onChange={(e) => updateForm('endDate', e.target.value)}
-className="mk-promo-input"
-/>
-</div>
-</div>
+  const closeModal = () => {
+    if (submitting) return;
+    setShowModal(false);
+    resetForm();
+  };
 
-<div className="mk-promo-form-group">
-<label className="mk-promo-label">Invoice Banner Text</label>
-<input
-value={form.bannerText}
-onChange={(e) => updateForm('bannerText', e.target.value)}
-placeholder="e.g. You saved SAR 50 with Ramadan Offer!"
-className="mk-promo-input"
-/>
-</div>
+  const createPromotionPayload = () => {
+    const selectedRewardIds = form.rewardProductIds.map((id) =>
+      String(id).replace("product-", "").replace("service-", "")
+    );
 
-<div className="mk-promo-form-group">
-<label className="mk-promo-label">Description</label>
-<textarea
-value={form.description}
-onChange={(e) => updateForm('description', e.target.value)}
-className="mk-promo-textarea"
-/>
-</div>
+    const selectedSourceBranch = branches.find(
+      (item) => item.id === form.sourceBranchIds[0]
+    );
 
-<div className="mk-promo-form-group">
-<label className="mk-promo-label">Terms &amp; Conditions</label>
-<textarea
-value={form.terms}
-onChange={(e) => updateForm('terms', e.target.value)}
-placeholder="T&Cs printed on invoice..."
-className="mk-promo-textarea"
-/>
-</div>
+    const selectedTargetBranch = branches.find(
+      (item) => item.id === form.targetBranchIds[0]
+    );
 
-<div className="mk-promo-form-group">
-<label className="mk-promo-label">
-<Image size={13} strokeWidth={2} />
-Advertising / Marketing Banners
-<span>
-(displayed on Customer Portal &amp; App)
-</span>
-</label>
+    const sourceWorkshopId =
+      form.sourceWorkshopId ||
+      selectedSourceBranch?.workshopId ||
+      workshops[0]?.id ||
+      "";
 
-<div className="mk-promo-upload-row">
-<button type="button" className="mk-promo-upload-box">
-<Upload size={15} strokeWidth={2} />
-<span>Upload</span>
-</button>
-</div>
+    const targetWorkshopId =
+      form.targetWorkshopId ||
+      selectedTargetBranch?.workshopId ||
+      sourceWorkshopId ||
+      workshops[0]?.id ||
+      "";
 
-<div className="mk-promo-upload-hint">
-Upload PNG, JPG, or WebP. Banners will be displayed to
-customers in the portal and POS.
-</div>
-</div>
+    const branchIds =
+      form.targetBranchIds.length > 0
+        ? form.targetBranchIds
+        : form.sourceBranchIds;
 
-<div className="mk-promo-toggles-row">
-<Toggle
-checked={form.autoClose}
-onChange={(value) => updateForm('autoClose', value)}
-label="Auto-close on end date"
-/>
+    return {
+      name: form.name.trim(),
+      promotionName: form.name.trim(),
 
-<Toggle
-checked={form.showPos}
-onChange={(value) => updateForm('showPos', value)}
-label="Show on POS Invoice"
-/>
+      sourceWorkshopId,
+      targetWorkshopId,
+      workshopId: sourceWorkshopId,
 
-<Toggle
-checked={form.showCustomerPortal}
-onChange={(value) => updateForm('showCustomerPortal', value)}
-label="Show on Customer Portal"
-/>
-</div>
+      sourceBranchId: form.sourceBranchIds[0] || null,
+      targetBranchId: form.targetBranchIds[0] || null,
 
-<div className="mk-promo-approval-note">
-<Hourglass size={14} strokeWidth={2} />
-After creating, this will be sent to the{' '}
-<b>Super Admin for approval</b> before it goes live.
-</div>
+      marketingStrategy: form.strategy,
+      promotionType: mapPromotionTypeToBackendType(form.promotionType),
+      promoType: mapPromotionTypeToBackendType(form.promotionType),
+      type: mapPromotionTypeToBackendType(form.promotionType),
 
-<div className="mk-promo-modal-footer">
-<button
-type="button"
-onClick={closeModal}
-className="mk-promo-cancel-btn"
->
-Cancel
-</button>
+      discountType: form.discountType,
+      value: Number(form.discountValue || 0),
+      discountValue: Number(form.discountValue || 0),
 
-<button type="submit" className="mk-promo-submit-btn">
-Submit for Approval
-</button>
-</div>
-</form>
-</div>
-</div>
-)}
-</div>
-);
+      minPurchaseAmount: Number(form.minPurchase || 0),
+      minOrderAmount: Number(form.minPurchase || 0),
+      min_order_amount: Number(form.minPurchase || 0),
+
+      applicableTo: mapCustomerSegmentToApplicableTo(form.customerSegment),
+      applicable_to: mapCustomerSegmentToApplicableTo(form.customerSegment),
+      customerSegment: mapCustomerSegmentToApplicableTo(form.customerSegment),
+
+      branchIds,
+      branch_ids: branchIds,
+
+      targetBranchIds: form.targetBranchIds,
+      targetZoneIds: form.targetZoneIds,
+      targetZones: form.targetZoneIds,
+
+      triggerProductIds: form.triggerProductIds,
+      rewardProductIds: selectedRewardIds,
+      rewardItemIds: selectedRewardIds,
+
+      startAt: form.startDate || null,
+      startDate: form.startDate || null,
+      start_date: form.startDate || null,
+      validFrom: form.startDate || null,
+
+      endAt: form.endDate || null,
+      endDate: form.endDate || null,
+      end_date: form.endDate || null,
+      validTo: form.endDate || null,
+
+      maxUsageCount: Number(form.maxUsage || 0),
+      usageLimit: Number(form.maxUsage || 0),
+      usage_limit: Number(form.maxUsage || 0),
+      usageCount: 0,
+      usage_count: 0,
+
+      status: mapStatusToBackendStatus(form.status),
+
+      invoiceBannerText: form.bannerText,
+      description: form.description?.trim() || "",
+      termsConditions: form.terms,
+      termsAndConditions: form.terms,
+
+      autoCloseOnEndDate: form.autoClose,
+      showOnPosInvoice: form.showPos,
+      showOnCustomerPortal: form.showCustomerPortal,
+    };
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (!form.name.trim()) {
+      alert("Promotion name is required.");
+      return;
+    }
+
+    if (!form.discountValue && form.promotionType !== "Free Service") {
+      alert("Discount value is required.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setSuccessMessage("");
+
+      const promotionPayload = createPromotionPayload();
+
+      let response;
+
+      if (editingId) {
+        response = await apiPatch(
+          `${ENDPOINTS.promotions}/${editingId}`,
+          promotionPayload
+        );
+      } else {
+        response = await apiPost(ENDPOINTS.promotions, promotionPayload);
+
+        const record =
+          response?.promotion ||
+          response?.data ||
+          response?.record ||
+          response?.item ||
+          response;
+
+        const recordId = record?.id || record?._id;
+
+        if (recordId) {
+          await apiPatch(`${ENDPOINTS.promotions}/${recordId}/submit-approval`, {
+            notes: "Submitted from Marketing Portal promotion form.",
+          });
+        }
+      }
+
+      await loadPromotions();
+
+      closeModal();
+
+      setSuccessMessage(
+        editingId
+          ? "Promotion update ho gai."
+          : "Promotion approval ke liye submit ho gai."
+      );
+    } catch (error) {
+      console.error("Create/Update promotion error:", error);
+      alert("Promotion save nahi hui. Console aur Network tab check karo.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (id) => {
+    const ok = window.confirm("Are you sure you want to delete this promotion?");
+    if (!ok) return;
+
+    try {
+      await apiDelete(`${ENDPOINTS.promotions}/${id}`);
+      await loadPromotions();
+      setSuccessMessage("Promotion delete ho gai.");
+    } catch (error) {
+      console.error("Delete promotion error:", error);
+      alert("Promotion delete nahi hui. Console aur Network tab check karo.");
+    }
+  };
+
+  return (
+    <div className="mkp-page">
+      <div className="mkp-header">
+        <div>
+          <h1>Promotions</h1>
+          <p>
+            Create and manage marketing promotions with banners, multi-branch,
+            multi-zone & multi-product support
+          </p>
+        </div>
+
+        <button type="button" onClick={openModal} className="mkp-new-btn">
+          <Plus size={15} strokeWidth={2.5} />
+          New Promotion
+        </button>
+      </div>
+
+      {successMessage ? (
+        <div className="mkp-success">
+          <CheckCircle2 size={16} />
+          {successMessage}
+        </div>
+      ) : null}
+
+      {pageError ? (
+        <div className="mkp-error">
+          <AlertCircle size={16} />
+          {pageError}
+        </div>
+      ) : null}
+
+      <div className="mkp-filters">
+        <label className="mkp-search">
+          <Search size={14} />
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search promotions..."
+          />
+        </label>
+
+        <SelectField
+          value={statusFilter}
+          onChange={setStatusFilter}
+          options={filterStatusOptions}
+          small
+        />
+      </div>
+
+      <div className="mkp-content">
+        {loadingPage ? (
+          <div className="mkp-empty">
+            <Loader2 size={30} className="mkp-spin" />
+            <div>Loading promotions...</div>
+          </div>
+        ) : filteredPromotions.length === 0 ? (
+          <div className="mkp-empty">
+            <Tag size={38} />
+            <div>No promotions found</div>
+          </div>
+        ) : (
+          <div className="mkp-card-list">
+            {filteredPromotions.map((item) => (
+              <div key={item.id} className="mkp-card">
+                <div className="mkp-card-top">
+                  <div className="mkp-card-icon">
+                    <Tag size={15} />
+                  </div>
+
+                  <div className="mkp-card-body">
+                    <div className="mkp-card-title">{item.name}</div>
+
+                    <div className="mkp-card-sub">
+                      {item.strategy} • {item.promotionType} • Value:{" "}
+                      {item.discountValue || 0}
+                    </div>
+                  </div>
+
+                  <div className="mkp-card-badges">
+                    <span
+                      className={`mkp-status status-${String(item.status)
+                        .toLowerCase()
+                        .replace(/\s+/g, "-")}`}
+                    >
+                      {item.status}
+                    </span>
+
+                    {String(item.status).toLowerCase() === "rejected" ? (
+                      <span className="mkp-rejected-chip">✕ Rejected</span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="mkp-progress" />
+
+                <div className="mkp-card-date">
+                  <Clock3 size={13} />
+                  {formatEndDate(item.endDate)}
+                </div>
+
+                <div className="mkp-card-footer">
+                  <button type="button" onClick={() => openEditModal(item)}>
+                    <Edit3 size={14} />
+                    Edit
+                  </button>
+
+                  <button
+                    type="button"
+                    className="danger"
+                    onClick={() => handleDelete(item.id)}
+                  >
+                    <Trash2 size={14} />
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {showModal ? (
+        <div className="mkp-modal-overlay">
+          <div className="mkp-modal">
+            <div className="mkp-modal-header">
+              <div>
+                <h2>{editingId ? "Edit Promotion" : "New Promotion"}</h2>
+                <p>
+                  Create campaign offer and submit it for Super Admin approval.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeModal}
+                className="mkp-close"
+                disabled={submitting}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="mkp-form">
+              <div className="mkp-section">
+                <div className="mkp-section-title">Basic Information</div>
+
+                <div className="mkp-form-group">
+                  <label className="mkp-label">Promotion Name *</label>
+                  <input
+                    autoFocus
+                    value={form.name}
+                    onChange={(event) => updateForm("name", event.target.value)}
+                    placeholder="e.g. Ramadan Special Offer"
+                    className="mkp-input"
+                  />
+                </div>
+
+                <div className="mkp-two-col">
+                  <div className="mkp-form-group">
+                    <label className="mkp-label">Marketing Strategy</label>
+                    <SelectField
+                      value={form.strategy}
+                      onChange={(value) => updateForm("strategy", value)}
+                      options={strategyOptions}
+                    />
+                  </div>
+
+                  <div className="mkp-form-group">
+                    <label className="mkp-label">Promotion Type</label>
+                    <SelectField
+                      value={form.promotionType}
+                      onChange={(value) => updateForm("promotionType", value)}
+                      options={promotionTypeOptions}
+                    />
+                  </div>
+                </div>
+
+                <div className="mkp-two-col">
+                  <div className="mkp-form-group">
+                    <label className="mkp-label">Discount Type</label>
+                    <SelectField
+                      value={form.discountType}
+                      onChange={(value) => updateForm("discountType", value)}
+                      options={discountTypeOptions}
+                    />
+                  </div>
+
+                  <div className="mkp-form-group">
+                    <label className="mkp-label">Discount Value</label>
+                    <input
+                      value={form.discountValue}
+                      onChange={(event) =>
+                        updateForm("discountValue", event.target.value)
+                      }
+                      placeholder="e.g. 15"
+                      className="mkp-input"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mkp-section">
+                <div className="mkp-section-title">Targeting</div>
+
+                <div className="mkp-two-col">
+                  <SingleSelectApiField
+                    label="Source Workshop"
+                    icon={Building2}
+                    options={workshops}
+                    value={form.sourceWorkshopId}
+                    onChange={(id) => updateForm("sourceWorkshopId", id)}
+                    loading={loadingDropdowns}
+                    error={dropdownError}
+                    placeholder="Select source workshop"
+                  />
+
+                  <SingleSelectApiField
+                    label="Target Workshop"
+                    icon={Building2}
+                    options={workshops}
+                    value={form.targetWorkshopId}
+                    onChange={(id) => updateForm("targetWorkshopId", id)}
+                    loading={loadingDropdowns}
+                    error={dropdownError}
+                    placeholder="Select target workshop"
+                  />
+                </div>
+
+                <MultiSelectApiField
+                  label="Source Branch / Store — Created From (select multiple)"
+                  icon={Building2}
+                  options={branches}
+                  selectedIds={form.sourceBranchIds}
+                  onChange={(ids) => updateForm("sourceBranchIds", ids)}
+                  loading={loadingDropdowns}
+                  error={dropdownError}
+                />
+
+                <MultiSelectApiField
+                  label="Target Branches (Where Applicable — select multiple)"
+                  icon={Building2}
+                  options={branches}
+                  selectedIds={form.targetBranchIds}
+                  onChange={(ids) => updateForm("targetBranchIds", ids)}
+                  loading={loadingDropdowns}
+                  error={dropdownError}
+                />
+
+                <MultiSelectApiField
+                  label="Target Zones (select multiple)"
+                  icon={MapPin}
+                  options={zones}
+                  selectedIds={form.targetZoneIds}
+                  onChange={(ids) => updateForm("targetZoneIds", ids)}
+                  loading={loadingDropdowns}
+                  error={dropdownError}
+                />
+
+                <MultiSelectApiField
+                  label="Trigger Products — Customer Must Buy"
+                  icon={Package}
+                  options={products}
+                  selectedIds={form.triggerProductIds}
+                  onChange={(ids) => updateForm("triggerProductIds", ids)}
+                  loading={loadingDropdowns}
+                  error={dropdownError}
+                />
+
+                <MultiSelectApiField
+                  label="Reward Products / Services — Customer Gets Free or Discounted"
+                  icon={Gift}
+                  options={rewardItems}
+                  selectedIds={form.rewardProductIds}
+                  onChange={(ids) => updateForm("rewardProductIds", ids)}
+                  loading={loadingDropdowns}
+                  error={dropdownError}
+                />
+              </div>
+
+              <div className="mkp-section">
+                <div className="mkp-section-title">Rules & Validity</div>
+
+                <div className="mkp-two-col">
+                  <div className="mkp-form-group">
+                    <label className="mkp-label">Customer Segment</label>
+                    <SelectField
+                      value={form.customerSegment}
+                      onChange={(value) => updateForm("customerSegment", value)}
+                      options={customerSegmentOptions}
+                    />
+                  </div>
+
+                  <div className="mkp-form-group">
+                    <label className="mkp-label">
+                      Min. Purchase Amount (SAR)
+                    </label>
+                    <input
+                      type="number"
+                      value={form.minPurchase}
+                      onChange={(event) =>
+                        updateForm("minPurchase", event.target.value)
+                      }
+                      className="mkp-input"
+                    />
+                  </div>
+                </div>
+
+                <div className="mkp-two-col">
+                  <div className="mkp-form-group">
+                    <label className="mkp-label">
+                      Max Usage Count (0 = unlimited)
+                    </label>
+                    <input
+                      type="number"
+                      value={form.maxUsage}
+                      onChange={(event) =>
+                        updateForm("maxUsage", event.target.value)
+                      }
+                      className="mkp-input"
+                    />
+                  </div>
+
+                  <div className="mkp-form-group">
+                    <label className="mkp-label">Status</label>
+                    <SelectField
+                      value={form.status}
+                      onChange={(value) => updateForm("status", value)}
+                      options={statusOptions}
+                    />
+                  </div>
+                </div>
+
+                <div className="mkp-two-col">
+                  <div className="mkp-form-group">
+                    <label className="mkp-label">Start Date & Time</label>
+                    <input
+                      type="datetime-local"
+                      value={form.startDate}
+                      onChange={(event) =>
+                        updateForm("startDate", event.target.value)
+                      }
+                      className="mkp-input"
+                    />
+                  </div>
+
+                  <div className="mkp-form-group">
+                    <label className="mkp-label">End Date & Time</label>
+                    <input
+                      type="datetime-local"
+                      value={form.endDate}
+                      onChange={(event) =>
+                        updateForm("endDate", event.target.value)
+                      }
+                      className="mkp-input"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mkp-section">
+                <div className="mkp-section-title">Customer Display</div>
+
+                <div className="mkp-form-group">
+                  <label className="mkp-label">Invoice Banner Text</label>
+                  <input
+                    value={form.bannerText}
+                    onChange={(event) =>
+                      updateForm("bannerText", event.target.value)
+                    }
+                    placeholder="e.g. You saved SAR 50 with Ramadan Offer!"
+                    className="mkp-input"
+                  />
+                </div>
+
+                <div className="mkp-form-group">
+                  <label className="mkp-label">Description</label>
+                  <textarea
+                    value={form.description}
+                    onChange={(event) =>
+                      updateForm("description", event.target.value)
+                    }
+                    className="mkp-textarea"
+                  />
+                </div>
+
+                <div className="mkp-form-group">
+                  <label className="mkp-label">Terms & Conditions</label>
+                  <textarea
+                    value={form.terms}
+                    onChange={(event) => updateForm("terms", event.target.value)}
+                    placeholder="T&Cs printed on invoice..."
+                    className="mkp-textarea"
+                  />
+                </div>
+
+                <div className="mkp-form-group">
+                  <label className="mkp-label">
+                    <Image size={13} strokeWidth={2} />
+                    Advertising / Marketing Banners
+                    <span>(displayed on Customer Portal & App)</span>
+                  </label>
+
+                  <div className="mkp-upload-row">
+                    <button type="button" className="mkp-upload-box">
+                      <Upload size={15} />
+                      <span>Upload</span>
+                    </button>
+                  </div>
+
+                  <div className="mkp-upload-hint">
+                    Upload PNG, JPG, or WebP. Banners will be displayed to
+                    customers in the portal and POS.
+                  </div>
+                </div>
+
+                <div className="mkp-toggles-row">
+                  <Toggle
+                    checked={form.autoClose}
+                    onChange={(value) => updateForm("autoClose", value)}
+                    label="Auto-close on end date"
+                  />
+
+                  <Toggle
+                    checked={form.showPos}
+                    onChange={(value) => updateForm("showPos", value)}
+                    label="Show on POS Invoice"
+                  />
+
+                  <Toggle
+                    checked={form.showCustomerPortal}
+                    onChange={(value) => updateForm("showCustomerPortal", value)}
+                    label="Show on Customer Portal"
+                  />
+                </div>
+              </div>
+
+              <div className="mkp-approval-note">
+                <Hourglass size={14} />
+                After creating, this will be sent to the{" "}
+                <b>Super Admin for approval</b> before it goes live.
+              </div>
+
+              <div className="mkp-modal-footer">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="mkp-cancel-btn"
+                  disabled={submitting}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="mkp-submit-btn"
+                  disabled={submitting}
+                >
+                  {submitting ? (
+                    <>
+                      <Loader2 size={15} className="mkp-spin" />
+                      Submitting...
+                    </>
+                  ) : editingId ? (
+                    "Update Promotion"
+                  ) : (
+                    "Submit for Approval"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 };
 
 export default MarketingPromotions;

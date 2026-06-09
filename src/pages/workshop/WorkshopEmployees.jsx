@@ -132,6 +132,27 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
     const editDetailGenerationRef = useRef(0);
     const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
     const isCreateTechnicianMode = !editing && (form.is_technician || isTechnicianRole(form.role));
+
+    // Job-role editing rules.
+    //   • Create → any role is allowed.
+    //   • Edit a portal-staff member → may switch within {manager, supervisor,
+    //     team_leader} (same `users` row; safe column change).
+    //   • Edit anyone else (cashier / technician / locker) → role is LOCKED,
+    //     because changing it would move the person between database tables.
+    const PORTAL_STAFF_JOB_ROLES = ['manager', 'supervisor', 'team_leader'];
+    const editingRoleKey = editing
+        ? String(editing.role || '').toLowerCase().replace(/\s+/g, '_')
+        : '';
+    const editingIsPortalStaffGroup =
+        !!editing && isPortalEmployeeRow(editing) && PORTAL_STAFF_JOB_ROLES.includes(editingRoleKey);
+    const roleSelectEditable = !editing || editingIsPortalStaffGroup;
+    const roleSelectOptions = !editing
+        ? ROLE_OPTIONS
+        : editingIsPortalStaffGroup
+            ? PORTAL_STAFF_JOB_ROLES
+            : ROLE_OPTIONS.includes(editingRoleKey)
+                ? [editingRoleKey]
+                : [form.role];
     const toggleDepartmentId = (id) =>
         setForm((f) => {
             const s = String(id);
@@ -227,11 +248,19 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
 
     const displayedEmployees = useMemo(() => {
         if (!selectedBranchId || selectedBranchId === 'all') return employees;
-        return employees.filter(
-            (e) =>
-                String(e.branchId) === String(selectedBranchId) ||
-                (selectedBranchName && e.branch === selectedBranchName),
-        );
+        const sid = String(selectedBranchId);
+        return employees.filter((e) => {
+            const scopeIds =
+                Array.isArray(e.effectiveBranchIds) && e.effectiveBranchIds.length > 0
+                    ? e.effectiveBranchIds.map(String)
+                    : e.branchId
+                      ? [String(e.branchId)]
+                      : [];
+            return (
+                scopeIds.includes(sid) ||
+                (selectedBranchName && e.branch === selectedBranchName)
+            );
+        });
     }, [employees, selectedBranchId, selectedBranchName]);
 
     const loadWorkshopDepartmentCatalog = useCallback(async () => {
@@ -373,7 +402,21 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
                 const n = normalizeWorkshopEmployee(raw, source);
                 if (gen !== editDetailGenerationRef.current) return;
                 setEditing((prev) =>
-                    prev && String(prev.id) === String(empId) ? { ...prev, ...n } : prev,
+                    prev && String(prev.id) === String(empId)
+                        ? {
+                            ...prev,
+                            ...n,
+                            // Keep the list row's authoritative identity/role. The
+                            // detail endpoint can mis-derive `role` — e.g. a locker
+                            // user whose DB workshopStaffRole is null falls back to
+                            // 'cashier' — which would wrongly flip the Role dropdown
+                            // (and its route family) after the modal already opened.
+                            role: prev.role,
+                            _source: prev._source,
+                            recordType: prev.recordType,
+                            userId: prev.userId ?? n.userId,
+                        }
+                        : prev,
                 );
                 setForm((f) => ({
                     ...f,
@@ -535,7 +578,12 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
                 if (isTech) {
                     await updateWorkshopTechnician(editing.id, body);
                 } else if (isPortalEmployeeRow(editing)) {
-                    const patch = buildPortalStaffPatchPayload(body, editing.role);
+                    // Pass the NEW role so department fields aren't stripped when
+                    // switching TO team_leader, and send staffRole so the job role
+                    // can change within the portal-staff group (manager /
+                    // supervisor / team_leader).
+                    const patch = buildPortalStaffPatchPayload(body, form.role);
+                    patch.staffRole = form.role;
                     const portalUserId = String(editing.userId ?? editing.id);
                     await updateWorkshopPortalStaff(portalUserId, patch);
                 } else {
@@ -604,7 +652,20 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
                         if (portalBody[k] !== undefined) delete portalBody[k];
                     });
                 }
-                await createWorkshopPortalStaff(portalBody);
+                const createRes = await createWorkshopPortalStaff(portalBody);
+                const createdUserId =
+                    createRes?.user?.id ??
+                    createRes?.data?.user?.id ??
+                    unwrapWorkshopPortalStaffDetail(createRes)?.id;
+                if (form.permissionRoleId && canManagePermissions && createdUserId) {
+                    const selectedRole = workshopRoles.find(
+                        (r) => String(r.id) === String(form.permissionRoleId),
+                    );
+                    await workshopPermsApi.grantPortalAccess(String(createdUserId), {
+                        portal: selectedRole?.portal || 'workshop',
+                        roleId: form.permissionRoleId,
+                    });
+                }
             } else {
                 await createWorkshopCashier(body);
             }
@@ -986,6 +1047,7 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
                                         <label>Role</label>
                                         <select
                                             value={form.role}
+                                            disabled={!roleSelectEditable}
                                             onChange={(e) => {
                                                 const v = e.target.value;
                                                 setForm((f) => ({
@@ -996,22 +1058,25 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
                                                 }));
                                             }}
                                         >
-                                            {ROLE_OPTIONS.map((r) => (
+                                            {roleSelectOptions.map((r) => (
                                                 <option key={r} value={r}>
                                                     {r.replace(/_/g, ' ')}
                                                 </option>
                                             ))}
                                         </select>
                                         <small style={{ color: 'var(--color-text-muted)', fontSize: '0.7rem' }}>
-                                            Job title — controls which workshop sub-flow they're slotted into.
+                                            {roleSelectEditable
+                                                ? 'Job title — controls which workshop sub-flow they’re slotted into.'
+                                                : 'Role is set at creation for this employee type and can’t be changed here. Use the Permission Role below to adjust their dashboard access.'}
                                         </small>
                                     </div>
 
-                                    {/* Permission Role — only meaningful for existing employees that already
-                                        have a User account. The 🔑 Portal Access modal is the only way to
-                                        CREATE a User account (it also sets the portal + password). Once they
-                                        have one, this dropdown is a quick way to swap their RBAC role. */}
-                                    {editing && editing.userId && canManagePermissions && (
+                                    {/* Permission Role — optional overlay; leave blank for legacy full-access bypass. */}
+                                    {canManagePermissions &&
+                                        (editing?.userId ||
+                                            (!editing &&
+                                                isPortalStaffRole(form.role) &&
+                                                !isLockerPortalRole(form.role))) && (
                                         <div className="ws-field">
                                             <label>Permission Role</label>
                                             <select

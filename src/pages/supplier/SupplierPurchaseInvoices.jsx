@@ -1442,6 +1442,16 @@ export default function SupplierPurchaseInvoices() {
             const qtyNum = parseFloat(String(line.qty).replace(',', '.')) || 0;
             const unitPriceExForApi =
                 qtyNum > 0 ? roundMoney2(fin.lineEx / qtyNum) : 0;
+            const inv = findPiCapsRow(line, catalogItems);
+            const lineUom = String(line.uom || '').trim();
+            const warehouseUom = String(
+                inv?.warehouseUnit || line.warehouseUnit || '',
+            ).trim();
+            const resolvedUnit =
+                lineUom ||
+                warehouseUom ||
+                String(inv?.unit || 'Box').trim() ||
+                'Box';
             return {
                 idx,
                 productName: String(line.item || '').trim(),
@@ -1452,7 +1462,7 @@ export default function SupplierPurchaseInvoices() {
                         ? String(line.supplierProductId).trim()
                         : undefined,
                 qty: qtyNum,
-                unit: String(line.uom || 'pcs').trim() || 'pcs',
+                unit: resolvedUnit,
                 unitPrice: unitPriceExForApi,
                 vatLine: fin.taxAmt,
             };

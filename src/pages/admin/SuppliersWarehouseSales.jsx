@@ -12,8 +12,11 @@ import {
     getSupplierInvoices,
     getWorkshopOptions,
 } from '../../services/superAdminApi';
+import { ExportMenu } from '../../components/admin/SalesExportControls';
+import { exportRowsToPdf, exportRowsToExcel } from '../../utils/tableExport';
 
 const PAGE_SIZE = 25;
+const EXPORT_LIMIT = 5000;
 
 const PAYMENT_STATUS_CLASS = {
     paid: 'so-status-completed',
@@ -127,6 +130,34 @@ function localDateTimeToIso(localValue) {
     return d.toISOString();
 }
 
+/** Build {headers, rows} mirroring the on-screen table — used for PDF/Excel export. */
+function buildSupplierSalesExportRows(invoices) {
+    const headers = [
+        'Invoice No', 'Status', 'Invoice Date', 'Due Date', 'Supplier', 'Supplier Mobile',
+        'Affiliation', 'Workshop', 'Branch', 'Items', 'Total (SAR)', 'Paid (SAR)', 'Balance (SAR)',
+        'Payment', 'Review',
+    ];
+    const n2 = (v) => Number(toNumber(v).toFixed(2));
+    const rows = (invoices || []).map((inv) => [
+        inv.invoiceNo ?? '—',
+        formatStatusLabel(inv.status),
+        formatDateOnly(inv.invoiceDate),
+        formatDateOnly(inv.dueDate),
+        inv.supplierName ?? '—',
+        inv.supplierMobile ?? '—',
+        inv.isAffiliated ? 'Affiliated' : 'Non-affiliated',
+        inv.workshopName ?? '—',
+        inv.branchName ?? '—',
+        n2(inv.itemsCount),
+        n2(inv.grandTotal),
+        n2(inv.paidAmount),
+        n2(inv.balance),
+        formatStatusLabel(inv.paymentStatus),
+        formatStatusLabel(inv.workshopReviewStatus),
+    ]);
+    return { headers, rows };
+}
+
 export default function SuppliersWarehouseSales() {
     const [workshopOptions, setWorkshopOptions] = useState([]);
     const [workshopOptionsLoading, setWorkshopOptionsLoading] = useState(true);
@@ -157,6 +188,7 @@ export default function SuppliersWarehouseSales() {
     const [detailData, setDetailData] = useState(null);
     const [detailLoading, setDetailLoading] = useState(false);
     const [detailError, setDetailError] = useState('');
+    const [exporting, setExporting] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -323,6 +355,41 @@ export default function SuppliersWarehouseSales() {
         void fetchInvoices();
     }, [fetchInvoices]);
 
+    // Export the FULL filtered set (one bounded re-fetch with the active filters).
+    const runExport = useCallback(async (kind) => {
+        setExporting(true);
+        setLoadError('');
+        try {
+            const res = await getSupplierInvoices({
+                workshopId: selectedWorkshopId || undefined,
+                branchId: selectedBranchId || undefined,
+                supplierId: selectedSupplierId || undefined,
+                status: statusFilter || undefined,
+                workshopReviewStatus: reviewStatusFilter || undefined,
+                search: searchDebounced || undefined,
+                startDate: localDateTimeToIso(dateFrom) || undefined,
+                endDate: localDateTimeToIso(dateTo) || undefined,
+                limit: String(EXPORT_LIMIT),
+                offset: '0',
+            });
+            const list = Array.isArray(res?.supplierInvoices) ? res.supplierInvoices
+                : Array.isArray(res?.data?.supplierInvoices) ? res.data.supplierInvoices : [];
+            const { headers, rows } = buildSupplierSalesExportRows(list);
+            const subtitle = `${rows.length} invoice(s)`
+                + (dateFrom || dateTo ? ` · ${dateFrom || '…'} → ${dateTo || '…'}` : '')
+                + (statusFilter ? ` · status: ${statusFilter}` : '');
+            if (kind === 'pdf') {
+                exportRowsToPdf({ title: 'Suppliers & Warehouse Sales', subtitle, headers, rows, filenameBase: 'suppliers-warehouse-sales' });
+            } else {
+                exportRowsToExcel({ sheetName: 'Supplier Sales', headers, rows, filenameBase: 'suppliers-warehouse-sales' });
+            }
+        } catch (e) {
+            setLoadError(e?.message || 'Export failed');
+        } finally {
+            setExporting(false);
+        }
+    }, [selectedWorkshopId, selectedBranchId, selectedSupplierId, statusFilter, reviewStatusFilter, searchDebounced, dateFrom, dateTo]);
+
     const openDetails = useCallback(async (invoiceId, source) => {
         if (!invoiceId) return;
         setDetailId(String(invoiceId));
@@ -388,7 +455,15 @@ export default function SuppliersWarehouseSales() {
                         Sales invoices issued by suppliers / warehouses to workshops
                     </p>
                 </div>
-                <div className="so-order-count-badge">{total.toLocaleString()} invoices</div>
+                <div style={{ display: 'inline-flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <ExportMenu
+                        onPdf={() => runExport('pdf')}
+                        onExcel={() => runExport('excel')}
+                        busy={exporting}
+                        disabled={loading}
+                    />
+                    <div className="so-order-count-badge">{total.toLocaleString()} invoices</div>
+                </div>
             </header>
 
             <div className="so-kpi-grid">

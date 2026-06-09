@@ -5,10 +5,28 @@ import {
     getSuperAdminInvoiceView,
     getWorkshopOptions,
     getBranches,
+    getSuperAdminCorporateCompanies,
 } from '../../services/superAdminApi';
 import InvoiceDetailsModal from '../../components/pos/modern/InvoiceDetailsModal';
+import { ExportMenu, DateTimeRange } from '../../components/admin/SalesExportControls';
+import { exportRowsToPdf, exportRowsToExcel } from '../../utils/tableExport';
 
 const PAGE_SIZE = 50;
+const EXPORT_LIMIT = 5000;
+const round2 = (n) => Number(Number(n ?? 0).toFixed(2));
+
+/** Client-side search predicate — shared by the table filter and export-all. */
+function matchesReceiptSearch(r, q) {
+    if (!q) return true;
+    const hay = [
+        r.receiptNo, r.invoiceNo,
+        r.corporateAccountName, r.customerName,
+        r.workshopName, r.branchName,
+        r.paymentMethod, r.deferredPaymentMethod,
+        r.totalAmount, r.amountPaid,
+    ].map((x) => String(x ?? '').toLowerCase()).join(' ');
+    return hay.includes(q);
+}
 
 const num = (v) =>
     `SAR ${Number(v ?? 0).toLocaleString(undefined, {
@@ -44,6 +62,36 @@ function normalizeInvoiceForModal(invoice) {
     };
 }
 
+/** Build {headers, rows} mirroring the on-screen table — used for PDF/Excel export. */
+function buildReceiptExportRows(list) {
+    const headers = [
+        'Receipt No', 'Payment Date', 'Invoice No', 'Customer',
+        'Workshop', 'Branch', 'Method', 'Total', 'Paid', 'Balance', 'Status',
+    ];
+    const rows = (list || []).map((r) => {
+        const total = Number(r.totalAmount ?? 0);
+        const paid = Number(r.amountPaid ?? total);
+        const balance = r.balance != null ? Number(r.balance) : Math.max(0, total - paid);
+        const isPartial = balance > 0.01 && String(r.paymentStatus).toLowerCase() !== 'paid';
+        const method = (r.paymentMethod || '—').toString().replace(/_/g, ' ');
+        const via = (r.deferredPaymentMethod || 'Monthly Billing').toString().replace(/_/g, ' ');
+        return [
+            r.receiptNo ?? '—',
+            formatDate(r.paymentDate ?? r.issuedAt ?? r.invoiceDate),
+            r.invoiceNo ?? '—',
+            r.corporateAccountName ?? r.customerName ?? '—',
+            r.workshopName ?? '—',
+            r.branchName ?? '—',
+            `${method} (via ${via})`,
+            round2(total),
+            round2(paid),
+            round2(balance),
+            isPartial ? 'Partially Paid' : 'Paid',
+        ];
+    });
+    return { headers, rows };
+}
+
 /**
  * Admin → Sales → Receipts. Monthly-billing invoices that have actually been
  * settled (real, non-phantom payments cover the total). Newest settlement first.
@@ -57,8 +105,14 @@ export default function Receipts() {
     const [search, setSearch] = useState('');
     const [workshopOptions, setWorkshopOptions] = useState([]);
     const [branchOptions, setBranchOptions] = useState([]);
+    const [companyOptions, setCompanyOptions] = useState([]);
     const [selectedWorkshopId, setSelectedWorkshopId] = useState('');
     const [selectedBranchId, setSelectedBranchId] = useState('');
+    const [selectedCompanyId, setSelectedCompanyId] = useState('');
+    const [dateFrom, setDateFrom] = useState('');
+    const [dateTo, setDateTo] = useState('');
+    const [exporting, setExporting] = useState(false);
+    const [summary, setSummary] = useState(null);
     const [invoice, setInvoice] = useState(null);
     const [invoiceLoadingId, setInvoiceLoadingId] = useState(null);
     const [invoiceErr, setInvoiceErr] = useState('');
@@ -70,6 +124,9 @@ export default function Receipts() {
             const res = await getSuperAdminReceipts({
                 workshopId: selectedWorkshopId || undefined,
                 branchId:   selectedBranchId   || undefined,
+                corporateAccountId: selectedCompanyId || undefined,
+                startDate: dateFrom || undefined,
+                endDate:   dateTo   || undefined,
                 limit: PAGE_SIZE,
                 offset: (page - 1) * PAGE_SIZE,
             });
@@ -79,19 +136,39 @@ export default function Receipts() {
                 : Array.isArray(res) ? res : [];
             setRows(list);
             setTotal(Number(res?.total) || list.length);
+            setSummary(res?.summary ?? null);
         } catch (e) {
             setError(e?.message || 'Could not load receipts');
             setRows([]);
             setTotal(0);
+            setSummary(null);
         } finally {
             setLoading(false);
         }
-    }, [selectedWorkshopId, selectedBranchId, page]);
+    }, [selectedWorkshopId, selectedBranchId, selectedCompanyId, dateFrom, dateTo, page]);
 
     useEffect(() => { void load(); }, [load]);
 
     // Snap back to page 1 when filters change.
-    useEffect(() => { setPage(1); }, [selectedWorkshopId, selectedBranchId]);
+    useEffect(() => { setPage(1); }, [selectedWorkshopId, selectedBranchId, selectedCompanyId, dateFrom, dateTo]);
+
+    // Companies for the Company filter (scoped to the selected workshop).
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const res = await getSuperAdminCorporateCompanies({ workshopId: selectedWorkshopId || undefined });
+                const list = Array.isArray(res?.companies) ? res.companies : [];
+                if (!cancelled) {
+                    setCompanyOptions(list.map((c) => ({ id: String(c.id), name: String(c.companyName || '').trim() || 'Company' })));
+                    setSelectedCompanyId('');
+                }
+            } catch {
+                if (!cancelled) { setCompanyOptions([]); setSelectedCompanyId(''); }
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [selectedWorkshopId]);
 
     const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -152,27 +229,61 @@ export default function Receipts() {
     const filtered = useMemo(() => {
         const q = search.trim().toLowerCase();
         if (!q) return rows;
-        return rows.filter((r) => {
-            const hay = [
-                r.invoiceNo,
-                r.corporateAccountName, r.customerName,
-                r.workshopName, r.branchName,
-                r.paymentMethod, r.deferredPaymentMethod,
-                r.totalAmount, r.amountPaid,
-            ].map((x) => String(x ?? '').toLowerCase()).join(' ');
-            return hay.includes(q);
-        });
+        return rows.filter((r) => matchesReceiptSearch(r, q));
     }, [rows, search]);
 
-    const { totalBilled, totalCollected } = useMemo(() => {
+    // Export the FULL filtered set (one bounded re-fetch + same client search).
+    const runExport = useCallback(async (kind) => {
+        setExporting(true);
+        setError('');
+        try {
+            const res = await getSuperAdminReceipts({
+                workshopId: selectedWorkshopId || undefined,
+                branchId:   selectedBranchId   || undefined,
+                corporateAccountId: selectedCompanyId || undefined,
+                startDate: dateFrom || undefined,
+                endDate:   dateTo   || undefined,
+                limit: EXPORT_LIMIT,
+                offset: 0,
+            });
+            const all = Array.isArray(res?.receipts) ? res.receipts
+                : Array.isArray(res?.items) ? res.items
+                : Array.isArray(res) ? res : [];
+            const q = search.trim().toLowerCase();
+            const list = q ? all.filter((r) => matchesReceiptSearch(r, q)) : all;
+            const { headers, rows: outRows } = buildReceiptExportRows(list);
+            const subtitle = `${outRows.length} receipt(s)`
+                + (dateFrom || dateTo ? ` · ${dateFrom || '…'} → ${dateTo || '…'}` : '');
+            if (kind === 'pdf') {
+                exportRowsToPdf({ title: 'Receipts', subtitle, headers, rows: outRows, filenameBase: 'receipts' });
+            } else {
+                exportRowsToExcel({ sheetName: 'Receipts', headers, rows: outRows, filenameBase: 'receipts' });
+            }
+        } catch (e) {
+            setError(e?.message || 'Export failed');
+        } finally {
+            setExporting(false);
+        }
+    }, [selectedWorkshopId, selectedBranchId, selectedCompanyId, dateFrom, dateTo, search]);
+
+    // KPIs across ALL pages via the server `summary`; fall back to the visible
+    // rows when a client-side search is narrowing the current page.
+    const { totalBilled, totalCollected, kpiCount } = useMemo(() => {
+        if (summary && !search.trim()) {
+            return {
+                totalBilled: Number(summary.totalBilled ?? 0),
+                totalCollected: Number(summary.totalCollected ?? 0),
+                kpiCount: Number(summary.count ?? 0),
+            };
+        }
         let billed = 0;
         let collected = 0;
         for (const r of filtered) {
             billed += Number(r.totalAmount ?? 0);
             collected += Number(r.amountPaid ?? r.totalAmount ?? 0);
         }
-        return { totalBilled: billed, totalCollected: collected };
-    }, [filtered]);
+        return { totalBilled: billed, totalCollected: collected, kpiCount: filtered.length };
+    }, [filtered, summary, search]);
 
     const openInvoice = async (invoiceId) => {
         if (!invoiceId) return;
@@ -218,14 +329,22 @@ export default function Receipts() {
                         </p>
                     </div>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => load()}
-                    disabled={loading}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', cursor: loading ? 'wait' : 'pointer', fontSize: '0.8125rem', fontWeight: 600 }}
-                >
-                    <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
-                </button>
+                <div style={{ display: 'inline-flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <ExportMenu
+                        onPdf={() => runExport('pdf')}
+                        onExcel={() => runExport('excel')}
+                        busy={exporting}
+                        disabled={loading}
+                    />
+                    <button
+                        type="button"
+                        onClick={() => load()}
+                        disabled={loading}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 10, border: '1px solid #cbd5e1', background: '#fff', cursor: loading ? 'wait' : 'pointer', fontSize: '0.8125rem', fontWeight: 600 }}
+                    >
+                        <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
+                    </button>
+                </div>
             </header>
 
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14, alignItems: 'flex-end' }}>
@@ -253,20 +372,36 @@ export default function Receipts() {
                         ))}
                     </select>
                 </div>
+                <div style={{ display: 'flex', flexDirection: 'column', minWidth: 200 }}>
+                    <label style={labelStyle}>Company</label>
+                    <select value={selectedCompanyId} onChange={(e) => setSelectedCompanyId(e.target.value)} style={{ ...inputStyle, minWidth: 200 }}>
+                        <option value="">All companies</option>
+                        {companyOptions.map((c) => (
+                            <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                    </select>
+                </div>
+                <DateTimeRange
+                    from={dateFrom}
+                    to={dateTo}
+                    onFrom={setDateFrom}
+                    onTo={setDateTo}
+                    onClear={() => { setDateFrom(''); setDateTo(''); }}
+                />
                 <div style={{ position: 'relative', flex: 1, minWidth: 240 }}>
                     <Search size={16} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
                     <input
                         type="search"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Search company, invoice no, method, amount…"
+                        placeholder="Search receipt no, company, invoice no, method, amount…"
                         style={{ ...inputStyle, width: '100%', paddingLeft: 36 }}
                     />
                 </div>
                 <div style={{ padding: '10px 14px', borderRadius: 10, background: '#f0fdfa', border: '1px solid #99f6e4', display: 'flex', gap: 16, alignItems: 'center' }}>
                     <div>
                         <div style={{ fontSize: '0.65rem', color: '#0f766e', fontWeight: 700, textTransform: 'uppercase' }}>Receipts</div>
-                        <div style={{ fontSize: '0.9375rem', fontWeight: 800, color: '#134e4a' }}>{filtered.length}</div>
+                        <div style={{ fontSize: '0.9375rem', fontWeight: 800, color: '#134e4a' }}>{Number(kpiCount).toLocaleString()}</div>
                     </div>
                     <div>
                         <div style={{ fontSize: '0.65rem', color: '#0f766e', fontWeight: 700, textTransform: 'uppercase' }}>Billed</div>
@@ -294,6 +429,7 @@ export default function Receipts() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
                     <thead>
                         <tr>
+                            <th style={cellTh}>Receipt No</th>
                             <th style={cellTh}>Payment Date</th>
                             <th style={cellTh}>Invoice No</th>
                             <th style={cellTh}>Customer</th>
@@ -308,11 +444,11 @@ export default function Receipts() {
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan={10} style={{ padding: 32, textAlign: 'center', color: '#64748b' }}>
+                            <tr><td colSpan={11} style={{ padding: 32, textAlign: 'center', color: '#64748b' }}>
                                 <Loader2 size={18} className="spin" /> Loading…
                             </td></tr>
                         ) : filtered.length === 0 ? (
-                            <tr><td colSpan={10} style={{ padding: 32, textAlign: 'center', color: '#64748b' }}>
+                            <tr><td colSpan={11} style={{ padding: 32, textAlign: 'center', color: '#64748b' }}>
                                 No monthly-billing receipts for the selected filters.
                             </td></tr>
                         ) : filtered.map((r) => {
@@ -322,6 +458,7 @@ export default function Receipts() {
                             const isPartial = balance > 0.01 && String(r.paymentStatus).toLowerCase() !== 'paid';
                             return (
                                 <tr key={r.id} style={{ borderTop: '1px solid #f1f5f9' }}>
+                                    <td style={{ ...cellTd, whiteSpace: 'nowrap' }}><span style={{ fontWeight: 700, color: '#0f172a' }}>{r.receiptNo ?? '—'}</span></td>
                                     <td style={{ ...cellTd, whiteSpace: 'nowrap' }}>{formatDate(r.paymentDate ?? r.issuedAt ?? r.invoiceDate)}</td>
                                     <td style={cellTd}><span style={{ fontWeight: 700, color: '#2563eb' }}>{r.invoiceNo ?? '—'}</span></td>
                                     <td style={cellTd}>

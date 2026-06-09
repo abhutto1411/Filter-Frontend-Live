@@ -808,10 +808,17 @@ export const getWorkshopSupplierPurchaseInvoice = (invoiceId) =>
  * supplier per product across prior workshop purchase invoices.
  * Response: `{ success, supplierId, prices: [{ productId, lastUnitPriceExVat, lastUnitPriceInclVat, lastInvoiceId, lastInvoiceNumber, lastIssueDate }] }`
  */
-export const getWorkshopSupplierLastPurchasePrices = (supplierId) =>
-    apiFetch(
-        `/workshop-staff/suppliers/${encodeURIComponent(String(supplierId))}/last-purchase-prices`,
+export const getWorkshopSupplierLastPurchasePrices = (supplierId, opts = {}) => {
+    const params = new URLSearchParams();
+    if (opts.supplierKind === 'local') params.set('supplierKind', 'local');
+    if (opts.branchId != null && String(opts.branchId).trim() !== '') {
+        params.set('branchId', String(opts.branchId).trim());
+    }
+    const qs = params.toString();
+    return apiFetch(
+        `/workshop-staff/suppliers/${encodeURIComponent(String(supplierId))}/last-purchase-prices${qs ? `?${qs}` : ''}`,
     );
+};
 
 /** UOM rules (Box ↔ Liter) for branch products matched to affiliated supplier catalog. */
 export const getWorkshopSupplierProductUomRules = (supplierId, branchId) =>
@@ -1005,7 +1012,20 @@ export function normalizeWorkshopEmployee(raw, role) {
     )
         .toString()
         .toLowerCase();
-    let displayRole = (raw.role ?? raw.userType ?? raw.user_type ?? role ?? '').toString().toLowerCase() || role;
+    // `employeeType` is the authoritative job role on the unified employees
+    // list (cashier / staff / technician). It must rank ABOVE the `role` arg,
+    // which is only the PATCH/DELETE route family ('cashier' covers cashier +
+    // staff). Without it, a `staff` employee falls back to the arg and renders
+    // + prefills as "cashier". Portal/locker rows still win via workshopStaffRole.
+    let displayRole = (
+        raw.role ??
+        raw.userType ??
+        raw.user_type ??
+        raw.employeeType ??
+        raw.employee_type ??
+        role ??
+        ''
+    ).toString().toLowerCase() || role;
     if (workshopStaffRole) {
         displayRole = workshopStaffRole;
     }
@@ -1078,6 +1098,13 @@ export function normalizeWorkshopEmployee(raw, role) {
             user?.permissionRole ??
             user?.permission_role ??
             null,
+        effectiveBranchIds: Array.isArray(raw.effectiveBranchIds)
+            ? raw.effectiveBranchIds.map(String)
+            : Array.isArray(raw.effective_branch_ids)
+              ? raw.effective_branch_ids.map(String)
+              : Array.isArray(raw.permissionRole?.branchIds)
+                ? raw.permissionRole.branchIds.map(String)
+                : [],
         userType:
             raw.userType ??
             raw.user_type ??

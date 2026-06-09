@@ -49,7 +49,7 @@ export default function LockerLayout() {
             console.warn('[locker] logout API failed (session cleared locally anyway)', e);
         }
         logout();
-        navigate('/locker/login', { replace: true });
+        navigate('/', { replace: true });
     };
 
     // Sync activeTab with URL: /locker/TAB_NAME

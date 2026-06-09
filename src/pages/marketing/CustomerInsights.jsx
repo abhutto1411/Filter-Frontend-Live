@@ -1,285 +1,876 @@
-import React, { useMemo, useState } from 'react';
-import { Search, Users } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  RefreshCw,
+  Search,
+  Users,
+} from 'lucide-react';
+import { marketingGetCustomerInsights } from '../../services/superAdminMarketingApi';
 import './MarketingUniversal.css';
 
-const customers = [];
+function toNumber(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
 
 function formatSar(value) {
-const n = Number(value);
-
-if (!Number.isFinite(n)) return 'SAR 0';
-
-return `SAR ${n.toLocaleString(undefined, {
-maximumFractionDigits: 0,
-})}`;
+  return `SAR ${toNumber(value).toLocaleString(undefined, {
+    maximumFractionDigits: 0,
+  })}`;
 }
 
-const StatCard = ({ title, value, sub, tone }) => {
-return (
-<div className={`ci-stat-card ci-stat-${tone}`}>
-<div className="ci-stat-title">{title}</div>
-<div className="ci-stat-value">{value}</div>
-<div className="ci-stat-sub">{sub}</div>
-</div>
+function humanize(value) {
+  return String(value || '')
+    .replace(/_/g, ' ')
+    .replace(/-/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function formatMonthLabel(date) {
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    year: '2-digit',
+  });
+}
+
+function makeLastMonths(count = 6) {
+  const now = new Date();
+
+  return Array.from({ length: count }, (_, index) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (count - 1 - index), 1);
+
+    return {
+      key: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+      label: formatMonthLabel(d),
+      value: 0,
+    };
+  });
+}
+
+function asArray(payload, keys = []) {
+  if (Array.isArray(payload)) return payload;
+
+  for (const key of keys) {
+    if (Array.isArray(payload?.[key])) return payload[key];
+    if (Array.isArray(payload?.data?.[key])) return payload.data[key];
+  }
+
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.data?.items)) return payload.data.items;
+
+  return [];
+}
+
+function normalizeSummary(payload) {
+  const root = payload?.data || payload || {};
+  const source = root.summary || root.cards || root || {};
+
+  const totalCustomers = toNumber(
+    source.totalCustomers ??
+      source.uniqueCustomers ??
+      source.totalUniqueCustomers ??
+      source.total_unique_customers,
+  );
+
+  const newThisMonth = toNumber(
+    source.newThisMonth ??
+      source.newCustomers ??
+      source.new_this_month,
+  );
+
+  const returningCustomers = toNumber(
+    source.returningCustomers ??
+      source.returning_customers,
+  );
+
+  const retentionRate = toNumber(
+    source.retentionRate ??
+      source.customerRetention ??
+      source.retention,
+  );
+
+  const averageSpend = toNumber(
+    source.averageSpend ??
+      source.avgSpend ??
+      source.averageSpendPerCustomer ??
+      source.averageOrderValue,
+  );
+
+  const averageOrders = toNumber(
+    source.averageOrders ??
+      source.avgOrders ??
+      source.avgOrdersPerCustomer,
+  );
+
+  return {
+    totalCustomers,
+    newThisMonth,
+    returningCustomers,
+    retentionRate,
+    averageSpend,
+    averageOrders,
+  };
+}
+
+function normalizeCustomer(row) {
+  return {
+    id: String(row?.id ?? row?.customerId ?? row?.customer_id ?? row?.email ?? row?.phone ?? ''),
+    name:
+      row?.name ||
+      row?.customerName ||
+      row?.customer_name ||
+      row?.fullName ||
+      row?.companyName ||
+      'Customer',
+    email: row?.email || row?.customerEmail || row?.customer_email || '',
+    phone: row?.phone || row?.mobile || row?.customerPhone || row?.customer_phone || '',
+    totalSpend: toNumber(
+      row?.totalSpend ??
+        row?.total_spend ??
+        row?.totalRevenue ??
+        row?.ltv ??
+        row?.lifeTimeValue,
+    ),
+    orders: toNumber(
+      row?.orders ??
+        row?.visits ??
+        row?.orderCount ??
+        row?.order_count,
+    ),
+    segment:
+      row?.segment ||
+      row?.customerSegment ||
+      row?.customer_segment ||
+      'customer',
+    createdAt:
+      row?.createdAt ||
+      row?.created_at ||
+      row?.joinedAt ||
+      row?.lastVisit ||
+      row?.updatedAt ||
+      '',
+  };
+}
+
+function extractCustomers(payload) {
+  const root = payload?.data || payload || {};
+
+  return asArray(root, [
+    'customers',
+    'topCustomers',
+    'topReturningCustomers',
+    'items',
+  ]).map(normalizeCustomer);
+}
+
+function normalizeGrowthItem(item) {
+  return {
+    label:
+      item?.label ||
+      item?.month ||
+      item?.name ||
+      item?.period ||
+      '',
+    value: toNumber(
+      item?.value ??
+        item?.count ??
+        item?.customers ??
+        item?.newCustomers ??
+        item?.new_this_month,
+    ),
+  };
+}
+
+function extractGrowth(payload) {
+  const root = payload?.data || payload || {};
+
+  const rows = asArray(root, [
+    'growth',
+    'customerGrowth',
+    'newCustomerGrowth',
+    'monthlyGrowth',
+    'newCustomersByMonth',
+  ]).map(normalizeGrowthItem);
+
+  const fallback = makeLastMonths(6);
+
+  if (!rows.length) return fallback;
+
+  const monthMap = new Map();
+
+  fallback.forEach((item) => {
+    monthMap.set(item.label.toLowerCase(), item);
+  });
+
+  rows.forEach((item) => {
+    const label = item.label || '';
+
+    if (!label) return;
+
+    const found = fallback.find(
+      (month) =>
+        month.label.toLowerCase() === label.toLowerCase() ||
+        month.key === label,
+    );
+
+    if (found) {
+      monthMap.set(found.label.toLowerCase(), {
+        ...found,
+        value: item.value,
+      });
+    }
+  });
+
+  return Array.from(monthMap.values());
+}
+
+const KpiCard = ({ title, value, sub, tone }) => (
+  <section className={`ci-kpi-card ci-kpi-${tone}`}>
+    <div className="ci-kpi-top-line" />
+
+    <div className="ci-kpi-content">
+      <p>{title}</p>
+      <strong>{value}</strong>
+      <span>{sub}</span>
+    </div>
+  </section>
 );
+
+const GrowthChart = ({ data }) => {
+  const width = 980;
+  const height = 160;
+  const left = 48;
+  const right = 18;
+  const top = 18;
+  const bottom = 32;
+  const chartW = width - left - right;
+  const chartH = height - top - bottom;
+
+  const maxValue = Math.max(4, ...data.map((item) => toNumber(item.value)));
+  const ticks = [0, 1, 2, 3, 4];
+
+  const points = data.map((item, index) => {
+    const slot = data.length > 1 ? chartW / (data.length - 1) : chartW;
+    const x = left + slot * index;
+    const y = top + chartH - (toNumber(item.value) / maxValue) * chartH;
+
+    return {
+      ...item,
+      x,
+      y,
+    };
+  });
+
+  return (
+    <section className="ci-chart-card">
+      <h3>New Customer Growth — Last 6 Months</h3>
+
+      <svg
+        className="ci-chart-svg"
+        viewBox={`0 0 ${width} ${height}`}
+        preserveAspectRatio="none"
+      >
+        {ticks.map((tick) => {
+          const y = top + chartH - (tick / 4) * chartH;
+
+          return (
+            <g key={tick}>
+              <line
+                x1={left}
+                y1={y}
+                x2={width - right}
+                y2={y}
+                className="ci-grid-line"
+              />
+
+              <text
+                x={left - 8}
+                y={y + 4}
+                textAnchor="end"
+                className="ci-axis-text"
+              >
+                {tick}
+              </text>
+            </g>
+          );
+        })}
+
+        {points.map((point) => (
+          <line
+            key={`v-${point.label}`}
+            x1={point.x}
+            y1={top}
+            x2={point.x}
+            y2={top + chartH}
+            className="ci-vertical-grid"
+          />
+        ))}
+
+        <line
+          x1={left}
+          y1={top + chartH}
+          x2={width - right}
+          y2={top + chartH}
+          className="ci-axis-line"
+        />
+
+        <line
+          x1={left}
+          y1={top}
+          x2={left}
+          y2={top + chartH}
+          className="ci-axis-line"
+        />
+
+        {points.length > 1 ? (
+          <polyline
+            points={points.map((point) => `${point.x},${point.y}`).join(' ')}
+            className="ci-growth-line"
+          />
+        ) : null}
+
+        {points.map((point) => (
+          <g key={`point-${point.label}`}>
+            <circle cx={point.x} cy={point.y} r="3" className="ci-growth-dot" />
+
+            <text
+              x={point.x}
+              y={height - 10}
+              textAnchor="middle"
+              className="ci-axis-text"
+            >
+              {point.label}
+            </text>
+          </g>
+        ))}
+      </svg>
+    </section>
+  );
 };
 
-const GrowthChart = () => {
-const width = 1000;
-const height = 170;
-const left = 45;
-const right = 16;
-const top = 10;
-const bottom = 28;
-
-const chartW = width - left - right;
-const chartH = height - top - bottom;
-
-const yTicks = [0, 1, 2, 3, 4];
-const months = ['Dec 25', 'Jan 26', 'Feb 26', 'Mar 26', 'Apr 26', 'May 26'];
-
-return (
-<section className="ci-card ci-chart-card">
-<h3 className="ci-section-title">New Customer Growth — Last 6 Months</h3>
-
-<svg
-viewBox={`0 0 ${width} ${height}`}
-preserveAspectRatio="none"
-className="ci-chart-svg"
->
-{yTicks.map((tick) => {
-const y = top + chartH - (tick / 4) * chartH;
-
-return (
-<g key={tick}>
-<line
-x1={left}
-y1={y}
-x2={width - right}
-y2={y}
-className={tick === 0 ? 'ci-axis-line' : 'ci-grid-line'}
-/>
-
-<text
-x={left - 8}
-y={y + 4}
-textAnchor="end"
-className="ci-chart-text"
->
-{tick}
-</text>
-</g>
+const EmptyCustomers = () => (
+  <div className="ci-empty-customers">
+    <Users size={34} strokeWidth={1.7} />
+    <p>No customers found</p>
+  </div>
 );
-})}
-
-<line
-x1={left}
-y1={top}
-x2={left}
-y2={top + chartH}
-className="ci-axis-line"
-/>
-
-{months.map((month, index) => {
-const x = left + (index / Math.max(months.length - 1, 1)) * chartW;
-
-return (
-<text
-key={month}
-x={x}
-y={height - 10}
-textAnchor="middle"
-className="ci-chart-text"
->
-{month}
-</text>
-);
-})}
-</svg>
-</section>
-);
-};
 
 export const CustomerInsights = () => {
-const [search, setSearch] = useState('');
-const [sortBy, setSortBy] = useState('revenue');
+  const [summary, setSummary] = useState({
+    totalCustomers: 0,
+    newThisMonth: 0,
+    returningCustomers: 0,
+    retentionRate: 0,
+    averageSpend: 0,
+    averageOrders: 0,
+  });
 
-const filteredCustomers = useMemo(() => {
-const q = search.trim().toLowerCase();
+  const [customers, setCustomers] = useState([]);
+  const [growth, setGrowth] = useState(makeLastMonths(6));
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('newest');
 
-let rows = [...customers];
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-if (q) {
-rows = rows.filter((customer) => {
-const text = [
-customer.name,
-customer.phone,
-customer.email,
-customer.type,
-]
-.filter(Boolean)
-.join(' ')
-.toLowerCase();
+  const loadInsights = async () => {
+    try {
+      setLoading(true);
+      setError('');
 
-return text.includes(q);
-});
-}
+      const res = await marketingGetCustomerInsights({
+        limit: 500,
+        offset: 0,
+        status: 'all',
+      });
 
-if (sortBy === 'revenue') {
-rows.sort((a, b) => Number(b.revenue || 0) - Number(a.revenue || 0));
-}
+      setSummary(normalizeSummary(res));
+      setCustomers(extractCustomers(res));
+      setGrowth(extractGrowth(res));
+    } catch (err) {
+      setError(err?.message || 'Failed to load customer insights.');
+      setSummary({
+        totalCustomers: 0,
+        newThisMonth: 0,
+        returningCustomers: 0,
+        retentionRate: 0,
+        averageSpend: 0,
+        averageOrders: 0,
+      });
+      setCustomers([]);
+      setGrowth(makeLastMonths(6));
+    } finally {
+      setLoading(false);
+    }
+  };
 
-if (sortBy === 'newest') {
-rows.sort(
-(a, b) =>
-new Date(b.createdAt || 0).getTime() -
-new Date(a.createdAt || 0).getTime(),
-);
-}
+  useEffect(() => {
+    loadInsights();
+  }, []);
 
-if (sortBy === 'visits') {
-rows.sort((a, b) => Number(b.visits || 0) - Number(a.visits || 0));
-}
+  const filteredCustomers = useMemo(() => {
+    const q = search.trim().toLowerCase();
 
-return rows;
-}, [search, sortBy]);
+    let rows = customers.filter((item) => {
+      if (!q) return true;
 
-const stats = useMemo(() => {
-const totalCustomers = customers.length;
+      return [
+        item.name,
+        item.email,
+        item.phone,
+        item.segment,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q);
+    });
 
-const returningCustomers = customers.filter(
-(item) => Number(item.visits || 0) > 1,
-).length;
+    rows = [...rows].sort((a, b) => {
+      if (sortBy === 'oldest') {
+        return new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+      }
 
-const newThisMonth = customers.filter((item) => {
-if (!item.createdAt) return false;
+      if (sortBy === 'highest_spend') {
+        return toNumber(b.totalSpend) - toNumber(a.totalSpend);
+      }
 
-const created = new Date(item.createdAt);
-const now = new Date();
+      if (sortBy === 'most_orders') {
+        return toNumber(b.orders) - toNumber(a.orders);
+      }
 
-return (
-created.getMonth() === now.getMonth() &&
-created.getFullYear() === now.getFullYear()
-);
-}).length;
+      if (sortBy === 'name') {
+        return String(a.name).localeCompare(String(b.name));
+      }
 
-const totalRevenue = customers.reduce(
-(sum, item) => sum + Number(item.revenue || 0),
-0,
-);
+      return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
+    });
 
-const avgSpend = totalCustomers > 0 ? totalRevenue / totalCustomers : 0;
+    return rows;
+  }, [customers, search, sortBy]);
 
-const retention =
-totalCustomers > 0
-? Math.round((returningCustomers / totalCustomers) * 100)
-: 0;
+  return (
+    <div className="mk-page ci-page">
+      <div className="ci-kpi-grid">
+        <KpiCard
+          title="Total Customers"
+          value={summary.totalCustomers}
+          sub={`+${summary.newThisMonth || 0} this month`}
+          tone="pink"
+        />
 
-return {
-totalCustomers,
-returningCustomers,
-newThisMonth,
-avgSpend,
-retention,
-};
-}, []);
+        <KpiCard
+          title="Returning Customers"
+          value={summary.returningCustomers}
+          sub={`${summary.retentionRate || 0}% retention`}
+          tone="purple"
+        />
 
-return (
-<div className="ci-page">
-<div className="ci-stats-grid">
-<StatCard
-title="Total Customers"
-value={stats.totalCustomers}
-sub="+0 this month"
-tone="pink"
-/>
+        <KpiCard
+          title="New This Month"
+          value={summary.newThisMonth}
+          sub="vs last month"
+          tone="blue"
+        />
 
-<StatCard
-title="Returning Customers"
-value={stats.returningCustomers}
-sub={`${stats.retention}% retention`}
-tone="purple"
-/>
+        <KpiCard
+          title="Avg. Spend / Customer"
+          value={formatSar(summary.averageSpend)}
+          sub="All time"
+          tone="teal"
+        />
+      </div>
 
-<StatCard
-title="New This Month"
-value={stats.newThisMonth}
-sub="vs last month"
-tone="indigo"
-/>
+      {error ? <div className="mk-error-text">{error}</div> : null}
 
-<StatCard
-title="Avg. Spend / Customer"
-value={formatSar(stats.avgSpend)}
-sub="All time"
-tone="teal"
-/>
-</div>
+      <GrowthChart data={growth} />
 
-<GrowthChart />
+      <section className="ci-customers-card">
+        <div className="ci-customers-header">
+          <h3>All Customers</h3>
 
-<section className="ci-card ci-customers-card">
-<div className="ci-customers-header">
-<h3 className="ci-section-title">All Customers</h3>
+          <div className="ci-customers-actions">
+            <label className="ci-search">
+              <Search size={13} />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search..."
+              />
+            </label>
 
-<div className="ci-filters-wrap">
-<label className="ci-search-box">
-<Search size={13} color="#9CA3AF" />
+            <select
+              className="ci-sort-select"
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value)}
+            >
+              <option value="newest">Newest First</option>
+              <option value="oldest">Oldest First</option>
+              <option value="highest_spend">Highest Spend</option>
+              <option value="most_orders">Most Orders</option>
+              <option value="name">Name A-Z</option>
+            </select>
 
-<input
-value={search}
-onChange={(e) => setSearch(e.target.value)}
-placeholder="Search..."
-/>
-</label>
+            <button
+              type="button"
+              className="ci-refresh-btn"
+              onClick={loadInsights}
+              disabled={loading}
+              title="Refresh"
+            >
+              <RefreshCw size={14} className={loading ? 'ci-spin' : ''} />
+            </button>
+          </div>
+        </div>
 
-<select
-value={sortBy}
-onChange={(e) => setSortBy(e.target.value)}
-className="ci-sort-select"
->
-<option value="revenue">By Revenue</option>
-<option value="newest">Newest</option>
-<option value="visits">Most Visits</option>
-</select>
-</div>
-</div>
+        {loading ? (
+          <div className="ci-empty-customers">
+            <RefreshCw size={26} className="ci-spin" />
+            <p>Loading customers...</p>
+          </div>
+        ) : filteredCustomers.length === 0 ? (
+          <EmptyCustomers />
+        ) : (
+          <div className="ci-table-wrap">
+            <table className="ci-table">
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th>Contact</th>
+                  <th>Orders</th>
+                  <th>Total Spend</th>
+                  <th>Segment</th>
+                </tr>
+              </thead>
 
-{filteredCustomers.length === 0 ? (
-<div className="ci-empty-state">
-<Users size={38} color="#CBD5E1" strokeWidth={1.8} />
-<div className="ci-empty-text">No customers found</div>
-</div>
-) : (
-<div className="ci-table-wrap">
-<table className="ci-table">
-<thead>
-<tr>
-<th>Customer</th>
-<th>Phone</th>
-<th>Visits</th>
-<th>Revenue</th>
-<th>Last Visit</th>
-</tr>
-</thead>
+              <tbody>
+                {filteredCustomers.map((item) => (
+                  <tr key={item.id || `${item.name}-${item.phone}`}>
+                    <td>
+                      <strong>{item.name}</strong>
+                      <span>{item.email || '—'}</span>
+                    </td>
+                    <td>{item.phone || '—'}</td>
+                    <td>{item.orders}</td>
+                    <td>{formatSar(item.totalSpend)}</td>
+                    <td>{humanize(item.segment)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
-<tbody>
-{filteredCustomers.map((customer, index) => (
-<tr key={customer.id || index}>
-<td className="ci-td-strong">{customer.name}</td>
-<td>{customer.phone || '-'}</td>
-<td>{customer.visits || 0}</td>
-<td>{formatSar(customer.revenue || 0)}</td>
-<td>{customer.lastVisit || '-'}</td>
-</tr>
-))}
-</tbody>
-</table>
-</div>
-)}
-</section>
-</div>
-);
+      <style>
+        {`
+          .ci-page {
+            padding: 20px 22px 28px;
+            background: #f4f6f9;
+            min-height: calc(100vh - 60px);
+          }
+
+          .ci-kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 14px;
+            margin-bottom: 16px;
+          }
+
+          .ci-kpi-card {
+            height: 82px;
+            background: #ffffff;
+            border: 1px solid #e1e7ef;
+            border-radius: 9px;
+            overflow: hidden;
+            position: relative;
+            box-sizing: border-box;
+          }
+
+          .ci-kpi-top-line {
+            height: 3px;
+            width: 100%;
+          }
+
+          .ci-kpi-pink .ci-kpi-top-line {
+            background: #f43f8e;
+          }
+
+          .ci-kpi-purple .ci-kpi-top-line {
+            background: #8b5cf6;
+          }
+
+          .ci-kpi-blue .ci-kpi-top-line {
+            background: #3b82f6;
+          }
+
+          .ci-kpi-teal .ci-kpi-top-line {
+            background: #14b8a6;
+          }
+
+          .ci-kpi-content {
+            padding: 14px 13px 10px;
+          }
+
+          .ci-kpi-content p {
+            margin: 0 0 7px;
+            color: #64748b;
+            font-size: 10px;
+            font-weight: 650;
+          }
+
+          .ci-kpi-content strong {
+            display: block;
+            color: #111827;
+            font-size: 21px;
+            font-weight: 950;
+            line-height: 1;
+            margin-bottom: 6px;
+          }
+
+          .ci-kpi-content span {
+            display: block;
+            color: #8492aa;
+            font-size: 10px;
+            font-weight: 650;
+          }
+
+          .ci-chart-card {
+            background: #ffffff;
+            border: 1px solid #e1e7ef;
+            border-radius: 9px;
+            padding: 14px 16px 16px;
+            margin-bottom: 18px;
+            box-sizing: border-box;
+          }
+
+          .ci-chart-card h3 {
+            margin: 0 0 10px;
+            color: #111827;
+            font-size: 13px;
+            font-weight: 800;
+          }
+
+          .ci-chart-svg {
+            width: 100%;
+            height: 160px;
+            display: block;
+          }
+
+          .ci-grid-line {
+            stroke: #e6ebf2;
+            stroke-width: 1;
+            stroke-dasharray: 3 4;
+          }
+
+          .ci-vertical-grid {
+            stroke: #eef2f7;
+            stroke-width: 1;
+            stroke-dasharray: 3 4;
+          }
+
+          .ci-axis-line {
+            stroke: #94a3b8;
+            stroke-width: 1;
+          }
+
+          .ci-axis-text {
+            fill: #64748b;
+            font-size: 10px;
+            font-weight: 650;
+          }
+
+          .ci-growth-line {
+            fill: none;
+            stroke: #3b82f6;
+            stroke-width: 2;
+          }
+
+          .ci-growth-dot {
+            fill: #3b82f6;
+          }
+
+          .ci-customers-card {
+            min-height: 160px;
+            background: #ffffff;
+            border: 1px solid #e1e7ef;
+            border-radius: 9px;
+            padding: 14px 14px 16px;
+            box-sizing: border-box;
+          }
+
+          .ci-customers-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+          }
+
+          .ci-customers-header h3 {
+            margin: 0;
+            color: #111827;
+            font-size: 13px;
+            font-weight: 800;
+          }
+
+          .ci-customers-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+          }
+
+          .ci-search {
+            width: 145px;
+            height: 28px;
+            border: 1px solid #dbe1ea;
+            border-radius: 7px;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 0 9px;
+            color: #94a3b8;
+            box-sizing: border-box;
+          }
+
+          .ci-search input {
+            border: 0;
+            outline: none;
+            width: 100%;
+            min-width: 0;
+            font-size: 10px;
+            color: #111827;
+            font-family: inherit;
+          }
+
+          .ci-sort-select {
+            width: 110px;
+            height: 28px;
+            border: 1px solid #d9ad18;
+            border-radius: 7px;
+            background: #ffffff;
+            color: #111827;
+            font-size: 10px;
+            font-weight: 650;
+            outline: none;
+            padding: 0 8px;
+            font-family: inherit;
+          }
+
+          .ci-refresh-btn {
+            width: 28px;
+            height: 28px;
+            border: 1px solid #dbe1ea;
+            border-radius: 7px;
+            background: #ffffff;
+            color: #64748b;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+          }
+
+          .ci-empty-customers {
+            height: 95px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: #dbe3ef;
+          }
+
+          .ci-empty-customers p {
+            margin: 6px 0 0;
+            color: #94a3b8;
+            font-size: 11px;
+            font-weight: 650;
+          }
+
+          .ci-table-wrap {
+            overflow-x: auto;
+          }
+
+          .ci-table {
+            width: 100%;
+            border-collapse: collapse;
+          }
+
+          .ci-table th {
+            height: 34px;
+            padding: 0 10px;
+            color: #64748b;
+            font-size: 9px;
+            font-weight: 900;
+            text-transform: uppercase;
+            letter-spacing: 1.3px;
+            text-align: left;
+            border-bottom: 1px solid #e5e7eb;
+          }
+
+          .ci-table td {
+            height: 42px;
+            padding: 0 10px;
+            color: #111827;
+            font-size: 11px;
+            font-weight: 650;
+            border-bottom: 1px solid #eef2f7;
+          }
+
+          .ci-table td strong {
+            display: block;
+            font-weight: 850;
+          }
+
+          .ci-table td span {
+            display: block;
+            margin-top: 2px;
+            color: #94a3b8;
+            font-size: 10px;
+          }
+
+          .ci-spin {
+            animation: ci-spin 1s linear infinite;
+          }
+
+          @keyframes ci-spin {
+            to {
+              transform: rotate(360deg);
+            }
+          }
+
+          @media (max-width: 1050px) {
+            .ci-kpi-grid {
+              grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+          }
+
+          @media (max-width: 700px) {
+            .ci-kpi-grid {
+              grid-template-columns: 1fr;
+            }
+
+            .ci-customers-header {
+              flex-direction: column;
+              align-items: stretch;
+            }
+
+            .ci-customers-actions {
+              flex-direction: column;
+              align-items: stretch;
+            }
+
+            .ci-search,
+            .ci-sort-select {
+              width: 100%;
+            }
+          }
+        `}
+      </style>
+    </div>
+  );
 };
 
 export default CustomerInsights;
