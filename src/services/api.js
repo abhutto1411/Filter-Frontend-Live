@@ -4,8 +4,7 @@
 // export const BASE_URL  = 'https://filterbackend-production.up.railway.app';
 
 // production url
-export const BASE_URL  = 'https://api.filtercarservices.com';
-
+export const BASE_URL = 'https://api.filtercarservices.com';
 // development url
 //export const BASE_URL = 'http://localhost:3000';
 

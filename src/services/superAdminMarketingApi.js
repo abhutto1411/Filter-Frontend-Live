@@ -73,7 +73,11 @@ export const marketingCreatePromotion = (body) =>
     method: 'POST',
     body: JSON.stringify(body),
   });
-
+export const marketingSubmitPromotionApproval = (id, body = {}) =>
+  apiFetch(`${ROOT}/promotions/${encodeURIComponent(String(id))}/submit-approval`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
 export const marketingListPromotions = (params = {}) =>
   apiFetch(`${ROOT}/promotions${qs(params)}`);
 

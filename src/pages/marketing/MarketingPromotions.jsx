@@ -19,17 +19,14 @@ import {
   Trash2,
   Clock3,
 } from "lucide-react";
+import {
+  marketingCreatePromotion,
+  marketingDeletePromotion,
+  marketingGetPromotionOptions,
+  marketingListPromotions,
+  marketingUpdatePromotion,
+} from "../../services/superAdminMarketingApi";
 import "./MarketingUniversal.css";
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
-
-const ROOT = "/super-admin-marketing-protal";
-
-const ENDPOINTS = {
-  promotions: `${ROOT}/promotions`,
-  promotionOptions: `${ROOT}/promotions/options`,
-};
 
 const strategyOptions = [
   "Standard Promotion",
@@ -73,21 +70,6 @@ const filterStatusOptions = [
   "Rejected",
 ];
 
-const getHeaders = () => {
-  const token =
-    localStorage.getItem("access_token") ||
-    localStorage.getItem("token") ||
-    localStorage.getItem("filter_auth_token") ||
-    localStorage.getItem("base44_token");
-
-  return {
-    "Content-Type": "application/json",
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-};
-
-const buildUrl = (endpoint) => `${API_BASE_URL}${endpoint}`;
-
 const safeArray = (response, keys = []) => {
   if (Array.isArray(response)) return response;
 
@@ -102,86 +84,6 @@ const safeArray = (response, keys = []) => {
   if (Array.isArray(response?.results)) return response.results;
 
   return [];
-};
-
-const apiGet = async (endpoint, query = {}) => {
-  const params = new URLSearchParams();
-
-  Object.entries(query).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") {
-      params.append(key, value);
-    }
-  });
-
-  const url = `${buildUrl(endpoint)}${params.toString() ? `?${params}` : ""}`;
-
-  const response = await fetch(url, {
-    method: "GET",
-    headers: getHeaders(),
-    credentials: "include",
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      errorText || `GET ${endpoint} failed. Status: ${response.status}`
-    );
-  }
-
-  return response.json();
-};
-
-const apiPost = async (endpoint, body = {}) => {
-  const response = await fetch(buildUrl(endpoint), {
-    method: "POST",
-    headers: getHeaders(),
-    credentials: "include",
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      errorText || `POST ${endpoint} failed. Status: ${response.status}`
-    );
-  }
-
-  return response.json();
-};
-
-const apiPatch = async (endpoint, body = {}) => {
-  const response = await fetch(buildUrl(endpoint), {
-    method: "PATCH",
-    headers: getHeaders(),
-    credentials: "include",
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      errorText || `PATCH ${endpoint} failed. Status: ${response.status}`
-    );
-  }
-
-  return response.json();
-};
-
-const apiDelete = async (endpoint) => {
-  const response = await fetch(buildUrl(endpoint), {
-    method: "DELETE",
-    headers: getHeaders(),
-    credentials: "include",
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      errorText || `DELETE ${endpoint} failed. Status: ${response.status}`
-    );
-  }
-
-  return response.json();
 };
 
 const normalizeOption = (item, fallbackPrefix) => {
@@ -222,6 +124,13 @@ const normalizeOption = (item, fallbackPrefix) => {
   };
 };
 
+const mapBackendDiscountTypeToUi = (value) => {
+  const normalized = String(value || "").toLowerCase();
+
+  if (normalized.includes("fixed")) return "Fixed Amount (SAR)";
+  return "Percentage (%)";
+};
+
 const normalizePromotion = (item) => {
   const statusRaw = item?.status || "draft";
 
@@ -243,6 +152,7 @@ const normalizePromotion = (item) => {
     bundle: "Free Service",
     percentage_discount: "Percentage Discount",
     fixed_discount: "Fixed Amount Discount",
+    fixed_amount_discount: "Fixed Amount Discount",
     buy_x_get_y: "Buy X Get Y Free",
     free_service: "Free Service",
     zone_offer: "Zone-Wide Offer",
@@ -251,7 +161,11 @@ const normalizePromotion = (item) => {
   return {
     ...item,
     id: String(item?.id || item?._id || Date.now()),
-    name: item?.name || item?.title || item?.promotionName || "Untitled Promotion",
+    name:
+      item?.name ||
+      item?.title ||
+      item?.promotionName ||
+      "Untitled Promotion",
     strategy: item?.strategy || item?.marketingStrategy || "Standard Promotion",
     promotionType:
       item?.promotionType ||
@@ -261,7 +175,7 @@ const normalizePromotion = (item) => {
       item?.type ||
       item?.promoType ||
       "Promotion",
-    discountType: item?.discountType || "Percentage (%)",
+    discountType: mapBackendDiscountTypeToUi(item?.discountType),
     discountValue:
       item?.value || item?.discountValue || item?.discount_value || 0,
     status: statusMap[String(statusRaw).toLowerCase()] || statusRaw,
@@ -272,10 +186,27 @@ const normalizePromotion = (item) => {
       item?.validTo ||
       null,
     description: item?.description || "",
-    targetBranchIds: item?.targetBranchIds || [],
+    sourceWorkshopId:
+      item?.sourceWorkshopId?.toString?.() || item?.sourceWorkshopId || "",
+    targetWorkshopId:
+      item?.targetWorkshopId?.toString?.() || item?.targetWorkshopId || "",
+    sourceBranchId:
+      item?.sourceBranchId?.toString?.() || item?.sourceBranchId || "",
+    targetBranchId:
+      item?.targetBranchId?.toString?.() || item?.targetBranchId || "",
+    targetBranchIds: Array.isArray(item?.targetBranchIds)
+      ? item.targetBranchIds
+      : [],
     targetZoneIds: item?.targetZoneIds || item?.targetZones || [],
+    targetZones: item?.targetZones || item?.targetZoneIds || [],
     triggerProductIds: item?.triggerProductIds || [],
     rewardProductIds: item?.rewardProductIds || item?.rewardItemIds || [],
+    rewardItemIds: item?.rewardItemIds || item?.rewardProductIds || [],
+    invoiceBannerText: item?.invoiceBannerText || "",
+    termsConditions: item?.termsConditions || "",
+    autoCloseOnEndDate: item?.autoCloseOnEndDate,
+    showOnPosInvoice: item?.showOnPosInvoice,
+    showOnCustomerPortal: item?.showOnCustomerPortal,
   };
 };
 
@@ -289,6 +220,13 @@ const mapPromotionTypeToBackendType = (promotionType) => {
   if (value.includes("zone")) return "zone_offer";
 
   return "percentage_discount";
+};
+
+const mapDiscountTypeToBackend = (discountType) => {
+  const value = String(discountType || "").toLowerCase();
+
+  if (value.includes("fixed")) return "fixed_amount";
+  return "percentage";
 };
 
 const mapCustomerSegmentToApplicableTo = (segment) => {
@@ -313,6 +251,16 @@ const mapStatusToBackendStatus = (status) => {
   if (value === "expired") return "expired";
 
   return "draft";
+};
+
+const toIsoDateTimeOrNull = (value) => {
+  if (!value) return null;
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return null;
+
+  return date.toISOString();
 };
 
 const formatEndDate = (value) => {
@@ -434,6 +382,8 @@ const SingleSelectApiField = ({
                 <AlertCircle size={15} />
                 {error}
               </div>
+            ) : filteredOptions.length === 0 ? (
+              <div className="mkp-dd-empty">No options found</div>
             ) : (
               filteredOptions.map((item) => (
                 <button
@@ -521,8 +471,8 @@ const MultiSelectApiField = ({
     selectedLabels.length === 0
       ? placeholder
       : selectedLabels.length <= 2
-      ? selectedLabels.join(", ")
-      : `${selectedLabels.length} selected`;
+        ? selectedLabels.join(", ")
+        : `${selectedLabels.length} selected`;
 
   return (
     <div className="mkp-form-group mkp-dd-wrap" ref={wrapRef}>
@@ -579,6 +529,8 @@ const MultiSelectApiField = ({
                 <AlertCircle size={15} />
                 {error}
               </div>
+            ) : filteredOptions.length === 0 ? (
+              <div className="mkp-dd-empty">No options found</div>
             ) : (
               filteredOptions.map((item) => (
                 <label key={item.id} className="mkp-dd-option">
@@ -705,7 +657,7 @@ export const MarketingPromotions = () => {
       setLoadingPage(true);
       setPageError("");
 
-      const data = await apiGet(ENDPOINTS.promotions, {
+      const data = await marketingListPromotions({
         limit: 200,
         offset: 0,
         status: "all",
@@ -716,7 +668,9 @@ export const MarketingPromotions = () => {
       );
     } catch (error) {
       console.error("Promotion API error:", error);
-      setPageError("Promotions API load nahi hui. Network/API check karo.");
+      setPageError(
+        error?.message || "Promotions API load nahi hui. Network/API check karo."
+      );
       setPromotions([]);
     } finally {
       setLoadingPage(false);
@@ -728,7 +682,7 @@ export const MarketingPromotions = () => {
       setLoadingDropdowns(true);
       setDropdownError("");
 
-      const data = await apiGet(ENDPOINTS.promotionOptions);
+      const data = await marketingGetPromotionOptions();
 
       const workshopOptions = safeArray(data, [
         "workshops",
@@ -796,7 +750,7 @@ export const MarketingPromotions = () => {
       setRewardItems([...normalizedRewardProducts, ...rewardServiceOptions]);
     } catch (error) {
       console.error("Dropdown API error:", error);
-      setDropdownError("Dropdown data load nahi hua.");
+      setDropdownError(error?.message || "Dropdown data load nahi hua.");
       setWorkshops([]);
       setBranches([]);
       setZones([]);
@@ -905,7 +859,7 @@ export const MarketingPromotions = () => {
       promoType: mapPromotionTypeToBackendType(form.promotionType),
       type: mapPromotionTypeToBackendType(form.promotionType),
 
-      discountType: form.discountType,
+      discountType: mapDiscountTypeToBackend(form.discountType),
       value: Number(form.discountValue || 0),
       discountValue: Number(form.discountValue || 0),
 
@@ -928,15 +882,15 @@ export const MarketingPromotions = () => {
       rewardProductIds: selectedRewardIds,
       rewardItemIds: selectedRewardIds,
 
-      startAt: form.startDate || null,
-      startDate: form.startDate || null,
-      start_date: form.startDate || null,
-      validFrom: form.startDate || null,
+      startAt: toIsoDateTimeOrNull(form.startDate),
+      startDate: toIsoDateTimeOrNull(form.startDate),
+      start_date: toIsoDateTimeOrNull(form.startDate),
+      validFrom: toIsoDateTimeOrNull(form.startDate),
 
-      endAt: form.endDate || null,
-      endDate: form.endDate || null,
-      end_date: form.endDate || null,
-      validTo: form.endDate || null,
+      endAt: toIsoDateTimeOrNull(form.endDate),
+      endDate: toIsoDateTimeOrNull(form.endDate),
+      end_date: toIsoDateTimeOrNull(form.endDate),
+      validTo: toIsoDateTimeOrNull(form.endDate),
 
       maxUsageCount: Number(form.maxUsage || 0),
       usageLimit: Number(form.maxUsage || 0),
@@ -970,40 +924,29 @@ export const MarketingPromotions = () => {
       return;
     }
 
+    if (!form.startDate || !form.endDate) {
+      alert("Start date and end date are required.");
+      return;
+    }
+
+    if (new Date(form.endDate) < new Date(form.startDate)) {
+      alert("End date must be after start date.");
+      return;
+    }
+
     try {
       setSubmitting(true);
       setSuccessMessage("");
 
       const promotionPayload = createPromotionPayload();
 
-      let response;
-
       if (editingId) {
-        response = await apiPatch(
-          `${ENDPOINTS.promotions}/${editingId}`,
-          promotionPayload
-        );
+        await marketingUpdatePromotion(editingId, promotionPayload);
       } else {
-        response = await apiPost(ENDPOINTS.promotions, promotionPayload);
-
-        const record =
-          response?.promotion ||
-          response?.data ||
-          response?.record ||
-          response?.item ||
-          response;
-
-        const recordId = record?.id || record?._id;
-
-        if (recordId) {
-          await apiPatch(`${ENDPOINTS.promotions}/${recordId}/submit-approval`, {
-            notes: "Submitted from Marketing Portal promotion form.",
-          });
-        }
+        await marketingCreatePromotion(promotionPayload);
       }
 
       await loadPromotions();
-
       closeModal();
 
       setSuccessMessage(
@@ -1013,7 +956,10 @@ export const MarketingPromotions = () => {
       );
     } catch (error) {
       console.error("Create/Update promotion error:", error);
-      alert("Promotion save nahi hui. Console aur Network tab check karo.");
+      alert(
+        error?.message ||
+          "Promotion save nahi hui. Console aur Network tab check karo."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -1024,12 +970,15 @@ export const MarketingPromotions = () => {
     if (!ok) return;
 
     try {
-      await apiDelete(`${ENDPOINTS.promotions}/${id}`);
+      await marketingDeletePromotion(id);
       await loadPromotions();
       setSuccessMessage("Promotion delete ho gai.");
     } catch (error) {
       console.error("Delete promotion error:", error);
-      alert("Promotion delete nahi hui. Console aur Network tab check karo.");
+      alert(
+        error?.message ||
+          "Promotion delete nahi hui. Console aur Network tab check karo."
+      );
     }
   };
 

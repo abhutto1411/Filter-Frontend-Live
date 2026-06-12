@@ -63,6 +63,20 @@ function isMeaningfulStockMovementEntry(entry) {
     if (d != null && Number.isFinite(Number(d)) && Math.abs(Number(d)) > 0.0005) {
         return true;
     }
+    // Show explicit stock sets (e.g. set to zero) even when rounded delta is ~0
+    if (entry.transactionType === 'stock_adjusted') {
+        const prev = entry.previousQty;
+        const next = entry.newQty;
+        if (
+            prev != null &&
+            next != null &&
+            Number.isFinite(Number(prev)) &&
+            Number.isFinite(Number(next)) &&
+            Math.abs(Number(prev) - Number(next)) > 0.0005
+        ) {
+            return true;
+        }
+    }
     return false;
 }
 
@@ -165,9 +179,15 @@ export function normalizeSupplierTimelineEntry(h) {
     ) {
         source = 'super_supplier_purchase';
         reference = superSupplierPurchaseRef(h, meta);
-        const signed = warehouseDeltaFromMeta(meta, true);
-        if (signed != null && signed !== 0) {
-            delta = signed;
+        const purchasePrev = readMetaQty(meta, 'previousQuantity', 'previousQty');
+        const purchaseNext = readMetaQty(meta, 'newQuantity', 'newQty');
+        if (purchasePrev != null && purchaseNext != null) {
+            delta = purchaseNext - purchasePrev;
+        } else {
+            const signed = warehouseDeltaFromMeta(meta, true);
+            if (signed != null && signed !== 0) {
+                delta = signed;
+            }
         }
         reason =
             reference.superSupplierName != null
@@ -184,6 +204,9 @@ export function normalizeSupplierTimelineEntry(h) {
         const next = readMetaQty(meta, 'newQuantity', 'newQty');
         if (prev != null && next != null) {
             delta = next - prev;
+        } else {
+            const signed = warehouseDeltaFromMeta(meta, true);
+            if (signed != null && signed !== 0) delta = signed;
         }
         source = 'manual';
         const metaReason =
@@ -258,17 +281,30 @@ export function normalizeSupplierTimelineEntry(h) {
             ? { name: String(h.createdByUserName).trim() }
             : null;
 
+    const metaPrev = readMetaQty(meta, 'previousQuantity', 'previousQty');
+    const metaNext = readMetaQty(meta, 'newQuantity', 'newQty');
+    const cfForWs =
+        uom.conversionFactor != null && uom.conversionFactor > 0 ? uom.conversionFactor : 1;
+    const hasMetaBalances =
+        metaPrev != null &&
+        metaNext != null &&
+        (type === 'stock_adjusted' ||
+            type === 'inventory_in_super_supplier_purchase');
+
     return {
         id,
         at,
         supplierProductId: h.supplierProductId != null ? String(h.supplierProductId) : null,
         productLabel: h.productName || '—',
-        previousQty: null,
-        newQty: null,
+        previousQty: hasMetaBalances ? metaPrev : null,
+        newQty: hasMetaBalances ? metaNext : null,
         delta,
-        previousQtyWorkshop: null,
-        newQtyWorkshop: null,
-        deltaWorkshop: null,
+        previousQtyWorkshop: hasMetaBalances ? metaPrev * cfForWs : null,
+        newQtyWorkshop: hasMetaBalances ? metaNext * cfForWs : null,
+        deltaWorkshop:
+            hasMetaBalances && delta != null && Number.isFinite(Number(delta))
+                ? Number(delta) * cfForWs
+                : null,
         reason,
         source,
         reference,
@@ -321,6 +357,38 @@ export function fillSupplierTimelineRunningQty(entries, currentQtyOnHand, produc
         }
 
         delta = Number(delta);
+
+        // Prefer authoritative warehouse balances from API metadata (manual adjustments).
+        if (
+            entry.previousQty != null &&
+            entry.newQty != null &&
+            Number.isFinite(Number(entry.previousQty)) &&
+            Number.isFinite(Number(entry.newQty))
+        ) {
+            const previousQty = Number(entry.previousQty);
+            const newQty = Number(entry.newQty);
+            runningNew = previousQty;
+            return {
+                ...entry,
+                previousQty,
+                newQty,
+                delta,
+                previousQtyWorkshop:
+                    entry.previousQtyWorkshop != null
+                        ? Number(entry.previousQtyWorkshop)
+                        : previousQty * cf,
+                newQtyWorkshop:
+                    entry.newQtyWorkshop != null
+                        ? Number(entry.newQtyWorkshop)
+                        : newQty * cf,
+                deltaWorkshop:
+                    entry.deltaWorkshop != null ? Number(entry.deltaWorkshop) : delta * cf,
+                warehouseUnit: whUom,
+                workshopUnit: wsUom,
+                conversionFactor: cf,
+            };
+        }
+
         const newQty = runningNew;
         const previousQty = runningNew - delta;
         runningNew = previousQty;
@@ -338,6 +406,30 @@ export function fillSupplierTimelineRunningQty(entries, currentQtyOnHand, produc
             conversionFactor: cf,
         };
     });
+}
+
+/**
+ * Inventory line value in SAR — warehouse qty × warehouse unit price (e.g. boxes × SAR/box).
+ * Never multiply workshop liters by per-box price.
+ */
+export function warehouseStockLineValueSar(row) {
+    if (!row) return 0;
+    const fromApi = row.valueWarehouseSar;
+    if (fromApi != null && Number.isFinite(Number(fromApi))) {
+        return Number(fromApi);
+    }
+    const whQty = Number(row.warehouseQty ?? row.currentBalanceWarehouse ?? 0);
+    const unitPrice = Number(row.price ?? row.warehouseUnitPrice ?? 0);
+    return whQty * unitPrice;
+}
+
+/** Purchase/base price per warehouse unit (Box), from API balances. */
+export function warehouseUnitPriceFromItem(item) {
+    if (!item) return 0;
+    const wh = Number(item.currentBalanceWarehouse ?? item.warehouseQty ?? 0);
+    const val = Number(item.valueWarehouseSar ?? 0);
+    if (wh > 0 && val > 0) return val / wh;
+    return Number(item.price ?? 0);
 }
 
 /** Format warehouse qty with optional workshop equivalent, e.g. "1 Box (12 Liter)". */

@@ -12,38 +12,22 @@ import {
   CheckCircle2,
   Trash2,
 } from 'lucide-react';
+
+import {
+  marketingCreatePromoCode,
+  marketingDeletePromoCode,
+  marketingListPromoCodes,
+  marketingListPromotions,
+} from '../../services/superAdminMarketingApi';
+
 import './MarketingUniversal.css';
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
-
-const ROOT = '/super-admin-marketing-protal';
-
-const ENDPOINTS = {
-  promoCodes: `${ROOT}/promo-codes`,
-  promoCodeOptions: `${ROOT}/promo-code-options`,
-};
-const statusOptions = ['Active', 'Inactive', 'Expired'];
+const statusOptions = ['Active', 'Inactive'];
 
 const discountTypeOptions = [
   { label: 'Percentage (%)', value: 'Percentage (%)' },
   { label: 'Fixed Amount (SAR)', value: 'Fixed Amount (SAR)' },
 ];
-
-const getHeaders = () => {
-  const token =
-    localStorage.getItem('access_token') ||
-    localStorage.getItem('token') ||
-    localStorage.getItem('filter_auth_token') ||
-    localStorage.getItem('base44_token');
-
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-};
-
-const buildUrl = (endpoint) => `${API_BASE_URL}${endpoint}`;
 
 const safeArray = (response, keys = []) => {
   if (Array.isArray(response)) return response;
@@ -61,62 +45,6 @@ const safeArray = (response, keys = []) => {
   return [];
 };
 
-const apiGet = async (endpoint, query = {}) => {
-  const params = new URLSearchParams();
-
-  Object.entries(query).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') {
-      params.append(key, value);
-    }
-  });
-
-  const url = `${buildUrl(endpoint)}${params.toString() ? `?${params}` : ''}`;
-
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: getHeaders(),
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `GET ${endpoint} failed`);
-  }
-
-  return response.json();
-};
-
-const apiPost = async (endpoint, body = {}) => {
-  const response = await fetch(buildUrl(endpoint), {
-    method: 'POST',
-    headers: getHeaders(),
-    credentials: 'include',
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `POST ${endpoint} failed`);
-  }
-
-  return response.json();
-};
-
-const apiDelete = async (endpoint) => {
-  const response = await fetch(buildUrl(endpoint), {
-    method: 'DELETE',
-    headers: getHeaders(),
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `DELETE ${endpoint} failed`);
-  }
-
-  return response.json();
-};
-
 const randomCode = () => {
   return Math.random().toString(36).slice(2, 9).toUpperCase();
 };
@@ -132,6 +60,16 @@ const toDateTimeLocal = (value) => {
   const localDate = new Date(date.getTime() - offset * 60 * 1000);
 
   return localDate.toISOString().slice(0, 16);
+};
+
+const toDateOnly = (value) => {
+  if (!value) return '';
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return '';
+
+  return date.toISOString().slice(0, 10);
 };
 
 const normalizeOption = (item, fallbackPrefix) => {
@@ -161,7 +99,9 @@ const normalizeOption = (item, fallbackPrefix) => {
 };
 
 const normalizePromoCode = (item) => {
-  const statusRaw = String(item?.status || 'active').toLowerCase();
+  const statusRaw = String(
+    item?.status || (item?.isActive === false ? 'inactive' : 'active')
+  ).toLowerCase();
 
   const statusMap = {
     active: 'Active',
@@ -177,18 +117,30 @@ const normalizePromoCode = (item) => {
       item?.promotion_name ||
       item?.promotionName ||
       item?.promotion ||
+      item?.description ||
       '',
     promotionId: item?.promotion_id || item?.promotionId || '',
     discountType: item?.discount_type || item?.discountType || 'percentage',
     discountValue: item?.discount_value ?? item?.discountValue ?? 0,
-    minPurchase: item?.min_purchase_amount ?? item?.minPurchaseAmount ?? 0,
-    maxUsage: item?.max_usage_count ?? item?.maxUsageCount ?? 0,
+    minPurchase:
+      item?.min_purchase_amount ??
+      item?.minPurchaseAmount ??
+      item?.minOrderAmount ??
+      0,
+    maxUsage:
+      item?.max_usage_count ??
+      item?.maxUsageCount ??
+      item?.usageLimit ??
+      0,
     currentUsage:
-      item?.current_usage_count ?? item?.currentUsageCount ?? 0,
+      item?.current_usage_count ??
+      item?.currentUsageCount ??
+      item?.usageCount ??
+      0,
     validFrom: item?.valid_from || item?.validFrom || '',
     validUntil: item?.valid_until || item?.validTo || '',
     showSavings: Boolean(item?.show_on_invoice ?? item?.showOnInvoice ?? false),
-    notes: item?.notes || '',
+    notes: item?.notes || item?.description || '',
     status: statusMap[statusRaw] || 'Active',
   };
 };
@@ -209,13 +161,10 @@ const mapDiscountTypeToUi = (value) => {
   return 'Percentage (%)';
 };
 
-const mapStatusToBackend = (value) => {
+const mapStatusToIsActive = (value) => {
   const raw = String(value || '').toLowerCase();
 
-  if (raw === 'inactive') return 'inactive';
-  if (raw === 'expired') return 'expired';
-
-  return 'active';
+  return raw !== 'inactive';
 };
 
 const SelectField = ({ value, onChange, options }) => {
@@ -238,13 +187,7 @@ const SelectField = ({ value, onChange, options }) => {
   );
 };
 
-const PromotionSelect = ({
-  value,
-  onChange,
-  options,
-  loading,
-  error,
-}) => {
+const PromotionSelect = ({ value, onChange, options, loading, error }) => {
   const wrapRef = useRef(null);
   const [open, setOpen] = useState(false);
 
@@ -275,7 +218,9 @@ const PromotionSelect = ({
         onClick={() => setOpen((prev) => !prev)}
         className={`mk-code-dd-btn ${open ? 'open' : ''}`}
       >
-        <span>{loading ? 'Loading...' : selected?.label || 'Select promotion...'}</span>
+        <span>
+          {loading ? 'Loading...' : selected?.label || 'Select promotion...'}
+        </span>
         <ChevronDown size={14} />
       </button>
 
@@ -398,6 +343,16 @@ const GenerateCodeModal = ({
 
     if (!form.discountValue) {
       alert('Discount value is required.');
+      return;
+    }
+
+    if (!form.validFrom || !form.validUntil) {
+      alert('Valid from and valid until are required.');
+      return;
+    }
+
+    if (new Date(form.validUntil) < new Date(form.validFrom)) {
+      alert('Valid until must be after valid from.');
       return;
     }
 
@@ -628,7 +583,7 @@ export const PromoCodes = () => {
       setLoadingCodes(true);
       setPageError('');
 
-      const data = await apiGet(ENDPOINTS.promoCodes, {
+      const data = await marketingListPromoCodes({
         limit: 200,
         offset: 0,
         status: 'all',
@@ -639,7 +594,7 @@ export const PromoCodes = () => {
       );
     } catch (error) {
       console.error('Promo codes load error:', error);
-      setPageError('Promo codes API load nahi hui.');
+      setPageError(error?.message || 'Promo codes API load nahi hui.');
       setCodes([]);
     } finally {
       setLoadingCodes(false);
@@ -651,7 +606,11 @@ export const PromoCodes = () => {
       setLoadingOptions(true);
       setOptionsError('');
 
-      const data = await apiGet(ENDPOINTS.promoCodeOptions);
+      const data = await marketingListPromotions({
+        limit: 200,
+        offset: 0,
+        status: 'all',
+      });
 
       const promotionOptions = safeArray(data, ['promotions']).map((item) => {
         const option = normalizeOption(item, 'Promotion');
@@ -660,15 +619,15 @@ export const PromoCodes = () => {
           ...option,
           discountType: item.discountType || item.discount_type || '',
           discountValue: item.discountValue ?? item.discount_value ?? '',
-          validFrom: item.validFrom || item.valid_from || '',
-          validTo: item.validTo || item.valid_until || '',
+          validFrom: item.validFrom || item.valid_from || item.startAt || '',
+          validTo: item.validTo || item.valid_until || item.endAt || '',
         };
       });
 
       setPromotions(promotionOptions);
     } catch (error) {
       console.error('Promo code options error:', error);
-      setOptionsError('Options load nahi huay.');
+      setOptionsError(error?.message || 'Options load nahi huay.');
       setPromotions([]);
     } finally {
       setLoadingOptions(false);
@@ -695,40 +654,52 @@ export const PromoCodes = () => {
   };
 
   const createPayload = () => {
+    const descriptionParts = [];
+
+    if (form.promotionName) {
+      descriptionParts.push(`Promotion: ${form.promotionName}`);
+    }
+
+    if (form.notes) {
+      descriptionParts.push(form.notes);
+    }
+
     return {
       code: form.code.trim().toUpperCase(),
 
-      promotion_id: form.promotionId || null,
       promotionId: form.promotionId || null,
-      promotion_name: form.promotionName || null,
+      promotion_id: form.promotionId || null,
       promotionName: form.promotionName || null,
+      promotion_name: form.promotionName || null,
 
-      discount_type: mapDiscountTypeToBackend(form.discountType),
       discountType: mapDiscountTypeToBackend(form.discountType),
+      discount_type: mapDiscountTypeToBackend(form.discountType),
 
-      discount_value: Number(form.discountValue || 0),
       discountValue: Number(form.discountValue || 0),
+      discount_value: Number(form.discountValue || 0),
 
-      min_purchase_amount: Number(form.minPurchase || 0),
+      minOrderAmount: Number(form.minPurchase || 0),
       minPurchaseAmount: Number(form.minPurchase || 0),
+      min_purchase_amount: Number(form.minPurchase || 0),
 
-      max_usage_count: Number(form.maxUsage || 0),
+      usageLimit: Number(form.maxUsage || 0),
       maxUsageCount: Number(form.maxUsage || 0),
+      max_usage_count: Number(form.maxUsage || 0),
 
-      current_usage_count: 0,
-      currentUsageCount: 0,
+      validFrom: toDateOnly(form.validFrom),
+      valid_from: toDateOnly(form.validFrom),
 
-      valid_from: form.validFrom || null,
-      validFrom: form.validFrom || null,
+      validTo: toDateOnly(form.validUntil),
+      valid_until: toDateOnly(form.validUntil),
 
-      valid_until: form.validUntil || null,
-      validTo: form.validUntil || null,
+      description: descriptionParts.join(' | ') || null,
+      notes: form.notes || null,
 
-      show_on_invoice: form.showSavings,
+      isActive: mapStatusToIsActive(form.status),
+      status: String(form.status || '').toLowerCase(),
+
       showOnInvoice: form.showSavings,
-
-      notes: form.notes,
-      status: mapStatusToBackend(form.status),
+      show_on_invoice: form.showSavings,
     };
   };
 
@@ -737,7 +708,7 @@ export const PromoCodes = () => {
       setSubmitting(true);
       setSuccessMessage('');
 
-      await apiPost(ENDPOINTS.promoCodes, createPayload());
+      await marketingCreatePromoCode(createPayload());
 
       await loadCodes();
 
@@ -746,7 +717,7 @@ export const PromoCodes = () => {
       setSuccessMessage('Promo code create ho gaya.');
     } catch (error) {
       console.error('Promo code create error:', error);
-      alert('Promo code save nahi hua. Console aur Network tab check karo.');
+      alert(error?.message || 'Promo code save nahi hua. Console aur Network tab check karo.');
     } finally {
       setSubmitting(false);
     }
@@ -767,12 +738,12 @@ export const PromoCodes = () => {
     if (!ok) return;
 
     try {
-      await apiDelete(`${ENDPOINTS.promoCodes}/${id}`);
+      await marketingDeletePromoCode(id);
       await loadCodes();
       setSuccessMessage('Promo code delete ho gaya.');
     } catch (error) {
       console.error('Promo code delete error:', error);
-      alert('Promo code delete nahi hua.');
+      alert(error?.message || 'Promo code delete nahi hua.');
     }
   };
 

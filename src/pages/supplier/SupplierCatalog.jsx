@@ -39,6 +39,33 @@ function unwrapProducts(res) {
     return [];
 }
 
+/** Match a master-catalog row to an existing supplier product (SKU first, then name; prefer active). */
+function resolveExistingSupplierProductForMaster(master, supplierProducts) {
+    const skuKey = String(master?.sku || '').trim().toLowerCase();
+    const nameKey = String(master?.name || '').trim().toLowerCase();
+
+    if (skuKey) {
+        const skuMatch = (supplierProducts || []).find(
+            (p) => String(p?.sku || '').trim().toLowerCase() === skuKey,
+        );
+        if (skuMatch) return skuMatch;
+    }
+
+    if (nameKey) {
+        const nameMatches = (supplierProducts || []).filter(
+            (p) =>
+                String(p?.name || p?.productName || '')
+                    .trim()
+                    .toLowerCase() === nameKey,
+        );
+        if (nameMatches.length > 0) {
+            return nameMatches.find((p) => p?.isActive !== false) ?? nameMatches[0];
+        }
+    }
+
+    return null;
+}
+
 /** Map master product → supplier card row (aligned with Master Catalog grid fields). */
 function mapMasterCatalogRow(p) {
     const brandName = (p.brandName || p.supplierName || '').trim() || '—';
@@ -430,22 +457,12 @@ export default function SupplierCatalog() {
         const defaults = {};
         selectedMasterProducts.forEach((p) => {
             const id = String(p.id);
-            const existingProduct =
-                existing.find(
-                    (ep) =>
-                        String(ep.sku || '').trim().toLowerCase() ===
-                            String(p.sku || '').trim().toLowerCase() ||
-                        String(ep.name || ep.productName || '')
-                            .trim()
-                            .toLowerCase() === String(p.name || '').trim().toLowerCase(),
-                ) ?? null;
+            const existingProduct = resolveExistingSupplierProductForMaster(p, existing);
             defaults[id] = {
                 openingQty: '0',
                 stockQty: '0',
                 criticalStockLevel: '',
-                warehouseUnit:
-                    existingProduct?.warehouseUnit ||
-                    (p.unit === 'piece' || p.unit === 'pcs' ? 'Box' : p.unit || 'Box'),
+                warehouseUnit: existingProduct?.warehouseUnit || 'Box',
                 workshopUnit: existingProduct?.workshopUnit || p.unit || 'pcs',
                 conversionFactor: String(existingProduct?.conversionFactor ?? 1),
             };
@@ -476,15 +493,6 @@ export default function SupplierCatalog() {
         setInventorySuccess('');
 
         try {
-            const bySku = new Map();
-            const byName = new Map();
-            existingSupplierProducts.forEach((p) => {
-                if (p?.sku) bySku.set(String(p.sku).trim().toLowerCase(), p);
-                if (p?.name || p?.productName) {
-                    byName.set(String(p.name || p.productName).trim().toLowerCase(), p);
-                }
-            });
-
             for (const master of selectedMasterProducts) {
                 const id = String(master.id);
                 const row = inventoryQtyForm[id] || {
@@ -517,12 +525,13 @@ export default function SupplierCatalog() {
                     }
                 }
 
-                const skuKey = String(master.sku || '').trim().toLowerCase();
-                const nameKey = String(master.name || '').trim().toLowerCase();
-
-                let supplierProductId =
-                    bySku.get(skuKey)?.id || byName.get(nameKey)?.id || null;
+                const existingMatch = resolveExistingSupplierProductForMaster(
+                    master,
+                    existingSupplierProducts,
+                );
+                let supplierProductId = existingMatch?.id ?? null;
                 const wasExistingSupplierProduct = !!supplierProductId;
+                const masterPrice = Number(master.purchasePrice ?? master.salePrice ?? 0);
 
                 if (!supplierProductId) {
                     const created = await createSupplierProduct({
@@ -532,9 +541,7 @@ export default function SupplierCatalog() {
                         warehouseUnit,
                         workshopUnit,
                         conversionFactor,
-                        pricePerWarehouseUnit: Number(
-                            master.purchasePrice ?? master.salePrice ?? 0,
-                        ),
+                        pricePerWarehouseUnit: masterPrice,
                         reorderLevel: openingQty,
                         ...(criticalStockAlert !== undefined
                             ? { criticalStockAlert }
@@ -546,36 +553,27 @@ export default function SupplierCatalog() {
                     }
                 }
 
-                if (skuKey) {
-                    bySku.set(skuKey, { id: supplierProductId });
-                }
-                if (nameKey) {
-                    byName.set(nameKey, { id: supplierProductId });
-                }
-
                 await setSupplierStock({
                     supplierProductId: String(supplierProductId),
                     ...(autoLocationId ? { supplierLocationId: String(autoLocationId) } : {}),
                     currentQuantity: stockQty,
                 });
 
-                if (
-                    wasExistingSupplierProduct &&
-                    (criticalStockAlert !== undefined ||
-                        warehouseUnit ||
-                        workshopUnit ||
-                        conversionFactor)
-                ) {
+                if (wasExistingSupplierProduct) {
                     await updateSupplierProduct(String(supplierProductId), {
-                        ...(criticalStockAlert !== undefined
-                            ? { criticalStockAlert }
-                            : {}),
+                        isActive: true,
                         warehouseUnit,
                         workshopUnit,
                         conversionFactor,
+                        pricePerWarehouseUnit: masterPrice,
+                        ...(criticalStockAlert !== undefined
+                            ? { criticalStockAlert }
+                            : {}),
                     });
                 }
             }
+
+            await loadMyInventoryProducts();
 
             setInventorySuccess(
                 `${selectedMasterProducts.length} product(s) added to inventory successfully.`,

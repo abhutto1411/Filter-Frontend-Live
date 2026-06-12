@@ -258,15 +258,20 @@ function findPiCapsRow(line, inventoryItems) {
 }
 
 function linePiUomOptions(line, inv) {
-    const opts = [];
     const wu = String(inv?.warehouseUnit ?? '').trim();
     const wsu = String(inv?.workshopUnit ?? '').trim();
-    if (wu) opts.push(wu);
-    if (wsu && normPiUomLabel(wsu) !== normPiUomLabel(wu)) opts.push(wsu);
-    if (opts.length === 0) {
-        return [String(line?.uom ?? 'pcs').trim() || 'pcs'];
-    }
-    return opts;
+    if (wu) return [wu];
+    if (wsu) return [wsu];
+    return [String(line?.uom ?? 'Box').trim() || 'Box'];
+}
+
+/** Purchase invoices always stock-in in warehouse units (Box), never workshop (Liter). */
+function resolvePiLineUnitForApi(line, inv) {
+    const wu = String(inv?.warehouseUnit ?? line?.warehouseUnit ?? '').trim();
+    if (wu) return wu;
+    const wsu = String(inv?.workshopUnit ?? line?.workshopUnitCatalog ?? '').trim();
+    if (wsu) return wsu;
+    return String(line?.uom ?? 'Box').trim() || 'Box';
 }
 
 function formatPiUomConversionPreview(line, inv) {
@@ -277,14 +282,8 @@ function formatPiUomConversionPreview(line, inv) {
     const wsu = inv.workshopUnit || 'pcs';
     const qty = parseFloat(String(line.qty).replace(',', '.')) || 0;
     if (!(qty > 0)) return '';
-    const price = parseFloat(String(line.price).replace(',', '.')) || 0;
-    if (isPiWarehouseUomLine(line, inv)) {
-        const wsQty = roundMoney2(qty * cf);
-        const wsPrice = cf > 0 ? roundMoney2(price / cf) : price;
-        return `${qty} ${wu} → +${wsQty} ${wsu} in stock · SAR ${price.toFixed(2)}/${wu} → SAR ${wsPrice.toFixed(2)}/${wsu} cost`;
-    }
-    const whQty = roundMoney2(qty / cf);
-    return `${qty} ${wsu} → +${whQty} ${wu} warehouse stock`;
+    const wsQty = roundMoney2(qty * cf);
+    return `+${qty} ${wu} warehouse stock (= ${wsQty} ${wsu})`;
 }
 
 function scorePurchaseSearchItem(item, q) {
@@ -922,7 +921,7 @@ export default function SupplierPurchaseInvoices() {
                         catItem.type === 'Stock'
                             ? '1410 - Inventory Asset'
                             : '5100 - Cost of Goods Sold',
-                    uom: catItem.unit || catItem.warehouseUnit || line.uom || 'Box',
+                    uom: catItem.warehouseUnit || catItem.unit || line.uom || 'Box',
                     warehouseUnit: catItem.warehouseUnit ?? line.warehouseUnit ?? null,
                     workshopUnitCatalog:
                         catItem.workshopUnit ?? line.workshopUnitCatalog ?? null,
@@ -1147,7 +1146,7 @@ export default function SupplierPurchaseInvoices() {
             account:
                 item.type === 'Stock' ? '1410 - Inventory Asset' : '5100 - Cost of Goods Sold',
             description: '',
-            uom: item.unit || item.warehouseUnit || 'Box',
+            uom: item.warehouseUnit || 'Box',
             warehouseUnit: item.warehouseUnit ?? null,
             workshopUnitCatalog: item.workshopUnit ?? null,
             conversionFactor: item.conversionFactor ?? 1,
@@ -1405,7 +1404,9 @@ export default function SupplierPurchaseInvoices() {
                     sku: String(line.sku || '').trim(),
                     name: String(line.name || '').trim(),
                     price: Number(line.price) || 0,
-                    unit: String(line.unit || 'pcs').trim() || 'pcs',
+                    warehouseUnit: String(line.warehouseUnit || line.unit || 'Box').trim() || 'Box',
+                    workshopUnit: String(line.workshopUnit || '').trim() || undefined,
+                    conversionFactor: Number(line.conversionFactor) || 1,
                     type: 'Stock',
                 });
             }, 0);
@@ -1443,15 +1444,7 @@ export default function SupplierPurchaseInvoices() {
             const unitPriceExForApi =
                 qtyNum > 0 ? roundMoney2(fin.lineEx / qtyNum) : 0;
             const inv = findPiCapsRow(line, catalogItems);
-            const lineUom = String(line.uom || '').trim();
-            const warehouseUom = String(
-                inv?.warehouseUnit || line.warehouseUnit || '',
-            ).trim();
-            const resolvedUnit =
-                lineUom ||
-                warehouseUom ||
-                String(inv?.unit || 'Box').trim() ||
-                'Box';
+            const resolvedUnit = resolvePiLineUnitForApi(line, inv);
             return {
                 idx,
                 productName: String(line.item || '').trim(),
@@ -2684,7 +2677,19 @@ export default function SupplierPurchaseInvoices() {
                                     <div className="pi-col-acc">Account</div>
                                     {showDesc && <div className="pi-col-desc">Description</div>}
                                     <div className="pi-col-uom">UOM</div>
-                                    <div className="pi-col-qty">Qty</div>
+                                    <div className="pi-col-qty">
+                                        Qty
+                                        <span
+                                            style={{
+                                                display: 'block',
+                                                fontWeight: 400,
+                                                fontSize: 11,
+                                                color: '#64748b',
+                                            }}
+                                        >
+                                            (warehouse)
+                                        </span>
+                                    </div>
                                     <div className="pi-col-price">
                                         Unit price
                                         {amountsTaxInclusive ? (
@@ -2713,7 +2718,7 @@ export default function SupplierPurchaseInvoices() {
                                     const capsRow = findPiCapsRow(line, catalogItems);
                                     const uomOpts = capsRow
                                         ? linePiUomOptions(line, capsRow)
-                                        : [String(line.uom || 'Box').trim() || 'Box'];
+                                        : [String(line.warehouseUnit || line.uom || 'Box').trim() || 'Box'];
                                     const conversionPreview = formatPiUomConversionPreview(
                                         line,
                                         capsRow,
@@ -2967,61 +2972,30 @@ export default function SupplierPurchaseInvoices() {
                                             </div>
                                         )}
                                         <div className="pi-col-uom">
-                                            {uomOpts.length > 1 ? (
-                                                <select
-                                                    className="pi-row-input"
-                                                    value={line.uom ?? uomOpts[0]}
-                                                    ref={(el) => {
-                                                        lineFieldRefs.current[`${line.id}:uom`] = el;
-                                                    }}
-                                                    onChange={(e) =>
-                                                        updateLineItem(
-                                                            line.id,
-                                                            'uom',
-                                                            e.target.value,
-                                                        )
-                                                    }
-                                                    onKeyDown={(e) =>
-                                                        handleLineFieldTab(
-                                                            e,
-                                                            line.id,
-                                                            'uom',
-                                                            idx,
-                                                        )
-                                                    }
-                                                >
-                                                    {uomOpts.map((opt) => (
-                                                        <option key={opt} value={opt}>
-                                                            {opt}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            ) : (
                                             <input
                                                 type="text"
                                                 className="pi-row-input"
-                                                placeholder="UOM"
-                                                value={line.uom ?? ''}
-                                                    ref={(el) => {
-                                                        lineFieldRefs.current[`${line.id}:uom`] = el;
-                                                    }}
-                                                onChange={(e) =>
-                                                    updateLineItem(
+                                                readOnly
+                                                title="Purchase quantity is always in warehouse units (e.g. Box)"
+                                                value={
+                                                    capsRow?.warehouseUnit ||
+                                                    line.warehouseUnit ||
+                                                    line.uom ||
+                                                    uomOpts[0] ||
+                                                    'Box'
+                                                }
+                                                ref={(el) => {
+                                                    lineFieldRefs.current[`${line.id}:uom`] = el;
+                                                }}
+                                                onKeyDown={(e) =>
+                                                    handleLineFieldTab(
+                                                        e,
                                                         line.id,
                                                         'uom',
-                                                        e.target.value,
+                                                        idx,
                                                     )
                                                 }
-                                                    onKeyDown={(e) =>
-                                                        handleLineFieldTab(
-                                                            e,
-                                                            line.id,
-                                                            'uom',
-                                                            idx,
-                                                        )
-                                                    }
-                                                />
-                                            )}
+                                            />
                                         </div>
                                         <div className="pi-col-qty">
                                             <input

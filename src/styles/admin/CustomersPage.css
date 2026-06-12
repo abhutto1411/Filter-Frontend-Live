@@ -405,8 +405,44 @@
     font-size: 0.875rem;
 }
 
+.billing-date-field--datetime input {
+    min-width: 210px;
+}
+
 .billing-stat-balance .billing-stat-val {
     color: #DC2626;
+}
+
+.billing-stat-sub {
+    display: block;
+    margin-top: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #B91C1C;
+}
+
+.billing-status-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: capitalize;
+}
+
+.billing-status-paid {
+    background: #D1FAE5;
+    color: #047857;
+}
+
+.billing-status-unpaid {
+    background: #FEE2E2;
+    color: #B91C1C;
+}
+
+.billing-status-neutral {
+    background: #F3F4F6;
+    color: #6B7280;
 }
 
 .billing-due-date-banner {

@@ -6,6 +6,10 @@ import {
     getSupplierReceivables,
 } from '../../services/supplierApi';
 import { ShimmerTable } from '../../components/supplier/Shimmer';
+import {
+    warehouseStockLineValueSar,
+    warehouseUnitPriceFromItem,
+} from './supplierInventoryTimelineUtils';
 
 const REPORT_CATEGORIES = [
     { id: 'ar', label: 'AR Summary', icon: FileText, color: '#DBEAFE', textColor: '#1D4ED8' },
@@ -22,15 +26,14 @@ function formatInventoryRows(res) {
               sku: item.sku || '-',
               name: item.productName,
               qty: Number(item.currentBalanceWorkshop || 0),
+              warehouseQty: Number(item.currentBalanceWarehouse || 0),
+              valueWarehouseSar: Number(item.valueWarehouseSar || 0),
               criticalLevel: item.criticalAt != null ? Number(item.criticalAt) : 0,
               reorder: item.reorderAt != null ? Number(item.reorderAt) : 0,
-              price:
-                  Number(item.valueWarehouseSar || 0) > 0 && Number(item.currentBalanceWarehouse || 0) > 0
-                      ? Number(item.valueWarehouseSar) / Number(item.currentBalanceWarehouse)
-                      : 0,
+              price: warehouseUnitPriceFromItem(item),
           }))
         : [];
-    const inventoryValue = items.reduce((s, i) => s + (i.qty || 0) * (i.price || 0), 0);
+    const inventoryValue = items.reduce((s, i) => s + warehouseStockLineValueSar(i), 0);
     const movements = Array.isArray(res?.transactionHistory)
         ? res.transactionHistory.map((h, idx) => ({
               id: h.id || idx,

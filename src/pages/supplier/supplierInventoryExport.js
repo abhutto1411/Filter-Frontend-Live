@@ -1,6 +1,9 @@
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
-import { formatSupplierTimelineSourceRef } from './supplierInventoryTimelineUtils';
+import {
+    formatSupplierTimelineSourceRef,
+    warehouseStockLineValueSar,
+} from './supplierInventoryTimelineUtils';
 
 function safeFileSlug(s) {
     const t = String(s || 'export')
@@ -142,19 +145,19 @@ export function exportStockInventoryExcel(stockRows, filenameBase = 'supplier-st
         'By location',
     ];
     const rows = (stockRows || []).map((s) => {
-        const qty = Number(s.qty) || 0;
+        const qtyWh = Number(s.warehouseQty ?? s.qty) || 0;
         const critLevel = Number(s.criticalLevel ?? 0);
         const reorder = s.reorder != null && s.reorder !== '' ? Number(s.reorder) : '';
         const price = Number(s.price) || 0;
-        const value = qty * price;
-        const isCritical = qty <= critLevel;
+        const value = warehouseStockLineValueSar(s);
+        const isCritical = (Number(s.warehouseQty ?? s.qty) || 0) <= critLevel;
         const sku =
             !s.sku || s.sku === '-' ? '' : String(s.sku);
         return [
             s.name || '',
             sku,
-            s.unit || '',
-            qty,
+            s.warehouseUnit || s.unit || '',
+            qtyWh,
             s.criticalLevel != null ? critLevel : '',
             reorder === '' ? '' : reorder,
             price,
@@ -216,17 +219,17 @@ export function exportStockInventoryPdf(stockRows, filenameBase = 'supplier-stoc
     const headers = ['Product', 'SKU', 'Unit', 'Qty', 'Critical', 'Reorder', 'Price', 'Value', 'Status', 'Locations'];
     const colW = [130, 58, 32, 36, 40, 40, 48, 52, 42, 192];
     const rows = (stockRows || []).map((s) => {
-        const qty = Number(s.qty) || 0;
+        const qtyWh = Number(s.warehouseQty ?? s.qty) || 0;
         const critLevel = Number(s.criticalLevel ?? 0);
         const price = Number(s.price) || 0;
-        const value = qty * price;
+        const value = warehouseStockLineValueSar(s);
         const sku = !s.sku || s.sku === '-' ? '' : String(s.sku);
-        const isCritical = qty <= critLevel;
+        const isCritical = qtyWh <= critLevel;
         return [
             String(s.name || ''),
             sku,
-            String(s.unit || ''),
-            fmtQtyPlain(qty),
+            String(s.warehouseUnit || s.unit || ''),
+            fmtQtyPlain(qtyWh),
             s.criticalLevel != null ? fmtQtyPlain(critLevel) : '—',
             s.reorder != null ? fmtQtyPlain(s.reorder) : '—',
             price.toFixed(2),

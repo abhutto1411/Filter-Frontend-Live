@@ -11,56 +11,43 @@ import {
   CheckCircle2,
   Trash2,
 } from 'lucide-react';
+
+import {
+  marketingCreateLoyaltyProgram,
+  marketingDeleteLoyaltyProgram,
+  marketingListLoyaltyPrograms,
+} from '../../services/superAdminMarketingApi';
+
 import './MarketingUniversal.css';
-
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
-
-const ROOT = '/super-admin-marketing-protal';
-
-const ENDPOINTS = {
-  loyaltyPrograms: `${ROOT}/loyalty-programs`,
-};
 
 const tierMeta = [
   {
     key: 'bronze',
     name: 'Bronze',
     className: 'mk-loyalty-tier-bronze',
+    colorHex: '#A65A21',
   },
   {
     key: 'silver',
     name: 'Silver',
     className: 'mk-loyalty-tier-silver',
+    colorHex: '#7F95AE',
   },
   {
     key: 'gold',
     name: 'Gold',
     className: 'mk-loyalty-tier-gold',
+    colorHex: '#E5A100',
   },
   {
     key: 'platinum',
     name: 'Platinum',
     className: 'mk-loyalty-tier-platinum',
+    colorHex: '#2E3B54',
   },
 ];
 
 const statusOptions = ['Inactive', 'Active'];
-
-const getHeaders = () => {
-  const token =
-    localStorage.getItem('access_token') ||
-    localStorage.getItem('token') ||
-    localStorage.getItem('filter_auth_token') ||
-    localStorage.getItem('base44_token');
-
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-};
-
-const buildUrl = (endpoint) => `${API_BASE_URL}${endpoint}`;
 
 const safeArray = (response, keys = []) => {
   if (Array.isArray(response)) return response;
@@ -78,73 +65,50 @@ const safeArray = (response, keys = []) => {
   return [];
 };
 
-const apiGet = async (endpoint, query = {}) => {
-  const params = new URLSearchParams();
-
-  Object.entries(query).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') {
-      params.append(key, value);
-    }
-  });
-
-  const url = `${buildUrl(endpoint)}${params.toString() ? `?${params}` : ''}`;
-
-  const response = await fetch(url, {
-    method: 'GET',
-    headers: getHeaders(),
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `GET ${endpoint} failed`);
-  }
-
-  return response.json();
-};
-
-const apiPost = async (endpoint, body = {}) => {
-  const response = await fetch(buildUrl(endpoint), {
-    method: 'POST',
-    headers: getHeaders(),
-    credentials: 'include',
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `POST ${endpoint} failed`);
-  }
-
-  return response.json();
-};
-
-const apiDelete = async (endpoint) => {
-  const response = await fetch(buildUrl(endpoint), {
-    method: 'DELETE',
-    headers: getHeaders(),
-    credentials: 'include',
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || `DELETE ${endpoint} failed`);
-  }
-
-  return response.json();
+const getStoredWorkshopId = () => {
+  return (
+    localStorage.getItem('workshopId') ||
+    localStorage.getItem('workshop_id') ||
+    localStorage.getItem('selectedWorkshopId') ||
+    localStorage.getItem('filter_workshop_id') ||
+    ''
+  );
 };
 
 const normalizeProgram = (item) => {
-  const statusRaw = String(item?.status || 'inactive').toLowerCase();
+  const statusRaw = String(
+    item?.status || (item?.isActive ? 'active' : 'inactive')
+  ).toLowerCase();
 
   const statusMap = {
     active: 'Active',
     inactive: 'Inactive',
   };
 
+  const tiers = Array.isArray(item?.tiers) ? item.tiers : [];
+
+  const findTier = (name) => {
+    return tiers.find(
+      (tier) =>
+        String(tier?.tierName || tier?.name || '')
+          .toLowerCase()
+          .trim() === name
+    );
+  };
+
+  const bronzeTier = findTier('bronze');
+  const silverTier = findTier('silver');
+  const goldTier = findTier('gold');
+  const platinumTier = findTier('platinum');
+
   return {
     ...item,
     id: String(item?.id || item?._id || Date.now()),
+
+    workshopId:
+      item?.workshopId?.toString?.() ||
+      item?.workshop_id?.toString?.() ||
+      '',
 
     name:
       item?.program_name ||
@@ -157,11 +121,13 @@ const normalizeProgram = (item) => {
     pointsPerSar:
       item?.points_per_sar ??
       item?.pointsPerSar ??
+      item?.pointsPerSarSpent ??
       1,
 
     pointsForDiscount:
       item?.redemption_rate ??
       item?.redemptionRate ??
+      item?.pointsPerSarDiscount ??
       100,
 
     minRedeemPoints:
@@ -173,10 +139,12 @@ const normalizeProgram = (item) => {
 
     bronze: {
       minPoints:
+        bronzeTier?.minPoints ??
         item?.tier_bronze_min ??
         item?.tierBronzeMin ??
         0,
       discount:
+        bronzeTier?.bonusPercent ??
         item?.bronze_discount_pct ??
         item?.bronzeDiscountPct ??
         0,
@@ -184,10 +152,12 @@ const normalizeProgram = (item) => {
 
     silver: {
       minPoints:
+        silverTier?.minPoints ??
         item?.tier_silver_min ??
         item?.tierSilverMin ??
         1000,
       discount:
+        silverTier?.bonusPercent ??
         item?.silver_discount_pct ??
         item?.silverDiscountPct ??
         5,
@@ -195,10 +165,12 @@ const normalizeProgram = (item) => {
 
     gold: {
       minPoints:
+        goldTier?.minPoints ??
         item?.tier_gold_min ??
         item?.tierGoldMin ??
         5000,
       discount:
+        goldTier?.bonusPercent ??
         item?.gold_discount_pct ??
         item?.goldDiscountPct ??
         10,
@@ -206,10 +178,12 @@ const normalizeProgram = (item) => {
 
     platinum: {
       minPoints:
+        platinumTier?.minPoints ??
         item?.tier_platinum_min ??
         item?.tierPlatinumMin ??
         15000,
       discount:
+        platinumTier?.bonusPercent ??
         item?.platinum_discount_pct ??
         item?.platinumDiscountPct ??
         15,
@@ -217,12 +191,9 @@ const normalizeProgram = (item) => {
   };
 };
 
-const mapStatusToBackend = (value) => {
+const mapStatusToIsActive = (value) => {
   const raw = String(value || '').toLowerCase();
-
-  if (raw === 'active') return 'active';
-
-  return 'inactive';
+  return raw === 'active';
 };
 
 const TierPreviewCard = ({ tier, programName }) => {
@@ -264,9 +235,7 @@ const TierConfigCard = ({ tier, values, onChange }) => {
           <input
             type="number"
             value={values.minPoints}
-            onChange={(e) =>
-              onChange(tier.key, 'minPoints', e.target.value)
-            }
+            onChange={(e) => onChange(tier.key, 'minPoints', e.target.value)}
             className="mk-loyalty-tier-input"
           />
         </div>
@@ -276,9 +245,7 @@ const TierConfigCard = ({ tier, values, onChange }) => {
           <input
             type="number"
             value={values.discount}
-            onChange={(e) =>
-              onChange(tier.key, 'discount', e.target.value)
-            }
+            onChange={(e) => onChange(tier.key, 'discount', e.target.value)}
             className="mk-loyalty-tier-input"
           />
         </div>
@@ -374,7 +341,7 @@ export const LoyaltyPrograms = () => {
       setLoadingPrograms(true);
       setPageError('');
 
-      const data = await apiGet(ENDPOINTS.loyaltyPrograms, {
+      const data = await marketingListLoyaltyPrograms({
         limit: 200,
         offset: 0,
         status: 'all',
@@ -387,7 +354,7 @@ export const LoyaltyPrograms = () => {
       );
     } catch (error) {
       console.error('Loyalty programs load error:', error);
-      setPageError('Loyalty programs API load nahi hui.');
+      setPageError(error?.message || 'Loyalty programs API load nahi hui.');
       setPrograms([]);
     } finally {
       setLoadingPrograms(false);
@@ -411,21 +378,43 @@ export const LoyaltyPrograms = () => {
     resetForm();
   };
 
+  const buildTiers = () => {
+    return tierMeta.map((tier, index) => ({
+      tierName: tier.name,
+      minPoints: Number(form[tier.key]?.minPoints || 0),
+      bonusPercent: Number(form[tier.key]?.discount || 0),
+      sortOrder: index + 1,
+      colorHex: tier.colorHex,
+    }));
+  };
+
   const createPayload = () => {
+    const workshopId = getStoredWorkshopId();
+
     return {
+      workshopId,
+
+      name: form.name.trim(),
       program_name: form.name.trim(),
       programName: form.name.trim(),
 
       description: form.description.trim(),
 
+      pointsPerSarSpent: Number(form.pointsPerSar || 1),
       points_per_sar: Number(form.pointsPerSar || 1),
       pointsPerSar: Number(form.pointsPerSar || 1),
 
+      pointsPerSarDiscount: Number(form.pointsForDiscount || 100),
       redemption_rate: Number(form.pointsForDiscount || 100),
       redemptionRate: Number(form.pointsForDiscount || 100),
 
-      min_points_to_redeem: Number(form.minRedeemPoints || 500),
       minPointsToRedeem: Number(form.minRedeemPoints || 500),
+      min_points_to_redeem: Number(form.minRedeemPoints || 500),
+
+      isActive: mapStatusToIsActive(form.status),
+      status: String(form.status || '').toLowerCase(),
+
+      tiers: buildTiers(),
 
       tier_bronze_min: Number(form.bronze.minPoints || 0),
       tierBronzeMin: Number(form.bronze.minPoints || 0),
@@ -450,8 +439,6 @@ export const LoyaltyPrograms = () => {
 
       platinum_discount_pct: Number(form.platinum.discount || 15),
       platinumDiscountPct: Number(form.platinum.discount || 15),
-
-      status: mapStatusToBackend(form.status),
     };
   };
 
@@ -467,7 +454,7 @@ export const LoyaltyPrograms = () => {
       setSubmitting(true);
       setSuccessMessage('');
 
-      await apiPost(ENDPOINTS.loyaltyPrograms, createPayload());
+      await marketingCreateLoyaltyProgram(createPayload());
 
       await loadPrograms();
 
@@ -476,7 +463,10 @@ export const LoyaltyPrograms = () => {
       setSuccessMessage('Loyalty program create ho gaya.');
     } catch (error) {
       console.error('Loyalty program create error:', error);
-      alert('Loyalty program save nahi hua. Console aur Network tab check karo.');
+      alert(
+        error?.message ||
+          'Loyalty program save nahi hua. Console aur Network tab check karo.'
+      );
     } finally {
       setSubmitting(false);
     }
@@ -490,12 +480,12 @@ export const LoyaltyPrograms = () => {
     if (!ok) return;
 
     try {
-      await apiDelete(`${ENDPOINTS.loyaltyPrograms}/${id}`);
+      await marketingDeleteLoyaltyProgram(id);
       await loadPrograms();
       setSuccessMessage('Loyalty program delete ho gaya.');
     } catch (error) {
       console.error('Loyalty program delete error:', error);
-      alert('Loyalty program delete nahi hua.');
+      alert(error?.message || 'Loyalty program delete nahi hua.');
     }
   };
 

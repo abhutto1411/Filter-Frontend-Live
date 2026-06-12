@@ -8,14 +8,28 @@ import {
     FileText,
 } from 'lucide-react';
 import { apiFetch } from '../../services/api';
+import '../../styles/admin/CustomersPage.css';
+import {
+    billingStatusBadgeClass,
+    fmtBillingCellAmount,
+    fmtBillingMoney,
+    fmtPeriodLabel,
+} from '../../utils/corporateBillingFormat';
 
-const num = (v) =>
-    `SAR ${Number(v ?? 0).toLocaleString(undefined, {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    })}`;
+const num = (v) => `SAR ${fmtBillingMoney(v)}`;
+const fmtCell = fmtBillingCellAmount;
 
-const fmtCell = (v) => (v == null || v === '' ? '—' : num(v));
+function fmtBillPeriod(bill) {
+    const start = bill?.periodStartDate;
+    const end = bill?.periodEndDate;
+    if (!start && !end) return 'All transactions';
+    const toIso = (v) => {
+        if (!v) return null;
+        const d = new Date(v);
+        return Number.isNaN(d.getTime()) ? String(v) : d.toISOString();
+    };
+    return fmtPeriodLabel(toIso(start), toIso(end), false);
+}
 
 const PAYMENT_METHODS = ['Wallet', 'Bank Transfer', 'Cash', 'Card', 'Cheque'];
 
@@ -181,7 +195,7 @@ export default function BillGenerated({ onWalletBalanceChange }) {
 
     const printBill = (bill, statement) => {
         if (!bill) return;
-        const period = `${bill.periodStartDate} — ${bill.periodEndDate}`;
+        const period = fmtBillPeriod(bill);
         const rows = statement?.rows ?? [];
         const kpis = bill.kpis ?? statement?.kpis ?? {};
         const printWindow = window.open('', '_blank', 'width=900,height=700');
@@ -204,13 +218,14 @@ export default function BillGenerated({ onWalletBalanceChange }) {
             <div class="kpi">Total Invoice Amount: ${num(kpis.totalInvoiceAmount)}</div>
             <div class="kpi">Sales Return: ${num(kpis.totalSalesReturn)}</div>
             <div class="kpi">Receipts: ${num(kpis.totalReceipts)}</div>
-            <div class="kpi">Balance: ${num(kpis.balance)}</div>
+            <div class="kpi">Balance (amount due): ${num(kpis.balance)}</div>
+            ${Number(kpis.totalUnpaidInvoices ?? 0) > 0.05 ? `<div class="kpi">Unpaid invoices: ${num(kpis.totalUnpaidInvoices)}</div>` : ''}
             <table><thead><tr>
-                <th>Date</th><th>Ref No</th><th>Vehicle Number</th><th>Workshop / Branch</th><th>Type</th>
+                <th>Date</th><th>Ref No</th><th>Vehicle Number</th><th>Workshop / Branch</th><th>Type</th><th>Status</th>
                 <th class="num">Invoice</th><th class="num">Return</th><th class="num">Receipt</th>
             </tr></thead><tbody>
             ${rows.map((r) => `<tr>
-                <td>${r.date}</td><td>${r.refNo}</td><td>${r.vehicleNumber}</td><td>${r.workshopBranch}</td><td>${r.type}</td>
+                <td>${r.date}</td><td>${r.refNo}</td><td>${r.vehicleNumber}</td><td>${r.workshopBranch}</td><td>${r.type}</td><td>${r.status ?? '—'}</td>
                 <td class="num">${fmtCell(r.invoiceAmount)}</td><td class="num">${fmtCell(r.salesReturn)}</td><td class="num">${fmtCell(r.receipts)}</td>
             </tr>`).join('')}
             </tbody></table>
@@ -282,7 +297,7 @@ export default function BillGenerated({ onWalletBalanceChange }) {
                                             {bill.billNo}
                                         </div>
                                         <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: 4 }}>
-                                            Period {bill.periodStartDate} — {bill.periodEndDate} · Due {bill.dueDate}
+                                            Period {fmtBillPeriod(bill)} · Due {bill.dueDate}
                                         </div>
                                     </div>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -314,11 +329,16 @@ export default function BillGenerated({ onWalletBalanceChange }) {
                                                         ['Invoice Amount', bill.kpis?.totalInvoiceAmount],
                                                         ['Sales Return', bill.kpis?.totalSalesReturn],
                                                         ['Receipts', bill.kpis?.totalReceipts],
-                                                        ['Balance', bill.kpis?.balance],
+                                                        ['Balance (due)', bill.kpis?.balance],
                                                     ].map(([label, val]) => (
                                                         <div key={label} style={{ padding: 12, background: '#f8fafc', borderRadius: 10 }}>
                                                             <div style={{ fontSize: '0.68rem', color: '#64748b', fontWeight: 700 }}>{label}</div>
-                                                            <div style={{ fontWeight: 800, marginTop: 4 }}>{num(val)}</div>
+                                                            <div style={{ fontWeight: 800, marginTop: 4, color: label.includes('Balance') ? '#b91c1c' : '#0f172a' }}>{num(val)}</div>
+                                                            {label.includes('Balance') && Number(bill.kpis?.totalUnpaidInvoices ?? 0) > 0.05 ? (
+                                                                <div style={{ fontSize: '0.68rem', color: '#b91c1c', marginTop: 4, fontWeight: 600 }}>
+                                                                    Unpaid invoices: {num(bill.kpis?.totalUnpaidInvoices)}
+                                                                </div>
+                                                            ) : null}
                                                         </div>
                                                     ))}
                                                 </div>
@@ -332,6 +352,7 @@ export default function BillGenerated({ onWalletBalanceChange }) {
                                                                 <th>Vehicle Number</th>
                                                                 <th>Workshop / Branch</th>
                                                                 <th>Type</th>
+                                                                <th>Status</th>
                                                                 <th style={{ textAlign: 'right' }}>Invoice</th>
                                                                 <th style={{ textAlign: 'right' }}>Return</th>
                                                                 <th style={{ textAlign: 'right' }}>Receipt</th>
@@ -345,6 +366,11 @@ export default function BillGenerated({ onWalletBalanceChange }) {
                                                                     <td>{r.vehicleNumber}</td>
                                                                     <td>{r.workshopBranch}</td>
                                                                     <td>{r.type}</td>
+                                                                    <td>
+                                                                        <span className={`billing-status-badge ${billingStatusBadgeClass(r.status)}`}>
+                                                                            {r.status ?? '—'}
+                                                                        </span>
+                                                                    </td>
                                                                     <td style={{ textAlign: 'right' }}>{fmtCell(r.invoiceAmount)}</td>
                                                                     <td style={{ textAlign: 'right' }}>{fmtCell(r.salesReturn)}</td>
                                                                     <td style={{ textAlign: 'right' }}>{fmtCell(r.receipts)}</td>

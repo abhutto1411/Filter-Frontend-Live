@@ -20,17 +20,31 @@ function mapCorporateCustomers(d) {
         }));
 }
 
-function defaultBillingRange() {
-    const now = new Date();
-    const endY = now.getFullYear();
-    const endM = now.getMonth();
-    const endDay = new Date(endY, endM + 1, 0).getDate();
-    const start = new Date(endY, endM - 11, 1);
-    const pad = (n) => String(n).padStart(2, '0');
-    return {
-        startDate: `${start.getFullYear()}-${pad(start.getMonth() + 1)}-01`,
-        endDate: `${endY}-${pad(endM + 1)}-${pad(endDay)}`,
+function localDateTimeToIso(localValue) {
+    if (!localValue) return '';
+    const d = new Date(localValue);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toISOString();
+}
+
+function parseLocalDateTime(value) {
+    if (!value) return null;
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function fmtPeriodLabel(startIso, endIso, allData) {
+    if (allData) return 'All transactions';
+    const fmt = (iso) => {
+        if (!iso) return '…';
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return iso;
+        return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
     };
+    if (startIso && endIso) return `${fmt(startIso)} — ${fmt(endIso)}`;
+    if (startIso) return `From ${fmt(startIso)}`;
+    if (endIso) return `Until ${fmt(endIso)}`;
+    return 'All transactions';
 }
 
 function fmtMoney(n) {
@@ -45,17 +59,25 @@ function fmtCellAmount(val) {
     return fmtMoney(val);
 }
 
+function statusBadgeClass(status) {
+    const s = String(status ?? '').toLowerCase();
+    if (s === 'paid' || s === 'approved' || s.includes('auto-generated')) {
+        return 'billing-status-paid';
+    }
+    if (s === 'unpaid' || s === 'unapproved') return 'billing-status-unpaid';
+    return 'billing-status-neutral';
+}
+
 export default function CorporateBillingSection() {
     const printRef = useRef(null);
     const loadRequestRef = useRef(0);
-    const defaultRange = useMemo(() => defaultBillingRange(), []);
 
     const [accounts, setAccounts] = useState([]);
     const [accountsLoading, setAccountsLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [selectedAccountId, setSelectedAccountId] = useState('');
-    const [startDate, setStartDate] = useState(defaultRange.startDate);
-    const [endDate, setEndDate] = useState(defaultRange.endDate);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
     const [dueDate, setDueDate] = useState('');
     const [statement, setStatement] = useState(null);
     const [statementLoading, setStatementLoading] = useState(false);
@@ -94,9 +116,11 @@ export default function CorporateBillingSection() {
         }
         const sd = range.startDate ?? startDate;
         const ed = range.endDate ?? endDate;
-        if (sd && ed && sd > ed) {
+        const sdParsed = parseLocalDateTime(sd);
+        const edParsed = parseLocalDateTime(ed);
+        if (sdParsed && edParsed && sdParsed > edParsed) {
             setStatement(null);
-            setError('From date must be on or before To date');
+            setError('From date/time must be on or before To date/time');
             return;
         }
         const reqId = ++loadRequestRef.current;
@@ -105,8 +129,8 @@ export default function CorporateBillingSection() {
         try {
             const res = await getCorporateBillingStatement({
                 corporateAccountId: corpId,
-                startDate: sd,
-                endDate: ed,
+                startDate: localDateTimeToIso(sd) || undefined,
+                endDate: localDateTimeToIso(ed) || undefined,
                 dueDate: (range.dueDate ?? dueDate) || undefined,
             });
             if (reqId !== loadRequestRef.current) return;
@@ -147,13 +171,17 @@ export default function CorporateBillingSection() {
 
     const handleGenerateBill = async () => {
         if (!selectedAccountId || !generateDueDate.trim()) return;
+        if (!startDate || !endDate) {
+            setError('Select From and To date/time before generating a bill');
+            return;
+        }
         setGenerating(true);
         setError('');
         try {
             const res = await generateCorporateBill({
                 corporateAccountId: selectedAccountId,
-                startDate,
-                endDate,
+                startDate: localDateTimeToIso(startDate),
+                endDate: localDateTimeToIso(endDate),
                 dueDate: generateDueDate.trim(),
             });
             setStatement(res);
@@ -204,8 +232,16 @@ export default function CorporateBillingSection() {
     const kpis = statement?.kpis;
     const rows = statement?.rows ?? [];
     const periodLabel = statement?.period
-        ? `${statement.period.startDate} — ${statement.period.endDate}`
-        : `${startDate} — ${endDate}`;
+        ? fmtPeriodLabel(
+            statement.period.startDate,
+            statement.period.endDate,
+            statement.period.allData,
+        )
+        : fmtPeriodLabel(
+            localDateTimeToIso(startDate) || null,
+            localDateTimeToIso(endDate) || null,
+            !startDate && !endDate,
+        );
 
     /* ── Step 1: corporate accounts list only ── */
     if (!selectedAccountId) {
@@ -295,22 +331,23 @@ export default function CorporateBillingSection() {
                         <h1 className="corporate-billing-title">{selectedAccount?.name ?? 'Corporate Billing'}</h1>
                         <p className="corporate-billing-detail-sub">
                             Monthly billing statement · {selectedAccount?.workshopName ?? '—'}
+                            {statement && !statementLoading ? ` · ${periodLabel}` : ''}
                         </p>
                     </div>
                     <div className="corporate-billing-detail-actions">
-                        <label className="billing-date-field">
+                        <label className="billing-date-field billing-date-field--datetime">
                             <span>From</span>
                             <input
-                                type="date"
+                                type="datetime-local"
                                 value={startDate}
                                 max={endDate || undefined}
                                 onChange={(e) => setStartDate(e.target.value)}
                             />
                         </label>
-                        <label className="billing-date-field">
+                        <label className="billing-date-field billing-date-field--datetime">
                             <span>To</span>
                             <input
-                                type="date"
+                                type="datetime-local"
                                 value={endDate}
                                 min={startDate || undefined}
                                 onChange={(e) => setEndDate(e.target.value)}
@@ -319,6 +356,8 @@ export default function CorporateBillingSection() {
                         <button
                             type="button"
                             className="btn-portal"
+                            disabled={!startDate || !endDate}
+                            title={!startDate || !endDate ? 'Select From and To date/time first' : undefined}
                             onClick={() => {
                                 setGenerateDueDate(dueDate || '');
                                 setGenerateOpen(true);
@@ -360,8 +399,13 @@ export default function CorporateBillingSection() {
                                 <span className="billing-stat-val">SAR {fmtMoney(kpis?.totalReceipts)}</span>
                             </div>
                             <div className="billing-stat-card billing-stat-balance">
-                                <span className="billing-stat-label">Balance</span>
+                                <span className="billing-stat-label">Balance (amount due)</span>
                                 <span className="billing-stat-val">SAR {fmtMoney(kpis?.balance)}</span>
+                                {Number(kpis?.totalUnpaidInvoices ?? 0) > 0.05 && (
+                                    <span className="billing-stat-sub">
+                                        Unpaid invoices: SAR {fmtMoney(kpis?.totalUnpaidInvoices)}
+                                    </span>
+                                )}
                             </div>
                         </div>
 
@@ -380,6 +424,7 @@ export default function CorporateBillingSection() {
                                         <th className="table-th">VEHICLE NUMBER</th>
                                         <th className="table-th">WORKSHOP / BRANCH</th>
                                         <th className="table-th">TYPE</th>
+                                        <th className="table-th">STATUS</th>
                                         <th className="table-th billing-th-num">INVOICE AMOUNT</th>
                                         <th className="table-th billing-th-num">SALES RETURN</th>
                                         <th className="table-th billing-th-num">RECEIPTS</th>
@@ -388,7 +433,7 @@ export default function CorporateBillingSection() {
                                 <tbody>
                                     {rows.length === 0 ? (
                                         <tr>
-                                            <td colSpan={8} className="table-cell table-empty">
+                                            <td colSpan={9} className="table-cell table-empty">
                                                 No transactions in this period.
                                             </td>
                                         </tr>
@@ -402,6 +447,11 @@ export default function CorporateBillingSection() {
                                                 <td className="table-cell">
                                                     <span className={`billing-type-badge billing-type-${r.type.replace(/\s+/g, '-').toLowerCase()}`}>
                                                         {r.type}
+                                                    </span>
+                                                </td>
+                                                <td className="table-cell">
+                                                    <span className={`billing-status-badge ${statusBadgeClass(r.status)}`}>
+                                                        {r.status ?? '—'}
                                                     </span>
                                                 </td>
                                                 <td className="table-cell billing-td-num">{fmtCellAmount(r.invoiceAmount)}</td>
@@ -425,7 +475,10 @@ export default function CorporateBillingSection() {
                 <div className="kpi-line">Total Invoice Amount: SAR {fmtMoney(kpis?.totalInvoiceAmount)}</div>
                 <div className="kpi-line">Sales Return: SAR {fmtMoney(kpis?.totalSalesReturn)}</div>
                 <div className="kpi-line">Receipts: SAR {fmtMoney(kpis?.totalReceipts)}</div>
-                <div className="kpi-line">Balance: SAR {fmtMoney(kpis?.balance)}</div>
+                <div className="kpi-line">Balance (amount due): SAR {fmtMoney(kpis?.balance)}</div>
+                {Number(kpis?.totalUnpaidInvoices ?? 0) > 0.05 && (
+                    <div className="kpi-line">Unpaid invoices: SAR {fmtMoney(kpis?.totalUnpaidInvoices)}</div>
+                )}
                 <table>
                     <thead>
                         <tr>
@@ -434,6 +487,7 @@ export default function CorporateBillingSection() {
                             <th>Vehicle Number</th>
                             <th>Workshop / Branch</th>
                             <th>Type</th>
+                            <th>Status</th>
                             <th className="num">Invoice Amount</th>
                             <th className="num">Sales Return</th>
                             <th className="num">Receipts</th>
@@ -447,6 +501,7 @@ export default function CorporateBillingSection() {
                                 <td>{r.vehicleNumber}</td>
                                 <td>{r.workshopBranch}</td>
                                 <td>{r.type}</td>
+                                <td>{r.status ?? '—'}</td>
                                 <td className="num">{fmtCellAmount(r.invoiceAmount)}</td>
                                 <td className="num">{fmtCellAmount(r.salesReturn)}</td>
                                 <td className="num">{fmtCellAmount(r.receipts)}</td>
@@ -483,7 +538,7 @@ export default function CorporateBillingSection() {
                     }
                 >
                     <p style={{ marginTop: 0, color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
-                        Period: <strong>{startDate}</strong> to <strong>{endDate}</strong>
+                        Period: <strong>{periodLabel}</strong>
                         <br />
                         Company: <strong>{selectedAccount?.name}</strong>
                     </p>
