@@ -10,6 +10,7 @@ import {
     cashierLogin,
     supplierLogin,
     technicianLogin,
+    marketingLogin,
 } from '../services/authApi';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
@@ -32,6 +33,7 @@ const PORTAL_OPTIONS = [
     { id: 'technician', name: 'Filter Technician Portal' },
     { id: 'locker', name: 'Filter Locker Portal' },
     { id: 'supplier', name: 'Filter Supplier Portal' },
+    { id: 'marketing', name: 'Filter Marketing Portal' },
     { id: 'referrer-portal', name: 'Filter Referrer Portal' },
 ];
 
@@ -44,6 +46,7 @@ const PORTAL_USER_TYPES = {
     technician: 'technician_user',
     locker: 'workshop_user',
     supplier: 'supplier_user',
+    marketing: 'marketing_user',
     'referrer-portal': 'referrer_user',
 };
 
@@ -56,6 +59,7 @@ const PORTAL_LANDING = {
     technician: '/technician',
     locker: '/locker',
     supplier: '/supplier',
+    marketing: '/marketing/dashboard',
     'referrer-portal': '/referrer-portal',
 };
 
@@ -86,6 +90,8 @@ export default function PortalHubPage() {
                 return technicianLogin(mail, pass);
             case 'supplier':
                 return supplierLogin(mail, pass);
+            case 'marketing':
+                return marketingLogin(mail, pass);
             default:
                 // admin + referrer-portal fall back to the admin endpoint.
                 return adminLogin(mail, pass);

@@ -1,11 +1,12 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { DollarSign, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { lockerLogout } from '../services/authApi';
-import { NAV_ITEMS } from './locker/constants';
+import { getLockerNavItems, resolveLockerPortalRole } from './locker/constants';
 import LockerDashboard from './locker/LockerDashboard';
 import PendingRequests from './locker/PendingRequests';
+import AssignedRequests from './locker/AssignedRequests';
 import RecordCollection from './locker/RecordCollection';
 import ApprovalsScreen from './locker/ApprovalsScreen';
 import CollectionsHistory from './locker/CollectionsHistory';
@@ -16,10 +17,11 @@ import IssuePettyCash from './locker/IssuePettyCash';
 import './workshop/Workshop.css';
 
 function lockerRoleLabel(user) {
-    const role = String(user?.lockerPortalRole || '').toLowerCase();
-    if (role === 'supervisor') return 'Locker Supervisor';
+    const role = resolveLockerPortalRole(user);
+    if (role === 'supervisor') {
+        return user?.userType === 'workshop_owner' ? 'Workshop Admin' : 'Locker Supervisor';
+    }
     if (role === 'collector') return 'Collection Officer';
-    if (user?.userType === 'workshop_owner') return 'Workshop Owner';
     return 'Locker Portal';
 }
 
@@ -40,6 +42,8 @@ export default function LockerLayout() {
 
     const displayName = user?.name || user?.email || 'Locker User';
     const displayRole = useMemo(() => lockerRoleLabel(user), [user]);
+    const portalRole = useMemo(() => resolveLockerPortalRole(user), [user]);
+    const navItems = useMemo(() => getLockerNavItems(user), [user]);
 
     const handleLogout = async () => {
         const t = localStorage.getItem('filter_auth_token');
@@ -60,32 +64,46 @@ export default function LockerLayout() {
 
     const activeTab = getActiveTabFromUrl();
     const setActiveTab = (tab) => {
-        navigate(`/locker/${tab}`);
+        const [tabName, query = ''] = String(tab).split('?');
+        navigate(query ? `/locker/${tabName}?${query}` : `/locker/${tabName}`);
     };
+
+    const supervisorOnlyTabs = new Set(['pending', 'approvals', 'deposit_to_bank', 'issue_petty_cash', 'petty_cash']);
+
+    useEffect(() => {
+        if (portalRole === 'collector' && supervisorOnlyTabs.has(activeTab)) {
+            navigate('/locker/assigned', { replace: true });
+            return;
+        }
+        if (portalRole === 'supervisor' && activeTab === 'assigned') {
+            navigate('/locker/pending', { replace: true });
+        }
+    }, [activeTab, portalRole, navigate]);
 
     const renderContent = () => {
         switch (activeTab) {
-            case 'dashboard': return <LockerDashboard onTabChange={setActiveTab}/>;
-            case 'pending': return <PendingRequests onTabChange={setActiveTab}/>;
-            case 'record': return <RecordCollection/>;
-            case 'approvals': return <ApprovalsScreen/>;
-            case 'deposit_to_bank': return <DepositToBank/>;
-            case 'issue_petty_cash': return <IssuePettyCash/>;
-            case 'history': return <CollectionsHistory/>;
-            case 'differences': return <DifferencesReport/>;
-            case 'petty_cash': return <PettyCash/>;
-            default: return <LockerDashboard onTabChange={setActiveTab}/>;
+            case 'dashboard': return <LockerDashboard onTabChange={setActiveTab} portalRole={portalRole} />;
+            case 'pending': return <PendingRequests onTabChange={setActiveTab} />;
+            case 'assigned': return <AssignedRequests onTabChange={setActiveTab} />;
+            case 'record': return <RecordCollection portalRole={portalRole} />;
+            case 'approvals': return <ApprovalsScreen />;
+            case 'deposit_to_bank': return <DepositToBank />;
+            case 'issue_petty_cash': return <IssuePettyCash />;
+            case 'history': return <CollectionsHistory />;
+            case 'differences': return <DifferencesReport />;
+            case 'petty_cash': return <PettyCash />;
+            default: return <LockerDashboard onTabChange={setActiveTab} portalRole={portalRole} />;
         }
     };
 
-    const currentLabel = NAV_ITEMS.find(n => n.id === activeTab)?.label || 'Dashboard';
+    const currentLabel = navItems.find(n => n.id === activeTab)?.label || 'Dashboard';
 
     return (
         <div className="workshop-layout">
             <aside className="ws-sidebar">
                 <div className="ws-logo"><div className="ws-logo-icon"><DollarSign size={20}/></div><div><p className="ws-logo-title">Filter Locker</p><p className="ws-logo-sub">Portal</p></div></div>
                 <nav className="ws-nav">
-                    {NAV_ITEMS.map(item => (
+                    {navItems.map(item => (
                         <button key={item.id} className={`ws-nav-btn ${activeTab === item.id ? 'active' : ''}`} onClick={() => setActiveTab(item.id)}>
                             <item.icon size={17}/><span>{item.label}</span>
                             {item.badge > 0 && <span className="ws-nav-badge">{item.badge}</span>}

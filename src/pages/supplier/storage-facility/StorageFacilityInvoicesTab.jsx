@@ -1,10 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useStorageFacilityApi } from './StorageFacilityPortalContext';
 import { Plus } from 'lucide-react';
-import {
-    listStorageInvoices,
-    postStorageInvoice,
-    recordStorageInvoicePayment,
-} from '../../../services/storageFacilityApi';
+
 import StorageFacilityInvoicePrint from './StorageFacilityInvoicePrint';
 import StorageFacilityNewInvoiceModal from './StorageFacilityNewInvoiceModal';
 import { sfInvoiceTypeLabel } from './storageInvoiceScopes';
@@ -19,6 +16,7 @@ export default function StorageFacilityInvoicesTab({
     uomProfiles = [],
     onReload,
 }) {
+    const sfApi = useStorageFacilityApi();
     const isPurchase = scope === 'purchase';
     const [invoices, setInvoices] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -30,7 +28,7 @@ export default function StorageFacilityInvoicesTab({
         setLoading(true);
         setErr('');
         try {
-            const res = await listStorageInvoices(brandId, { scope });
+            const res = await sfApi.listStorageInvoices(brandId, { scope });
             setInvoices(res?.invoices ?? []);
         } catch (e) {
             setErr(e?.message || 'Failed to load invoices');
@@ -125,7 +123,7 @@ export default function StorageFacilityInvoicesTab({
                                                     style={{ marginRight: 6 }}
                                                     onClick={async () => {
                                                         try {
-                                                            await postStorageInvoice(brandId, inv.id);
+                                                            await sfApi.postStorageInvoice(brandId, inv.id);
                                                             await handleReload();
                                                             window.alert(
                                                                 'Warehouse quantities, stock timeline, and brand accounting synced.',
@@ -147,7 +145,7 @@ export default function StorageFacilityInvoicesTab({
                                                     style={{ marginRight: 6 }}
                                                     onClick={async () => {
                                                         try {
-                                                            await postStorageInvoice(brandId, inv.id);
+                                                            await sfApi.postStorageInvoice(brandId, inv.id);
                                                             await handleReload();
                                                             window.alert(
                                                                 'Brand GL journal posted for this invoice.',
@@ -167,7 +165,7 @@ export default function StorageFacilityInvoicesTab({
                                                     type="button"
                                                     className="mgr-si-record-pay"
                                                     onClick={async () => {
-                                                        await postStorageInvoice(brandId, inv.id);
+                                                        await sfApi.postStorageInvoice(brandId, inv.id);
                                                         await handleReload();
                                                     }}
                                                 >
@@ -184,7 +182,7 @@ export default function StorageFacilityInvoicesTab({
                                                             String(inv.balance),
                                                         );
                                                         if (!amt) return;
-                                                        await recordStorageInvoicePayment(
+                                                        await sfApi.recordStorageInvoicePayment(
                                                             brandId,
                                                             inv.id,
                                                             { amount: Number(amt), method: 'cash' },

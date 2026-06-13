@@ -63,6 +63,12 @@ const ProtectedRoute = ({ children, requiredType }) => {
             return false;
         }
 
+        if (normalizedRequiredType === 'marketing_user') {
+            if (normalizedUserType === 'marketing_user') return true;
+            if (normalizedUserType === 'platform_admin') return true;
+            return false;
+        }
+
         return normalizedUserType === normalizedRequiredType;
     };
 

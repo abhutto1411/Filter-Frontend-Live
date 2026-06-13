@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { getBrandBalanceSheet } from '../../../../services/storageFacilityAccountingApi';
+import { useStorageFacilityAccountingApi } from '../StorageFacilityPortalContext';
+
 import {
     AcctCard,
     AcctEmpty,
@@ -37,6 +38,7 @@ function BsSection({ title, rows, total }) {
 }
 
 export default function StorageBrandBalanceSheetTab({ brandId }) {
+    const accountingApi = useStorageFacilityAccountingApi();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [err, setErr] = useState('');
@@ -46,7 +48,7 @@ export default function StorageBrandBalanceSheetTab({ brandId }) {
         setLoading(true);
         setErr('');
         try {
-            const res = await getBrandBalanceSheet(brandId, { asOf });
+            const res = await accountingApi.getBrandBalanceSheet(brandId, { asOf });
             setData(res);
         } catch (e) {
             setErr(e?.message || 'Failed to load balance sheet');

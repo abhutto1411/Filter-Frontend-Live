@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { getBrandTrialBalance } from '../../../../services/storageFacilityAccountingApi';
+import { useStorageFacilityAccountingApi } from '../StorageFacilityPortalContext';
+
 import {
     AcctCard,
     AcctEmpty,
@@ -12,6 +13,7 @@ import {
 import { StorageBrandReportDateRange, StorageBrandReportStatus } from './StorageBrandReportToolbar';
 
 export default function StorageBrandTrialBalanceTab({ brandId, onAccountClick }) {
+    const accountingApi = useStorageFacilityAccountingApi();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [err, setErr] = useState('');
@@ -24,7 +26,7 @@ export default function StorageBrandTrialBalanceTab({ brandId, onAccountClick })
         setLoading(true);
         setErr('');
         try {
-            const res = await getBrandTrialBalance(brandId, { dateFrom, dateTo });
+            const res = await accountingApi.getBrandTrialBalance(brandId, { dateFrom, dateTo });
             setData(res);
         } catch (e) {
             setErr(e?.message || 'Failed to load trial balance');

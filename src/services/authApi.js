@@ -98,6 +98,19 @@ export async function cashierLogin(email, password) {
     return data;
 }
 
+export async function marketingLogin(email, password) {
+    const res = await fetch(`${BASE_URL}/auth/marketing/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', accept: '*/*' },
+        body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) {
+        throw new Error(data.message || `Marketing login failed: ${res.status}`);
+    }
+    return data;
+}
+
 export async function technicianLogin(email, password) {
     const res = await fetch(`${BASE_URL}/auth/technician/login`, {
         method: 'POST',

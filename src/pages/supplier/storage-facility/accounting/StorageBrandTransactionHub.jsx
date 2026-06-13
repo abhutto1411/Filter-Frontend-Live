@@ -1,15 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { unwrapBrandAccounts } from '../../../../services/storageFacilityAccountingApi';
+import { useStorageFacilityAccountingApi } from '../StorageFacilityPortalContext';
+import { useStorageFacilityApi } from '../StorageFacilityPortalContext';
 import { ArrowLeftRight, CreditCard, Plus, Receipt, Trash2 } from 'lucide-react';
-import {
-    getBrandAccounts,
-    listBrandPayments,
-    listBrandReceipts,
-    postBrandGeneralJournal,
-    postBrandPayment,
-    postBrandReceipt,
-    unwrapBrandAccounts,
-} from '../../../../services/storageFacilityAccountingApi';
-import { listStorageSuppliers } from '../../../../services/storageFacilityApi';
+
+
 import {
     AcctCard,
     AcctEmpty,
@@ -160,6 +155,7 @@ function BrandPayReceiptGrid({
     suppliers,
     onPosted,
 }) {
+    const accountingApi = useStorageFacilityAccountingApi();
     const leafAccounts = useMemo(
         () => (accounts || []).filter((a) => !a.hasChildren),
         [accounts],
@@ -255,8 +251,8 @@ function BrandPayReceiptGrid({
                 };
                 const res =
                     variant === 'payment'
-                        ? await postBrandPayment(brandId, body)
-                        : await postBrandReceipt(brandId, body);
+                        ? await accountingApi.postBrandPayment(brandId, body)
+                        : await accountingApi.postBrandReceipt(brandId, body);
                 posted.push(res);
             }
             onPosted?.(posted);
@@ -447,6 +443,7 @@ function BrandPayReceiptGrid({
 }
 
 function BrandJournalGrid({ brandId, accounts, headerDate, headerRef, generalNote, onPosted }) {
+    const accountingApi = useStorageFacilityAccountingApi();
     const leafAccounts = useMemo(
         () => (accounts || []).filter((a) => !a.hasChildren),
         [accounts],
@@ -491,7 +488,7 @@ function BrandJournalGrid({ brandId, accounts, headerDate, headerRef, generalNot
             }));
         setSaving(true);
         try {
-            const res = await postBrandGeneralJournal(brandId, {
+            const res = await accountingApi.postBrandGeneralJournal(brandId, {
                 date: headerDate,
                 description: generalNote.trim() || undefined,
                 reference: headerRef.trim() || undefined,
@@ -620,6 +617,8 @@ function BrandJournalGrid({ brandId, accounts, headerDate, headerRef, generalNot
 }
 
 export default function StorageBrandTransactionHub({ brandId, customers = [] }) {
+    const accountingApi = useStorageFacilityAccountingApi();
+    const sfApi = useStorageFacilityApi();
     const [tab, setTab] = useState('payment');
     const [accounts, setAccounts] = useState([]);
     const [suppliers, setSuppliers] = useState([]);
@@ -647,8 +646,8 @@ export default function StorageBrandTransactionHub({ brandId, customers = [] }) 
         setErr('');
         try {
             const [accRes, supRes] = await Promise.all([
-                getBrandAccounts(brandId, { activeOnly: true }),
-                listStorageSuppliers(brandId).catch(() => ({ suppliers: [] })),
+                accountingApi.getBrandAccounts(brandId, { activeOnly: true }),
+                sfApi.listStorageSuppliers(brandId).catch(() => ({ suppliers: [] })),
             ]);
             setAccounts(unwrapBrandAccounts(accRes));
             setSuppliers(Array.isArray(supRes?.suppliers) ? supRes.suppliers : []);
@@ -662,8 +661,8 @@ export default function StorageBrandTransactionHub({ brandId, customers = [] }) 
     const reloadRecent = useCallback(async () => {
         try {
             const [p, r] = await Promise.all([
-                listBrandPayments(brandId, { limit: 8 }),
-                listBrandReceipts(brandId, { limit: 8 }),
+                accountingApi.listBrandPayments(brandId, { limit: 8 }),
+                accountingApi.listBrandReceipts(brandId, { limit: 8 }),
             ]);
             setRecentPayments(p?.journals ?? []);
             setRecentReceipts(r?.journals ?? []);

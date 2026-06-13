@@ -18,6 +18,7 @@ import SalesPage from './pages/admin/SalesPage';
 import AccountingPage from './pages/admin/AccountingPage';
 import FleetManagementPage from './pages/admin/FleetManagementPage';
 import WarehousePortalPage from './pages/admin/WarehousePortalPage';
+import AdminStorageFacilityPage from './pages/admin/AdminStorageFacilityPage';
 import LockerManagementPage from './pages/admin/LockerManagementPage';
 import ReferralCommissionsPage from './pages/admin/ReferralCommissionsPage';
 import SoftPosSettlement from './pages/admin/SoftPosSettlement';
@@ -144,6 +145,8 @@ function App() {
               <Route path="customers/:subTab" element={<CustomersPage />} />
 
               <Route path="suppliers" element={<SuppliersPage />} />
+              <Route path="storage-facility" element={<AdminStorageFacilityPage />} />
+              <Route path="storage-facility/:supplierId" element={<AdminStorageFacilityPage />} />
               <Route path="employees" element={<EmployeesPage />} />
               <Route path="branches" element={<BranchesPage />} />
               <Route path="workshop" element={<WorkshopManagementPage />} />
@@ -166,7 +169,14 @@ function App() {
               <Route path="locker-management" element={<LockerManagementPage />} />
             </Route>
 
-            <Route path="/marketing" element={<MarketingLayout />}>
+            <Route
+              path="/marketing"
+              element={
+                <ProtectedRoute requiredType="marketing_user">
+                  <MarketingLayout />
+                </ProtectedRoute>
+              }
+            >
               <Route index element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard" element={<MarketingDashboard />} />
               <Route path="promotions" element={<Promotions />} />

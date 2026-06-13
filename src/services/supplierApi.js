@@ -161,6 +161,32 @@ export const createSupplierLocation = (body) =>
 export const getSupplierInventoryStockBalances = (params = {}) =>
     apiFetch(withQuery('/supplier/inventory/stock-balances', params));
 
+/** Paginate `/supplier/inventory/stock-balances` until exhausted (sales/purchase invoice pickers). */
+export async function fetchAllSupplierStockBalanceItems({
+    pageSize = 2000,
+    historyLimit = 1,
+    signal,
+    ...params
+} = {}) {
+    const out = [];
+    let offset = 0;
+    const limit = pageSize;
+    while (true) {
+        const res = await getSupplierInventoryStockBalances({
+            ...params,
+            limit,
+            offset,
+            historyLimit,
+        });
+        const batch = Array.isArray(res?.items) ? res.items : [];
+        out.push(...batch);
+        const total = Number(res?.total ?? batch.length);
+        if (batch.length < limit || out.length >= total) break;
+        offset += limit;
+    }
+    return out;
+}
+
 export const getSupplierProductInventoryTimeline = (productId, params = {}) =>
     apiFetch(
         withQuery(

@@ -1,14 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useStorageFacilityApi } from './StorageFacilityPortalContext';
 import { ArrowLeft, Plus, Search } from 'lucide-react';
 import Modal from '../../../components/Modal';
 import { ShimmerTable } from '../../../components/supplier/Shimmer';
-import {
-    createStorageCustomer,
-    getStorageCustomer,
-    listStorageCustomers,
-    recordStorageInvoicePayment,
-    updateStorageCustomer,
-} from '../../../services/storageFacilityApi';
+
 import '../../../styles/admin/AccountingPage.css';
 
 function fmtAr(amount) {
@@ -34,6 +29,7 @@ function statusClass(status) {
 }
 
 export default function StorageFacilityCustomersTab({ brandId }) {
+    const sfApi = useStorageFacilityApi();
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
     const [err, setErr] = useState('');
@@ -58,7 +54,7 @@ export default function StorageFacilityCustomersTab({ brandId }) {
         setLoading(true);
         setErr('');
         try {
-            const res = await listStorageCustomers(brandId, { q: search || undefined });
+            const res = await sfApi.listStorageCustomers(brandId, { q: search || undefined });
             setRows(Array.isArray(res?.customers) ? res.customers : []);
         } catch (e) {
             setErr(e?.message || 'Failed to load customers');
@@ -77,7 +73,7 @@ export default function StorageFacilityCustomersTab({ brandId }) {
         setDetail(null);
         setDetailLoading(true);
         try {
-            const res = await getStorageCustomer(brandId, customerId);
+            const res = await sfApi.getStorageCustomer(brandId, customerId);
             setDetail(res);
         } catch (e) {
             setErr(e?.message || 'Failed to load customer');
@@ -92,7 +88,7 @@ export default function StorageFacilityCustomersTab({ brandId }) {
         if (!form.name.trim()) return;
         setSaving(true);
         try {
-            await createStorageCustomer(brandId, form);
+            await sfApi.createStorageCustomer(brandId, form);
             setAddOpen(false);
             setForm({ name: '', code: '', contactPerson: '', email: '', mobile: '' });
             await load();
@@ -107,7 +103,7 @@ export default function StorageFacilityCustomersTab({ brandId }) {
         const amt = prompt('Payment amount (SAR)', String(balance));
         if (!amt) return;
         try {
-            await recordStorageInvoicePayment(brandId, invoiceId, {
+            await sfApi.recordStorageInvoicePayment(brandId, invoiceId, {
                 amount: Number(amt),
                 method: 'cash',
             });
@@ -370,7 +366,7 @@ export default function StorageFacilityCustomersTab({ brandId }) {
                                                 onClick={() => {
                                                     const name = prompt('Customer name', row.name);
                                                     if (!name?.trim()) return;
-                                                    updateStorageCustomer(brandId, row.id, {
+                                                    sfApi.updateStorageCustomer(brandId, row.id, {
                                                         name: name.trim(),
                                                     }).then(load);
                                                 }}

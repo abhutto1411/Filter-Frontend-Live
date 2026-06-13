@@ -39,8 +39,16 @@ function unwrapProducts(res) {
     return [];
 }
 
-/** Match a master-catalog row to an existing supplier product (SKU first, then name; prefer active). */
+/** Match a master-catalog row to an existing supplier product (master ID, then SKU, then name). */
 function resolveExistingSupplierProductForMaster(master, supplierProducts) {
+    const masterId = String(master?.id ?? '').trim();
+    if (masterId) {
+        const byMaster = (supplierProducts || []).find(
+            (p) => String(p?.masterProductId ?? '').trim() === masterId,
+        );
+        if (byMaster) return byMaster;
+    }
+
     const skuKey = String(master?.sku || '').trim().toLowerCase();
     const nameKey = String(master?.name || '').trim().toLowerCase();
 
@@ -249,18 +257,29 @@ export default function SupplierCatalog() {
     const myInventoryKeyset = useMemo(() => {
         const bySku = new Set();
         const byName = new Set();
+        const byMasterId = new Set();
+        const byMasterIdToProduct = new Map();
         (existingSupplierProducts || []).forEach((p) => {
             // treat inactive items as "not added" so they appear in Not Added tab for re-add
             if (p?.isActive === false) return;
+            if (p?.masterProductId) {
+                const mid = String(p.masterProductId).trim();
+                if (mid) {
+                    byMasterId.add(mid);
+                    byMasterIdToProduct.set(mid, p);
+                }
+            }
             if (p?.sku) bySku.add(String(p.sku).trim().toLowerCase());
             const nm = String(p?.productName || p?.name || '').trim().toLowerCase();
             if (nm) byName.add(nm);
         });
-        return { bySku, byName };
+        return { bySku, byName, byMasterId, byMasterIdToProduct };
     }, [existingSupplierProducts]);
 
     const isAlreadyAdded = useCallback(
         (p) => {
+            const masterId = String(p?.id ?? '').trim();
+            if (masterId && myInventoryKeyset.byMasterId.has(masterId)) return true;
             const skuKey = String(p?.sku || '').trim().toLowerCase();
             const nameKey = String(p?.name || '').trim().toLowerCase();
             return (
@@ -269,6 +288,17 @@ export default function SupplierCatalog() {
             );
         },
         [myInventoryKeyset],
+    );
+
+    const supplierProductForMaster = useCallback(
+        (p) => {
+            const masterId = String(p?.id ?? '').trim();
+            if (masterId && myInventoryKeyset.byMasterIdToProduct.has(masterId)) {
+                return myInventoryKeyset.byMasterIdToProduct.get(masterId);
+            }
+            return resolveExistingSupplierProductForMaster(p, existingSupplierProducts);
+        },
+        [myInventoryKeyset, existingSupplierProducts],
     );
 
     const filteredRaw = useMemo(() => {
@@ -462,7 +492,10 @@ export default function SupplierCatalog() {
                 openingQty: '0',
                 stockQty: '0',
                 criticalStockLevel: '',
-                warehouseUnit: existingProduct?.warehouseUnit || 'Box',
+                purchasePrice: '',
+                warehouseUnit:
+                    existingProduct?.warehouseUnit ||
+                    (p.unit === 'piece' || p.unit === 'pcs' ? 'Box' : p.unit || 'Box'),
                 workshopUnit: existingProduct?.workshopUnit || p.unit || 'pcs',
                 conversionFactor: String(existingProduct?.conversionFactor ?? 1),
             };
@@ -479,6 +512,7 @@ export default function SupplierCatalog() {
                 openingQty: prev[id]?.openingQty ?? '0',
                 stockQty: prev[id]?.stockQty ?? '0',
                 criticalStockLevel: prev[id]?.criticalStockLevel ?? '',
+                purchasePrice: prev[id]?.purchasePrice ?? '',
                 warehouseUnit: prev[id]?.warehouseUnit ?? 'Box',
                 workshopUnit: prev[id]?.workshopUnit ?? 'pcs',
                 conversionFactor: prev[id]?.conversionFactor ?? '1',
@@ -534,14 +568,25 @@ export default function SupplierCatalog() {
                 const masterPrice = Number(master.purchasePrice ?? master.salePrice ?? 0);
 
                 if (!supplierProductId) {
+                    const purchaseRaw = row.purchasePrice;
+                    const hasCustomPrice =
+                        purchaseRaw !== '' &&
+                        purchaseRaw !== undefined &&
+                        purchaseRaw !== null &&
+                        Number.isFinite(Number(purchaseRaw)) &&
+                        Number(purchaseRaw) >= 0;
+
                     const created = await createSupplierProduct({
                         productName: master.name,
                         sku: master.sku || `MC-${master.id}`,
                         categoryId: master.categoryId ? String(master.categoryId) : undefined,
+                        masterProductId: String(master.id),
                         warehouseUnit,
                         workshopUnit,
                         conversionFactor,
-                        pricePerWarehouseUnit: masterPrice,
+                        ...(hasCustomPrice
+                            ? { pricePerWarehouseUnit: Number(purchaseRaw) }
+                            : { usesCatalogPrice: true, pricePerWarehouseUnit: 0 }),
                         reorderLevel: openingQty,
                         ...(criticalStockAlert !== undefined
                             ? { criticalStockAlert }
@@ -562,6 +607,7 @@ export default function SupplierCatalog() {
                 if (wasExistingSupplierProduct) {
                     await updateSupplierProduct(String(supplierProductId), {
                         isActive: true,
+                        masterProductId: String(master.id),
                         warehouseUnit,
                         workshopUnit,
                         conversionFactor,
@@ -962,8 +1008,15 @@ export default function SupplierCatalog() {
                     }}
                 >
                     {pagedRows.map((item) => {
+                        const rawMaster =
+                            masterProducts.find((p) => String(p.id) === String(item.id)) ?? null;
+                        const added = rawMaster ? isAlreadyAdded(rawMaster) : false;
+                        const supplierRow = rawMaster ? supplierProductForMaster(rawMaster) : null;
+                        const supplierWhQty = Number(supplierRow?.currentStock ?? 0);
                         const sup = getBrandRow(item.supplier_id);
-                        const inStock = (item.stock_qty || 0) > 0;
+                        const inStock = added
+                            ? supplierWhQty > 0
+                            : (item.stock_qty || 0) > 0;
                         const isSelected = selectedProductIds.has(String(item.id));
                         return (
                             <div
@@ -1135,10 +1188,16 @@ export default function SupplierCatalog() {
                                             </p>
                                         </div>
                                         <span
-                                            className={`ws-badge ${inStock ? 'ws-badge--green' : 'ws-badge--red'}`}
+                                            className={`ws-badge ${inStock ? 'ws-badge--green' : added ? 'ws-badge--gray' : 'ws-badge--red'}`}
                                             style={{ fontSize: '0.625rem', padding: '2px 6px' }}
                                         >
-                                            {inStock ? `${item.stock_qty} in stock` : 'Out'}
+                                            {added
+                                                ? supplierWhQty > 0
+                                                    ? `${supplierWhQty} in your stock`
+                                                    : 'In your catalog · 0 stock'
+                                                : inStock
+                                                  ? `${item.stock_qty} in stock`
+                                                  : 'Out'}
                                         </span>
                                     </div>
                                 </div>
@@ -1648,6 +1707,7 @@ export default function SupplierCatalog() {
                                         <th>Warehouse UOM</th>
                                         <th>Workshop UOM</th>
                                         <th>CF (1 wh = ? ws)</th>
+                                        <th>Purchase price (optional)</th>
                                         <th>Opening Qty</th>
                                         <th>Stock Qty</th>
                                         <th>Critical stock level</th>
@@ -1732,6 +1792,33 @@ export default function SupplierCatalog() {
                                                         title="1 warehouse unit = this many workshop units (e.g. 1 Box = 20 Liter)"
                                                         style={{
                                                             width: 72,
+                                                            padding: '6px 8px',
+                                                            borderRadius: 6,
+                                                            border: '1px solid var(--color-border)',
+                                                        }}
+                                                    />
+                                                </td>
+                                                <td>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        step="0.01"
+                                                        placeholder={
+                                                            p.purchasePrice != null
+                                                                ? `Catalog: ${Number(p.purchasePrice).toFixed(2)}`
+                                                                : 'Catalog default'
+                                                        }
+                                                        value={row.purchasePrice ?? ''}
+                                                        onChange={(e) =>
+                                                            updateInventoryQty(
+                                                                p.id,
+                                                                'purchasePrice',
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                        title="Leave blank to use super-admin catalog purchase price"
+                                                        style={{
+                                                            width: 120,
                                                             padding: '6px 8px',
                                                             borderRadius: 6,
                                                             border: '1px solid var(--color-border)',

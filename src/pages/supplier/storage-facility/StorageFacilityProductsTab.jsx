@@ -1,17 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useStorageFacilityApi } from './StorageFacilityPortalContext';
 import { ArrowLeft, FileSpreadsheet, FileText, Link2, Plus, Search } from 'lucide-react';
 import Modal from '../../../components/Modal';
 import SearchableEntityCombobox from './SearchableEntityCombobox';
 import { ShimmerTable } from '../../../components/supplier/Shimmer';
-import {
-    applyStorageProductUom,
-    createStorageProduct,
-    deleteStorageProduct,
-    getStorageProductTimeline,
-    searchWarehouseProductsForMap,
-    setStorageProductCatalogMap,
-    updateStorageProduct,
-} from '../../../services/storageFacilityApi';
+
 import StorageUomSelect from './StorageUomSelect';
 import {
     formatStockOnHandDisplay,
@@ -49,6 +42,7 @@ export default function StorageFacilityProductsTab({
     whSearch,
     onLoadCatalog,
 }) {
+    const sfApi = useStorageFacilityApi();
     const [timelineProductId, setTimelineProductId] = useState(null);
     const [timeline, setTimeline] = useState(null);
     const [timelineLoading, setTimelineLoading] = useState(false);
@@ -93,7 +87,7 @@ export default function StorageFacilityProductsTab({
     const searchWh = useCallback(async (q = '', limit) => {
         setCatalogLoading(true);
         try {
-            const res = await searchWarehouseProductsForMap(q, {
+            const res = await sfApi.searchWarehouseProductsForMap(q, {
                 limit: limit ?? (q.trim() ? 200 : 5000),
             });
             setLocalWh(res?.products ?? []);
@@ -131,7 +125,7 @@ export default function StorageFacilityProductsTab({
         setTimelineLoading(true);
         setTimelineErr('');
         try {
-            const res = await getStorageProductTimeline(brandId, timelineProductId, {
+            const res = await sfApi.getStorageProductTimeline(brandId, timelineProductId, {
                 from: dateFrom || undefined,
                 to: dateTo || undefined,
                 asOf: asOfDate || dateTo || undefined,
@@ -160,7 +154,7 @@ export default function StorageFacilityProductsTab({
         try {
             if (editProduct) {
                 const parsed = parseProductUomSelectValue(editProduct.uomSelect);
-                await updateStorageProduct(brandId, editProduct.id, {
+                await sfApi.updateStorageProduct(brandId, editProduct.id, {
                     name: editProduct.name,
                     sku: editProduct.sku,
                     ...(parsed.uomProfileId
@@ -168,7 +162,7 @@ export default function StorageFacilityProductsTab({
                         : { unit: parsed.unit }),
                 });
                 if (!parsed.uomProfileId && parsed.unit) {
-                    await applyStorageProductUom(brandId, editProduct.id, {
+                    await sfApi.applyStorageProductUom(brandId, editProduct.id, {
                         warehouseUnit: parsed.unit,
                         workshopUnit: parsed.unit,
                         conversionFactor: 1,
@@ -177,7 +171,7 @@ export default function StorageFacilityProductsTab({
                 setEditProduct(null);
             } else {
                 const parsed = parseProductUomSelectValue(newProduct.uomSelect);
-                const res = await createStorageProduct(brandId, {
+                const res = await sfApi.createStorageProduct(brandId, {
                     name: newProduct.name,
                     sku: newProduct.sku,
                     unit: parsed.unit || newProduct.unit || 'pcs',
@@ -186,7 +180,7 @@ export default function StorageFacilityProductsTab({
                 });
                 const newId = res?.product?.id;
                 if (newId && !parsed.uomProfileId && parsed.unit) {
-                    await applyStorageProductUom(brandId, newId, {
+                    await sfApi.applyStorageProductUom(brandId, newId, {
                         warehouseUnit: parsed.unit,
                         workshopUnit: parsed.unit,
                         conversionFactor: 1,
@@ -207,7 +201,7 @@ export default function StorageFacilityProductsTab({
 
     const toggleActive = async (p) => {
         try {
-            await updateStorageProduct(brandId, p.id, { isActive: !p.isActive });
+            await sfApi.updateStorageProduct(brandId, p.id, { isActive: !p.isActive });
             await onReload();
         } catch (ex) {
             window.alert(ex?.message || 'Update failed');
@@ -223,7 +217,7 @@ export default function StorageFacilityProductsTab({
             return;
         }
         try {
-            const res = await deleteStorageProduct(brandId, p.id);
+            const res = await sfApi.deleteStorageProduct(brandId, p.id);
             if (timelineProductId === p.id) setTimelineProductId(null);
             await onReload();
             if (res?.softDeleted) {
@@ -239,7 +233,7 @@ export default function StorageFacilityProductsTab({
         if (!linkProduct || !id) return;
         setBusy(true);
         try {
-            await setStorageProductCatalogMap(brandId, linkProduct.id, {
+            await sfApi.setStorageProductCatalogMap(brandId, linkProduct.id, {
                 supplierProductId: id,
             });
             setLinkProduct(null);

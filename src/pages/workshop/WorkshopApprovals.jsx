@@ -68,22 +68,30 @@ function mapSupplierInvoiceToPrintableDetail(inv) {
                 : 'unpaid',
         notes: inv.internalNotes ?? '',
         description: inv.deliveryNoteUrl ?? '',
-        items: items.map((it) => ({
-            id: it.id,
-            productName: it.productName,
-            product_name: it.productName,
-            qty: it.qty,
-            quantity: it.qty,
-            unit: 'piece',
-            uom: 'piece',
-            unitPrice: it.unitPrice,
-            unit_price: it.unitPrice,
-            unitPriceExVat: it.unitPrice,
-            vatRate: it.vatRate,
-            vat_rate: it.vatRate,
-            lineTotal: it.lineTotal,
-            line_total: it.lineTotal,
-        })),
+        items: items.map((it) => {
+            const lineUnit =
+                it.unit != null && String(it.unit).trim() !== ''
+                    ? String(it.unit).trim()
+                    : 'Box';
+            return {
+                id: it.id,
+                productName: it.productName,
+                product_name: it.productName,
+                qty: it.qty,
+                quantity: it.qty,
+                unit: lineUnit,
+                uom: lineUnit,
+                qtyWorkshop: it.qtyWorkshop ?? null,
+                workshopUnit: it.workshopUnit ?? null,
+                unitPrice: it.unitPrice,
+                unit_price: it.unitPrice,
+                unitPriceExVat: it.unitPrice,
+                vatRate: it.vatRate,
+                vat_rate: it.vatRate,
+                lineTotal: it.lineTotal,
+                line_total: it.lineTotal,
+            };
+        }),
     };
 }
 

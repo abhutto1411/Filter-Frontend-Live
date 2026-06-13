@@ -1,11 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useStorageFacilityApi } from './StorageFacilityPortalContext';
 import { Calendar, Plus, Trash2 } from 'lucide-react';
 import Modal from '../../../components/Modal';
-import {
-    createStorageInvoice,
-    listStorageSalesReps,
-    postStorageInvoice,
-} from '../../../services/storageFacilityApi';
+
 import ProductLineCombobox from './ProductLineCombobox';
 import SearchableEntityCombobox from './SearchableEntityCombobox';
 import StorageFacilityVatTotals, { fmtSar } from './StorageFacilityVatTotals';
@@ -49,6 +46,7 @@ export default function StorageFacilityNewInvoiceModal({
     onClose,
     onSaved,
 }) {
+    const sfApi = useStorageFacilityApi();
     const isPurchase = mode === 'purchase';
     const [invoiceType, setInvoiceType] = useState(
         isPurchase ? 'stock_purchase' : 'storage_fee',
@@ -75,7 +73,7 @@ export default function StorageFacilityNewInvoiceModal({
         let cancelled = false;
         (async () => {
             try {
-                const res = await listStorageSalesReps(brandId);
+                const res = await sfApi.listStorageSalesReps(brandId);
                 if (!cancelled) setSalesReps(res?.salesReps ?? []);
             } catch {
                 if (!cancelled) setSalesReps([]);
@@ -252,7 +250,7 @@ export default function StorageFacilityNewInvoiceModal({
                 billingAddress.trim() ? `Bill to: ${billingAddress.trim()}` : null,
                 description.trim() || null,
             ].filter(Boolean);
-            const res = await createStorageInvoice(brandId, {
+            const res = await sfApi.createStorageInvoice(brandId, {
                 invoiceType: isPurchase ? 'stock_purchase' : invoiceType,
                 issueDate,
                 dueDate: calculatedDueDate !== '—' ? calculatedDueDate : undefined,
@@ -263,7 +261,7 @@ export default function StorageFacilityNewInvoiceModal({
                 lines: buildPayloadLines(),
             });
             if (postAfter) {
-                await postStorageInvoice(brandId, res.invoice.id);
+                await sfApi.postStorageInvoice(brandId, res.invoice.id);
             }
             onSaved?.();
             onClose?.();

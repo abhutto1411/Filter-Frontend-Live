@@ -1,11 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
+import { useStorageFacilityAccountingApi } from '../StorageFacilityPortalContext';
 import { Plus, Wallet } from 'lucide-react';
 import Modal from '../../../../components/Modal';
-import {
-    createBrandAccount,
-    getBrandCashBankRegisters,
-    unwrapBrandAccounts,
-} from '../../../../services/storageFacilityAccountingApi';
+
 import {
     AcctCard,
     AcctEmpty,
@@ -17,6 +14,7 @@ import {
 import StorageBrandLedgerView from './StorageBrandLedgerView';
 
 export default function StorageBrandCashBankTab({ brandId }) {
+    const accountingApi = useStorageFacilityAccountingApi();
     const [registers, setRegisters] = useState([]);
     const [loading, setLoading] = useState(true);
     const [err, setErr] = useState('');
@@ -33,7 +31,7 @@ export default function StorageBrandCashBankTab({ brandId }) {
         setLoading(true);
         setErr('');
         try {
-            const res = await getBrandCashBankRegisters(brandId);
+            const res = await accountingApi.getBrandCashBankRegisters(brandId);
             setRegisters(Array.isArray(res?.registers) ? res.registers : []);
         } catch (e) {
             setErr(e?.message || 'Failed to load registers');
@@ -61,7 +59,7 @@ export default function StorageBrandCashBankTab({ brandId }) {
         e.preventDefault();
         setSaving(true);
         try {
-            await createBrandAccount(brandId, {
+            await accountingApi.createBrandAccount(brandId, {
                 code: form.code.trim(),
                 name: form.name.trim(),
                 type: 'ASSET',

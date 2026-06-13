@@ -2055,6 +2055,113 @@
     display: flex;
     justify-content: flex-end;
 }
+
+/* Locker pending / assigned table actions */
+.wlk-action-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 220px;
+}
+.wlk-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding: 8px 12px;
+    border-radius: 10px;
+    font-size: 0.72rem;
+    font-weight: 800;
+    line-height: 1.35;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+    border: 1.5px solid transparent;
+}
+.wlk-action-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+.wlk-action-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+.wlk-action-btn--forward {
+    background: #fff;
+    color: #111;
+    border-color: rgba(0, 0, 0, 0.12);
+}
+.wlk-action-btn--forward:hover:not(:disabled) {
+    background: rgba(252, 194, 69, 0.12);
+    border-color: #E0A800;
+}
+.wlk-action-btn--forward:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    background: #f3f4f6;
+    color: #9ca3af;
+}
+.wlk-action-btn--record {
+    background: var(--gradient-gold);
+    color: #111;
+    border-color: #E0A800;
+}
+.wlk-action-btn--record:hover:not(:disabled) {
+    filter: brightness(1.03);
+}
+
+.wlk-filter-bar {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+}
+.wlk-filter-bar__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+.wlk-filter-bar__title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    font-weight: 800;
+    color: #111;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.wlk-filter-bar__actions {
+    display: flex;
+    gap: 8px;
+}
+.wlk-filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 12px;
+}
+.wlk-filter-grid .ws-field label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #64748b;
+    margin-bottom: 4px;
+    display: block;
+}
+.wlk-filter-grid .ws-field input,
+.wlk-filter-grid .ws-field select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    background: #fff;
+}
+.wlk-summary-kpi {
+    margin-bottom: 16px;
+}
+
 .spin {
     animation: ws-global-loader-spin 0.8s linear infinite;
 }

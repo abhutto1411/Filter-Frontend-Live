@@ -1,34 +1,68 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { DollarSign, FileText, RefreshCw } from 'lucide-react';
 import { apiFetch } from '../../services/api';
+import { qs } from '../../services/workshopStaffApi';
+import LockerFilterBar from './LockerFilterBar';
+import { buildLockerFilterQuery, defaultHistoryDateRange, fmtSar } from './lockerFilterUtils';
 
-const fmtSar = (n) =>
-    `SAR ${Number(n || 0).toLocaleString('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    })}`;
+const EMPTY_FILTERS = {
+    from: '',
+    to: '',
+    branchId: 'all',
+    cashierId: 'all',
+};
 
 export default function DifferencesReport() {
     const [data, setData] = useState(null);
+    const [filters, setFilters] = useState(() => {
+        const d = defaultHistoryDateRange();
+        return { ...EMPTY_FILTERS, from: d.from, to: d.to };
+    });
+    const [appliedFilters, setAppliedFilters] = useState(() => {
+        const d = defaultHistoryDateRange();
+        return { ...EMPTY_FILTERS, from: d.from, to: d.to };
+    });
+    const [branches, setBranches] = useState([]);
+    const [cashiers, setCashiers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    const load = useCallback(async () => {
+    useEffect(() => {
+        Promise.all([
+            apiFetch('/locker/branches').then((r) => r?.branches || []).catch(() => []),
+            apiFetch('/locker/cashiers').then((r) => r?.cashiers || []).catch(() => []),
+        ]).then(([b, c]) => {
+            setBranches(b);
+            setCashiers(c);
+        });
+    }, []);
+
+    const load = useCallback(async (activeFilters = appliedFilters) => {
         setLoading(true);
         setError('');
         try {
-            const res = await apiFetch('/locker/financial/analytics');
+            const res = await apiFetch(
+                `/locker/financial/analytics${qs(buildLockerFilterQuery(activeFilters))}`,
+            );
             setData(res);
         } catch (e) {
             setError(e?.message || 'Failed to load analytics');
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [appliedFilters]);
 
     useEffect(() => {
-        load();
-    }, [load]);
+        load(appliedFilters);
+    }, [appliedFilters, load]);
+
+    const applyFilters = () => setAppliedFilters({ ...filters });
+    const resetFilters = () => {
+        const d = defaultHistoryDateRange();
+        const next = { ...EMPTY_FILTERS, from: d.from, to: d.to };
+        setFilters(next);
+        setAppliedFilters(next);
+    };
 
     const summary = data?.differencesSummary || {};
     const short = Number(data?.totalShort ?? summary.totalShort ?? 0);
@@ -47,7 +81,7 @@ export default function DifferencesReport() {
                 </div>
                 <button
                     className="btn-secondary"
-                    onClick={load}
+                    onClick={() => load(appliedFilters)}
                     disabled={loading}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                 >
@@ -56,6 +90,16 @@ export default function DifferencesReport() {
             </div>
 
             {error ? <div className="wlk-error" style={{ marginBottom: 12 }}>{error}</div> : null}
+
+            <LockerFilterBar
+                filters={filters}
+                onChange={setFilters}
+                onApply={applyFilters}
+                onReset={resetFilters}
+                branches={branches}
+                cashiers={cashiers}
+                loading={loading}
+            />
 
             <div className="ws-kpi-grid" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
                 <div className="ws-kpi-card">
@@ -93,6 +137,7 @@ export default function DifferencesReport() {
                         <tr>
                             <th>Collection</th>
                             <th>Branch</th>
+                            <th>Cashier</th>
                             <th>Type</th>
                             <th>Amount</th>
                             <th>Date</th>
@@ -101,8 +146,8 @@ export default function DifferencesReport() {
                     <tbody>
                         {recent.length === 0 ? (
                             <tr>
-                                <td colSpan={5} style={{ textAlign: 'center', padding: 18, color: '#9ca3af' }}>
-                                    No variances recorded
+                                <td colSpan={6} style={{ textAlign: 'center', padding: 18, color: '#9ca3af' }}>
+                                    No variances match filters
                                 </td>
                             </tr>
                         ) : (
@@ -115,6 +160,7 @@ export default function DifferencesReport() {
                                             a.id}
                                     </td>
                                     <td>{a.branchName || a.branch || '—'}</td>
+                                    <td>{a.cashierName || '—'}</td>
                                     <td>
                                         <span
                                             className={`ws-badge ${

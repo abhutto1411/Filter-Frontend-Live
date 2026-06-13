@@ -1,6 +1,17 @@
-import { LayoutDashboard, Clock, DollarSign, AlertTriangle, History, FileText, Wallet, Send, Coins } from 'lucide-react';
+import {
+    LayoutDashboard,
+    Clock,
+    DollarSign,
+    AlertTriangle,
+    History,
+    FileText,
+    Wallet,
+    Send,
+    Coins,
+    ClipboardList,
+} from 'lucide-react';
 
-export const NAV_ITEMS = [
+const SUPERVISOR_NAV = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'pending', label: 'Pending Requests', icon: Clock },
     { id: 'record', label: 'Record Collection', icon: DollarSign },
@@ -11,6 +22,29 @@ export const NAV_ITEMS = [
     { id: 'differences', label: 'Differences Report', icon: FileText },
     { id: 'petty_cash', label: 'Petty Cash', icon: Wallet },
 ];
+
+const COLLECTOR_NAV = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'assigned', label: 'Assigned Requests', icon: ClipboardList },
+    { id: 'record', label: 'Record Collection', icon: DollarSign },
+    { id: 'history', label: 'Collections History', icon: History },
+    { id: 'differences', label: 'Differences Report', icon: FileText },
+];
+
+export function resolveLockerPortalRole(user) {
+    if (String(user?.userType || '').toLowerCase() === 'workshop_owner') return 'supervisor';
+    const role = String(user?.lockerPortalRole || '').toLowerCase();
+    if (role === 'supervisor' || role === 'collector') return role;
+    return 'supervisor';
+}
+
+export function getLockerNavItems(user) {
+    const role = resolveLockerPortalRole(user);
+    return role === 'collector' ? COLLECTOR_NAV : SUPERVISOR_NAV;
+}
+
+/** @deprecated use getLockerNavItems(user) */
+export const NAV_ITEMS = SUPERVISOR_NAV;
 
 export const MOCK_PENDING = [
     { id: 'LC-2026-0142', branch: 'Main — Riyadh', requested: '2026-03-10 08:00', expected: 'SAR 12,400', status: 'overdue', hoursOverdue: 4 },

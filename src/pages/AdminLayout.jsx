@@ -19,7 +19,7 @@ const TRANSLATIONS = {
             dashboard: 'Dashboard', reports: 'Reporting', pos: 'POS / New Order', approvals: 'Approvals', 'zone-management': 'Zone Management', 'tax-codes': 'Tax Code', permissions: 'Permissions', 'tier-management': 'Tier Management',
             inventory: 'Inventory', 'master-catalog': 'Master Catalog', 'products-services': 'Products & Services', 'stock-movements': 'Stock Movements', categories: 'Categories', 'units-of-measure': 'Units of Measure',
             customers: 'Customers', 'all-customers': 'All Customers', 'corporate-billing': 'Corporate Billing',
-            suppliers: 'Suppliers', employees: 'Employees', branches: 'Branches', workshop: 'Workshop',
+            suppliers: 'Suppliers', 'storage-facility': 'Storage Facility', employees: 'Employees', branches: 'Branches', workshop: 'Workshop',
             sales: 'Sales', 'workshop-sales': 'Workshop Sales', 'suppliers-warehouse-sales': 'Suppliers & Warehouse Sales', receipts: 'Receipts',
             'referral-commissions': 'Commission',
             commissions: 'Commission',
@@ -110,6 +110,7 @@ const NAV_CONFIG = [
                 ],
             },
             { label: 'Suppliers', path: 'suppliers', icon: Truck },
+            { label: 'Storage Facility', path: 'storage-facility', icon: Warehouse },
             { label: 'Employees', path: 'employees', icon: UserCheck },
             { label: 'Branches', path: 'branches', icon: Building },
             { label: 'Workshop', path: 'workshop', icon: Wrench },
@@ -275,19 +276,23 @@ const SidebarNavItem = ({ item, basePath, locale, hasPermission }) => {
 };
 
 const getPageTitle = (pathname, locale) => {
-    const segment = pathname.replace(/^\/admin\/?/, '').split('/');
+    const segment = pathname.replace(/^\/admin\/?/, '').split('/').filter(Boolean);
     if (!segment[0]) return locale === 'ar' ? TRANSLATIONS.ar.nav.dashboard : 'Dashboard';
+    if (segment[0] === 'storage-facility') {
+        return getNavLabel('storage-facility', locale);
+    }
     const last = segment[segment.length - 1];
-    const label = getNavLabel(last, locale);
-    return label;
+    return getNavLabel(last, locale);
 };
 
 import { useAuth } from '../context/AuthContext';
+import { AdminPageMetaProvider, useAdminPageMeta } from '../context/AdminPageMetaContext';
 
-export default function AdminLayout() {
+function AdminLayoutShell() {
     const location = useLocation();
     const navigate = useNavigate();
     const { logout, user, hasPermission } = useAuth();
+    const { pageTitle: pageTitleOverride, clearPageTitle } = useAdminPageMeta();
     const [locale, setLocale] = useState(() => localStorage.getItem('portal-locale') || 'en');
     const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -296,6 +301,12 @@ export default function AdminLayout() {
     useEffect(() => {
         setIsMobileMenuOpen(false);
     }, [location.pathname]);
+
+    useEffect(() => {
+        if (!location.pathname.startsWith('/admin/storage-facility/')) {
+            clearPageTitle();
+        }
+    }, [location.pathname, clearPageTitle]);
 
     useEffect(() => {
         const dir = locale === 'ar' ? 'rtl' : 'ltr';
@@ -310,7 +321,7 @@ export default function AdminLayout() {
         navigate('/');
     };
 
-    const pageTitle = getPageTitle(location.pathname, locale);
+    const pageTitle = pageTitleOverride || getPageTitle(location.pathname, locale);
     const t = TRANSLATIONS[locale] || TRANSLATIONS.en;
 
     const userDisplayName = user?.name || t.userName;
@@ -421,5 +432,13 @@ export default function AdminLayout() {
                 <Outlet />
             </main>
         </div>
+    );
+}
+
+export default function AdminLayout() {
+    return (
+        <AdminPageMetaProvider>
+            <AdminLayoutShell />
+        </AdminPageMetaProvider>
     );
 }

@@ -57,7 +57,9 @@ export default function ApprovalsScreen() {
             <div className="ws-page-header" style={{ alignItems: 'center' }}>
                 <div>
                     <h2 className="ws-page-title">Pending Approvals</h2>
-                    <p className="ws-page-sub">Cash difference approvals</p>
+                    <p className="ws-page-sub">
+                        Cash difference approvals — locker supervisor &amp; workshop admin
+                    </p>
                 </div>
                 <button
                     className="btn-secondary"

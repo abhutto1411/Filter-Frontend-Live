@@ -18,7 +18,8 @@ const fmtSar = (n) =>
         maximumFractionDigits: 2,
     })}`;
 
-export default function LockerDashboard({ onTabChange }) {
+export default function LockerDashboard({ onTabChange, portalRole = 'supervisor' }) {
+    const isCollector = portalRole === 'collector';
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [dash, setDash] = useState(null);
@@ -29,7 +30,7 @@ export default function LockerDashboard({ onTabChange }) {
         setError('');
         try {
             const [dashRes, historyRes] = await Promise.all([
-                apiFetch(`/locker/dashboard${qs({ view: 'supervisor' })}`).catch((e) => {
+                apiFetch(`/locker/dashboard${qs({ view: isCollector ? 'collector' : 'supervisor' })}`).catch((e) => {
                     throw new Error(e?.message || 'Failed to load dashboard');
                 }),
                 apiFetch(`/locker/financial/history${qs({ page: 1, limit: 5 })}`).catch(
@@ -43,45 +44,77 @@ export default function LockerDashboard({ onTabChange }) {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [isCollector]);
 
     useEffect(() => {
         load();
     }, [load]);
 
     const sup = dash?.supervisor || {};
+    const col = dash?.collector || {};
     const todayCount = dash?.todaysCollections?.requestCount ?? 0;
 
-    const kpis = [
-        {
-            label: 'Pending Collections',
-            value: dash ? sup.pending : '—',
-            sub: `${sup.overdue || 0} overdue`,
-            icon: Clock,
-            c: 'ws-kpi-icon--red',
-        },
-        {
-            label: "Today's Collected",
-            value: dash ? todayCount : '—',
-            sub: 'collections today',
-            icon: DollarSign,
-            c: 'ws-kpi-icon--green',
-        },
-        {
-            label: 'Monthly Collected',
-            value: dash ? fmtSar(dash.monthlyCollected) : '—',
-            sub: 'This month (approved)',
-            icon: DollarSign,
-            c: 'ws-kpi-icon--blue',
-        },
-        {
-            label: 'Pending Approvals',
-            value: dash ? dash.pendingApprovals : '—',
-            sub: 'Variance reviews',
-            icon: AlertTriangle,
-            c: 'ws-kpi-icon--yellow',
-        },
-    ];
+    const kpis = isCollector
+        ? [
+              {
+                  label: 'My Assignments',
+                  value: dash ? col.myOpenAssignments ?? 0 : '—',
+                  sub: 'Awaiting collection',
+                  icon: Clock,
+                  c: 'ws-kpi-icon--yellow',
+              },
+              {
+                  label: "Today's Collected",
+                  value: dash ? todayCount : '—',
+                  sub: 'collections today',
+                  icon: DollarSign,
+                  c: 'ws-kpi-icon--green',
+              },
+              {
+                  label: 'Monthly Collected',
+                  value: dash ? fmtSar(dash.monthlyCollected) : '—',
+                  sub: 'This month (approved)',
+                  icon: DollarSign,
+                  c: 'ws-kpi-icon--blue',
+              },
+              {
+                  label: 'Pending Variance',
+                  value: dash ? dash.pendingApprovals ?? 0 : '—',
+                  sub: 'Awaiting supervisor review',
+                  icon: AlertTriangle,
+                  c: 'ws-kpi-icon--red',
+              },
+          ]
+        : [
+              {
+                  label: 'Pending Collections',
+                  value: dash ? sup.pending : '—',
+                  sub: `${sup.overdue || 0} overdue`,
+                  icon: Clock,
+                  c: 'ws-kpi-icon--red',
+              },
+              {
+                  label: "Today's Collected",
+                  value: dash ? todayCount : '—',
+                  sub: 'collections today',
+                  icon: DollarSign,
+                  c: 'ws-kpi-icon--green',
+              },
+              {
+                  label: 'Monthly Collected',
+                  value: dash ? fmtSar(dash.monthlyCollected) : '—',
+                  sub: 'This month (approved)',
+                  icon: DollarSign,
+                  c: 'ws-kpi-icon--blue',
+              },
+              {
+                  label: 'Pending Approvals',
+                  value: dash ? dash.pendingApprovals : '—',
+                  sub: 'Variance reviews',
+                  icon: AlertTriangle,
+                  c: 'ws-kpi-icon--yellow',
+              },
+          ];
 
     return (
         <div>
@@ -120,14 +153,21 @@ export default function LockerDashboard({ onTabChange }) {
             </div>
 
             <div className="ws-quick-grid">
-                {[
-                    { l: 'Pending Requests', t: 'pending', i: Clock, s: 'View pickups' },
-                    { l: 'Record Collection', t: 'record', i: DollarSign, s: 'From cashier' },
-                    { l: 'Approvals', t: 'approvals', i: AlertTriangle, s: 'Variances' },
-                    { l: 'Deposit to Bank', t: 'deposit_to_bank', i: Send, s: 'Locker → bank' },
-                    { l: 'Issue Petty Cash', t: 'issue_petty_cash', i: Coins, s: 'To cashier' },
-                    { l: 'History', t: 'history', i: History, s: 'Past collections' },
-                ].map((a) => (
+                {(isCollector
+                    ? [
+                          { l: 'Assigned Requests', t: 'assigned', i: Clock, s: 'Your pickups' },
+                          { l: 'Record Collection', t: 'record', i: DollarSign, s: 'From cashier' },
+                          { l: 'History', t: 'history', i: History, s: 'Past collections' },
+                      ]
+                    : [
+                          { l: 'Pending Requests', t: 'pending', i: Clock, s: 'View pickups' },
+                          { l: 'Record Collection', t: 'record', i: DollarSign, s: 'From cashier' },
+                          { l: 'Approvals', t: 'approvals', i: AlertTriangle, s: 'Variances' },
+                          { l: 'Deposit to Bank', t: 'deposit_to_bank', i: Send, s: 'Locker → bank' },
+                          { l: 'Issue Petty Cash', t: 'issue_petty_cash', i: Coins, s: 'To cashier' },
+                          { l: 'History', t: 'history', i: History, s: 'Past collections' },
+                      ]
+                ).map((a) => (
                     <div
                         key={a.t}
                         className="ws-quick-card"

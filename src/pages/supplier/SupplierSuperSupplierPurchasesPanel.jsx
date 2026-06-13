@@ -110,6 +110,7 @@ export default function SupplierSuperSupplierPurchasesPanel({
             description: '',
             notes: '',
             vatAmount: '0',
+            updatePurchasePriceOnSave: true,
             lines: [newLineRow()],
         });
         setComposerErr('');
@@ -223,6 +224,7 @@ export default function SupplierSuperSupplierPurchasesPanel({
             description: (composer.description || '').trim() || undefined,
             notes: (composer.notes || '').trim() || undefined,
             vatAmount: parseNum(composer.vatAmount),
+            updatePurchasePriceOnSave: composer.updatePurchasePriceOnSave !== false,
             items,
         };
         try {
@@ -665,6 +667,22 @@ export default function SupplierSuperSupplierPurchasesPanel({
                                         setComposer((c) => (c ? { ...c, description: e.target.value } : c))
                                     }
                                 />
+                            </div>
+                            <div className="pi-field pi-full-width">
+                                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={composer.updatePurchasePriceOnSave !== false}
+                                        onChange={(e) =>
+                                            setComposer((c) =>
+                                                c
+                                                    ? { ...c, updatePurchasePriceOnSave: e.target.checked }
+                                                    : c,
+                                            )
+                                        }
+                                    />
+                                    Update stock inventory purchase price from this purchase
+                                </label>
                             </div>
                             <div className="pi-field pi-full-width">
                                 <label>Notes</label>

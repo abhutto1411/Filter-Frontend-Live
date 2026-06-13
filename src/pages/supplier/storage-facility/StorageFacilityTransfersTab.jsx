@@ -1,12 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useStorageFacilityApi } from './StorageFacilityPortalContext';
 import { ArrowLeftRight, Plus, Trash2 } from 'lucide-react';
 import Modal from '../../../components/Modal';
 import { ShimmerTable } from '../../../components/supplier/Shimmer';
-import {
-    createStorageTransfer,
-    listStorageLocations,
-    listStorageTransfers,
-} from '../../../services/storageFacilityApi';
+
 import ProductLineCombobox from './ProductLineCombobox';
 
 function newLine() {
@@ -24,6 +21,7 @@ export default function StorageFacilityTransfersTab({
     products,
     onReload,
 }) {
+    const sfApi = useStorageFacilityApi();
     const [transfers, setTransfers] = useState([]);
     const [locations, setLocations] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -47,8 +45,8 @@ export default function StorageFacilityTransfersTab({
         setErr('');
         try {
             const [trRes, locRes] = await Promise.all([
-                listStorageTransfers(brandId),
-                listStorageLocations(brandId),
+                sfApi.listStorageTransfers(brandId),
+                sfApi.listStorageLocations(brandId),
             ]);
             setTransfers(trRes?.transfers ?? []);
             setLocations(locRes?.locations ?? []);
@@ -153,7 +151,7 @@ export default function StorageFacilityTransfersTab({
         }
         setBusy(true);
         try {
-            await createStorageTransfer(brandId, {
+            await sfApi.createStorageTransfer(brandId, {
                 transferDate: form.transferDate,
                 fromLocationId: form.fromLocationId,
                 toLocationId: form.toLocationId,

@@ -1,19 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Plus } from 'lucide-react';
+import { useStorageFacilityApi, useStorageFacilityPortal } from './StorageFacilityPortalContext';
 import Modal from '../../../components/Modal';
 import { ShimmerTable } from '../../../components/supplier/Shimmer';
-import {
-    createStorageBrandUser,
-    getStorageBrandSummary,
-    listStorageAuditLog,
-    listStorageBrandUsers,
-    listStorageCustomers,
-    listStorageProducts,
-    listStorageSuppliers,
-    listStorageUomProfiles,
-    searchWarehouseProductsForMap,
-} from '../../../services/storageFacilityApi';
 import StorageFacilityCustomersTab from './StorageFacilityCustomersTab';
 import StorageFacilitySuppliersTab from './StorageFacilitySuppliersTab';
 import StorageFacilityProductsTab from './StorageFacilityProductsTab';
@@ -64,7 +54,9 @@ const ADMIN_TABS = [{ id: 'users', label: 'Brand users', ownerOnly: true }];
 
 export default function SupplierStorageFacilityBrandHub({ brandId }) {
     const navigate = useNavigate();
-    const isOwner = readPortalScope() !== 'storage_brand';
+    const sfApi = useStorageFacilityApi();
+    const { routeBase, parentRoute, supplierName } = useStorageFacilityPortal();
+    const isOwner = parentRoute ? true : readPortalScope() !== 'storage_brand';
     const [tab, setTab] = useState('overview');
     const [summary, setSummary] = useState(null);
     const [products, setProducts] = useState([]);
@@ -112,12 +104,12 @@ export default function SupplierStorageFacilityBrandHub({ brandId }) {
         setErr('');
         try {
             const [sumRes, prodRes, custRes, supRes, uomRes, auditRes] = await Promise.all([
-                getStorageBrandSummary(brandId),
-                listStorageProducts(brandId),
-                listStorageCustomers(brandId),
-                listStorageSuppliers(brandId),
-                listStorageUomProfiles(brandId),
-                listStorageAuditLog(brandId, { limit: 20 }),
+                sfApi.getStorageBrandSummary(brandId),
+                sfApi.listStorageProducts(brandId),
+                sfApi.listStorageCustomers(brandId),
+                sfApi.listStorageSuppliers(brandId),
+                sfApi.listStorageUomProfiles(brandId),
+                sfApi.listStorageAuditLog(brandId, { limit: 20 }),
             ]);
             setSummary(sumRes?.brand ?? null);
             setProducts(prodRes?.products ?? []);
@@ -126,7 +118,7 @@ export default function SupplierStorageFacilityBrandHub({ brandId }) {
             setUomProfiles(uomRes?.profiles ?? []);
             setAuditEntries(auditRes?.entries ?? []);
             if (isOwner) {
-                const uRes = await listStorageBrandUsers(brandId);
+                const uRes = await sfApi.listStorageBrandUsers(brandId);
                 setUsers(uRes?.users ?? []);
             }
         } catch (e) {
@@ -134,7 +126,7 @@ export default function SupplierStorageFacilityBrandHub({ brandId }) {
         } finally {
             setLoading(false);
         }
-    }, [brandId, isOwner]);
+    }, [brandId, isOwner, sfApi]);
 
     useEffect(() => {
         reload();
@@ -144,7 +136,7 @@ export default function SupplierStorageFacilityBrandHub({ brandId }) {
         e.preventDefault();
         setBusy(true);
         try {
-            await createStorageBrandUser(brandId, {
+            await sfApi.createStorageBrandUser(brandId, {
                 name: newUser.name,
                 email: newUser.email,
                 password: newUser.password,
@@ -170,7 +162,7 @@ export default function SupplierStorageFacilityBrandHub({ brandId }) {
 
     const searchWh = async (q) => {
         try {
-            const res = await searchWarehouseProductsForMap(q, { limit: q?.trim() ? 200 : 5000 });
+            const res = await sfApi.searchWarehouseProductsForMap(q, { limit: q?.trim() ? 200 : 5000 });
             setWhSearch(res?.products ?? []);
         } catch {
             setWhSearch([]);
@@ -191,12 +183,15 @@ export default function SupplierStorageFacilityBrandHub({ brandId }) {
                 type="button"
                 className="btn-portal-outline"
                 style={{ marginBottom: 12 }}
-                onClick={() => navigate('/supplier/storage_facility')}
+                onClick={() => navigate(routeBase)}
             >
                 <ArrowLeft size={14} /> {isOwner ? 'All brands' : 'Back'}
             </button>
 
             <h2 className="mgr-si-title">{summary?.name ?? 'Storage brand'}</h2>
+            {supplierName ? (
+                <p className="mgr-si-subtitle">Supplier: {supplierName}</p>
+            ) : null}
             {summary?.locationName ? (
                 <p className="mgr-si-subtitle">Bin: {summary.locationName}</p>
             ) : null}

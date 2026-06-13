@@ -64,6 +64,7 @@ function statusBadgeClass(status) {
     if (s === 'paid' || s === 'approved' || s.includes('auto-generated')) {
         return 'billing-status-paid';
     }
+    if (s === 'partially paid' || s === 'partial') return 'billing-status-partial';
     if (s === 'unpaid' || s === 'unapproved') return 'billing-status-unpaid';
     return 'billing-status-neutral';
 }

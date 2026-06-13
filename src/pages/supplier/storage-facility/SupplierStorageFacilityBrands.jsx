@@ -1,12 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Boxes, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Plus, Boxes, ChevronRight } from 'lucide-react';
+import { useStorageFacilityApi, useStorageFacilityPortal } from './StorageFacilityPortalContext';
 import Modal from '../../../components/Modal';
 import { ShimmerTable } from '../../../components/supplier/Shimmer';
-import {
-    createStorageBrand,
-    listStorageBrands,
-} from '../../../services/storageFacilityApi';
 import '../../../styles/admin/AccountingPage.css';
 
 function readPortalScope() {
@@ -20,7 +17,9 @@ function readPortalScope() {
 
 export default function SupplierStorageFacilityBrands() {
     const navigate = useNavigate();
-    const isOwner = readPortalScope() !== 'storage_brand';
+    const sfApi = useStorageFacilityApi();
+    const { routeBase, parentRoute, supplierName } = useStorageFacilityPortal();
+    const isOwner = parentRoute ? true : readPortalScope() !== 'storage_brand';
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(true);
     const [err, setErr] = useState('');
@@ -38,7 +37,7 @@ export default function SupplierStorageFacilityBrands() {
         setLoading(true);
         setErr('');
         try {
-            const res = await listStorageBrands();
+            const res = await sfApi.listStorageBrands();
             setRows(Array.isArray(res?.brands) ? res.brands : []);
         } catch (e) {
             setErr(e?.message || 'Failed to load brands');
@@ -46,7 +45,7 @@ export default function SupplierStorageFacilityBrands() {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [sfApi]);
 
     useEffect(() => {
         load();
@@ -54,12 +53,12 @@ export default function SupplierStorageFacilityBrands() {
 
     useEffect(() => {
         if (!isOwner && rows.length === 1) {
-            navigate(`/supplier/storage_facility?brand=${rows[0].id}`, { replace: true });
+            navigate(`${routeBase}?brand=${rows[0].id}`, { replace: true });
         }
-    }, [isOwner, rows, navigate]);
+    }, [isOwner, rows, navigate, routeBase]);
 
     const openBrand = (id) => {
-        navigate(`/supplier/storage_facility?brand=${encodeURIComponent(id)}`);
+        navigate(`${routeBase}?brand=${encodeURIComponent(id)}`);
     };
 
     const handleCreate = async (e) => {
@@ -67,7 +66,7 @@ export default function SupplierStorageFacilityBrands() {
         if (!form.name.trim()) return;
         setSaving(true);
         try {
-            await createStorageBrand(form);
+            await sfApi.createStorageBrand(form);
             setModalOpen(false);
             setForm({ name: '', code: '', contactPerson: '', email: '', mobile: '' });
             await load();
@@ -80,12 +79,27 @@ export default function SupplierStorageFacilityBrands() {
 
     return (
         <div className="mgr-si-page">
+            {parentRoute ? (
+                <div style={{ marginBottom: 12 }}>
+                    <button
+                        type="button"
+                        className="btn-portal-outline"
+                        onClick={() => navigate(parentRoute)}
+                        style={{ marginBottom: 12 }}
+                    >
+                        <ArrowLeft size={14} /> All suppliers
+                    </button>
+                </div>
+            ) : null}
+
             <header className="mgr-si-header">
-                <h2 className="mgr-si-title">Storage Facility</h2>
+                <h2 className="mgr-si-title">
+                    {supplierName ? supplierName : 'Storage Facility'}
+                </h2>
                 <p className="mgr-si-subtitle">
-                    Sub-warehouses for brands (Castrol, Shell, Fuchs, etc.). Each brand has isolated
-                    products, stock, movements, and AR. Withdrawal invoices can map stock into your main
-                    warehouse catalog.
+                    {supplierName
+                        ? 'Storage brands for this supplier — products, stock, movements, invoices, and accounting.'
+                        : 'Sub-warehouses for brands (Castrol, Shell, Fuchs, etc.). Each brand has isolated products, stock, movements, and AR. Withdrawal invoices can map stock into your main warehouse catalog.'}
                 </p>
             </header>
 

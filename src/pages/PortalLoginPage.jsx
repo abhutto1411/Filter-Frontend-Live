@@ -3,7 +3,7 @@ import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Mail, Lock, ChevronRight, Loader } from 'lucide-react';
 import '../styles/SignInPage.css';
-import { adminLogin, corporateLogin, workshopLogin, cashierLogin, supplierLogin, technicianLogin } from '../services/authApi';
+import { adminLogin, corporateLogin, workshopLogin, cashierLogin, supplierLogin, technicianLogin, marketingLogin } from '../services/authApi';
 import { workshopLandingPath } from '../utils/permissions';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../services/api';
@@ -143,6 +143,8 @@ const PortalLoginPage = () => {
                 data = await technicianLogin(email, password);
             } else if (portalId === 'supplier') {
                 data = await supplierLogin(email, password);
+            } else if (portalId === 'marketing') {
+                data = await marketingLogin(email, password);
             } else {
                 // Default fallback to admin login for other portals if they have APIs
                 data = await adminLogin(email, password);

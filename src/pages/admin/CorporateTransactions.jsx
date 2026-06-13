@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, RefreshCw, FileText, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, RefreshCw, FileText, ChevronLeft, ChevronRight, Printer } from 'lucide-react';
+import '../../styles/admin/SalesOrders.css';
+import Modal from '../../components/Modal';
+import { ShimmerTextBlock } from '../../components/supplier/Shimmer';
 
 const PAGE_SIZE = 50;
 import {
@@ -7,6 +10,7 @@ import {
     getWorkshopOptions,
     getBranches,
     getInvoices,
+    getInvoice,
     getSuperAdminCorporateCompanies,
 } from '../../services/superAdminApi';
 import InvoiceDetailsModal from '../../components/pos/modern/InvoiceDetailsModal';
@@ -34,18 +38,37 @@ function formatDate(raw) {
     });
 }
 
-/** Client-side search predicate — shared by the table filter and export-all. */
-function matchesInvoiceSearch(r, q) {
-    if (!q) return true;
-    const hay = [
-        r.invoiceNo, r.invoice_no,
-        r.corporateAccountName, r.corporate?.companyName,
-        r.workshopName, r.workshop?.name,
-        r.branchName, r.branch?.name,
-        r.paymentStatus,
-        r.totalAmount, r.balance, r.amountPaid,
-    ].map((x) => String(x ?? '').toLowerCase()).join(' ');
-    return hay.includes(q);
+function formatDateTime(raw) {
+    if (raw == null || raw === '') return '—';
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) return String(raw);
+    return d.toLocaleString(undefined, {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
+
+const toNumber = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+};
+
+function formatStatusLabel(status) {
+    if (status == null || String(status).trim() === '') return '—';
+    return String(status)
+        .trim()
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function orderTypeLabel(source) {
+    const src = String(source ?? '').toLowerCase();
+    if (src === 'walk_in_corporate') return 'Walk-in Corporate';
+    if (src === 'corporate_app') return 'Corporate Booking';
+    return 'Corporate';
 }
 
 /** Build {headers, rows} mirroring the on-screen table — used for PDF/Excel export. */
@@ -63,7 +86,7 @@ function buildCorporateExportRows(list) {
         const realStatus = String(r.realPaymentStatus ?? r.paymentStatus ?? '').toLowerCase();
         const statusLabel = realStatus === 'paid' || realBalance <= 0.01
             ? 'Paid'
-            : realPaid > 0.01 ? 'Partially Paid' : 'Not Paid';
+            : realStatus === 'partial' || realPaid > 0.01 ? 'Partially Paid' : 'Not Paid';
         const src = String(r.orderSource ?? '').toLowerCase();
         const orderType = src === 'walk_in_corporate'
             ? 'Walk-in Corporate'
@@ -114,6 +137,7 @@ export default function CorporateTransactions() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [search, setSearch] = useState('');
+    const [debouncedSearch, setDebouncedSearch] = useState('');
     const [workshopOptions, setWorkshopOptions] = useState([]);
     const [branchOptions, setBranchOptions] = useState([]);
     const [companyOptions, setCompanyOptions] = useState([]);
@@ -127,13 +151,23 @@ export default function CorporateTransactions() {
     const [exporting, setExporting] = useState(false);
     // Server-computed KPI totals across ALL pages (not just this page's rows).
     const [summary, setSummary] = useState(null);
+    const [detailRow, setDetailRow] = useState(null);
+    const [detailData, setDetailData] = useState(null);
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [detailError, setDetailError] = useState('');
     const [invoice, setInvoice] = useState(null);
-    const [invoiceLoadingId, setInvoiceLoadingId] = useState(null);
+    const [invoiceLoading, setInvoiceLoading] = useState(false);
     // Error from the last invoice fetch (kept so we can surface it to the user
     // if the call fails — otherwise the View button used to spin forever
     // because openInvoice called setInvoiceErr() which was undefined →
     // ReferenceError thrown BEFORE the try/finally → loading state never reset).
     const [invoiceErr, setInvoiceErr] = useState('');
+
+    // Debounce search so we query the server across ALL pages, not just the current slice.
+    useEffect(() => {
+        const timer = setTimeout(() => setDebouncedSearch(search.trim()), 300);
+        return () => clearTimeout(timer);
+    }, [search]);
 
     // Server-side pagination — 50 per page. Page changes refetch.
     // Server returns paid + unpaid + overdue + partial in one payload;
@@ -148,6 +182,7 @@ export default function CorporateTransactions() {
                 corporateAccountId: selectedCompanyId || undefined,
                 startDate: dateFrom || undefined,
                 endDate:   dateTo   || undefined,
+                search: debouncedSearch || undefined,
                 limit: PAGE_SIZE,
                 offset: (page - 1) * PAGE_SIZE,
                 corporateOnly: true,     // only corporate invoices
@@ -169,7 +204,7 @@ export default function CorporateTransactions() {
         } finally {
             setLoading(false);
         }
-    }, [selectedWorkshopId, selectedBranchId, selectedCompanyId, dateFrom, dateTo, page]);
+    }, [selectedWorkshopId, selectedBranchId, selectedCompanyId, dateFrom, dateTo, debouncedSearch, page]);
 
     useEffect(() => {
         void load();
@@ -179,7 +214,7 @@ export default function CorporateTransactions() {
     // than the new total returns nothing and the user sees an empty table.
     useEffect(() => {
         setPage(1);
-    }, [selectedWorkshopId, selectedBranchId, selectedCompanyId, dateFrom, dateTo]);
+    }, [selectedWorkshopId, selectedBranchId, selectedCompanyId, dateFrom, dateTo, debouncedSearch]);
 
     // Companies for the Company filter (scoped to the selected workshop).
     useEffect(() => {
@@ -262,14 +297,8 @@ export default function CorporateTransactions() {
         };
     }, [selectedWorkshopId]);
 
-    const filtered = useMemo(() => {
-        const q = search.trim().toLowerCase();
-        if (!q) return rows;
-        return rows.filter((r) => matchesInvoiceSearch(r, q));
-    }, [rows, search]);
-
     // Export the FULL filtered set (not just the current page): one bounded
-    // re-fetch with the active filters, then the same client-side search.
+    // re-fetch with the active filters (including server-side search).
     const runExport = useCallback(async (kind) => {
         setExporting(true);
         setError('');
@@ -280,6 +309,7 @@ export default function CorporateTransactions() {
                 corporateAccountId: selectedCompanyId || undefined,
                 startDate: dateFrom || undefined,
                 endDate:   dateTo   || undefined,
+                search: debouncedSearch || undefined,
                 limit: EXPORT_LIMIT,
                 offset: 0,
                 corporateOnly: true,
@@ -288,9 +318,7 @@ export default function CorporateTransactions() {
             const all = Array.isArray(res?.invoices) ? res.invoices
                 : Array.isArray(res?.items) ? res.items
                 : Array.isArray(res) ? res : [];
-            const q = search.trim().toLowerCase();
-            const list = q ? all.filter((r) => matchesInvoiceSearch(r, q)) : all;
-            const { headers, rows: outRows } = buildCorporateExportRows(list);
+            const { headers, rows: outRows } = buildCorporateExportRows(all);
             const subtitle = `${outRows.length} row(s)`
                 + (dateFrom || dateTo ? ` · ${dateFrom || '…'} → ${dateTo || '…'}` : '');
             if (kind === 'pdf') {
@@ -303,14 +331,11 @@ export default function CorporateTransactions() {
         } finally {
             setExporting(false);
         }
-    }, [selectedWorkshopId, selectedBranchId, selectedCompanyId, dateFrom, dateTo, search]);
+    }, [selectedWorkshopId, selectedBranchId, selectedCompanyId, dateFrom, dateTo, debouncedSearch]);
 
-    // KPI totals — billed, collected (real, non-phantom) and outstanding.
-    // Prefer the server `summary` (across ALL pages). When a client-side search
-    // is active it only narrows the current page, so fall back to summing the
-    // visible rows so the KPIs match what's on screen.
+    // KPI totals — server `summary` spans ALL pages for the active filters + search.
     const { totalBilled, totalCollected, totalOutstanding, kpiCount } = useMemo(() => {
-        if (summary && !search.trim()) {
+        if (summary) {
             return {
                 totalBilled: Number(summary.totalBilled ?? 0),
                 totalCollected: Number(summary.totalCollected ?? 0),
@@ -321,7 +346,7 @@ export default function CorporateTransactions() {
         let billed = 0;
         let collected = 0;
         let outstanding = 0;
-        for (const r of filtered) {
+        for (const r of rows) {
             const total = Number(r.totalAmount ?? r.grandTotal ?? 0);
             const paid = r.realPaid != null
                 ? Number(r.realPaid)
@@ -333,12 +358,40 @@ export default function CorporateTransactions() {
             collected += paid;
             outstanding += bal;
         }
-        return { totalBilled: billed, totalCollected: collected, totalOutstanding: outstanding, kpiCount: filtered.length };
-    }, [filtered, summary, search]);
+        return { totalBilled: billed, totalCollected: collected, totalOutstanding: outstanding, kpiCount: rows.length };
+    }, [rows, summary]);
 
-    const openInvoice = async (invoiceId) => {
+    const openDetails = useCallback(async (row) => {
+        if (!row?.id) return;
+        setDetailRow(row);
+        setDetailLoading(true);
+        setDetailError('');
+        setDetailData(null);
+        try {
+            const res = await getInvoice(row.id);
+            const payload =
+                res && typeof res === 'object' && res.data && typeof res.data === 'object'
+                    ? res.data
+                    : res;
+            setDetailData(payload && typeof payload === 'object' ? payload : null);
+        } catch (e) {
+            setDetailError(e?.message || 'Could not load transaction details');
+        } finally {
+            setDetailLoading(false);
+        }
+    }, []);
+
+    const closeDetails = useCallback(() => {
+        setDetailRow(null);
+        setDetailData(null);
+        setDetailError('');
+        setDetailLoading(false);
+    }, []);
+
+    const openTaxInvoice = async () => {
+        const invoiceId = detailData?.id ?? detailRow?.id;
         if (!invoiceId) return;
-        setInvoiceLoadingId(String(invoiceId));
+        setInvoiceLoading(true);
         setInvoiceErr('');
         try {
             const raw = await getSuperAdminInvoiceView(invoiceId);
@@ -347,7 +400,7 @@ export default function CorporateTransactions() {
         } catch (e) {
             setInvoiceErr(e?.message || 'Could not load invoice');
         } finally {
-            setInvoiceLoadingId(null);
+            setInvoiceLoading(false);
         }
     };
 
@@ -513,11 +566,11 @@ export default function CorporateTransactions() {
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflow: 'auto' }}>
                 <InvoicesTable
                     loading={loading}
-                    filtered={filtered}
+                    filtered={rows}
                     cellTh={cellTh}
                     cellTd={cellTd}
-                    invoiceLoadingId={invoiceLoadingId}
-                    onOpenInvoice={openInvoice}
+                    detailLoadingId={detailLoading ? String(detailRow?.id ?? '') : ''}
+                    onOpenDetails={openDetails}
                 />
                 <PaginationBar
                     page={page}
@@ -529,6 +582,18 @@ export default function CorporateTransactions() {
                     disabled={loading}
                 />
             </div>
+
+            {detailRow ? (
+                <CorporateTransactionDetailsModal
+                    row={detailRow}
+                    data={detailData}
+                    loading={detailLoading}
+                    error={detailError}
+                    invoiceLoading={invoiceLoading}
+                    onClose={closeDetails}
+                    onViewInvoice={openTaxInvoice}
+                />
+            ) : null}
 
             <InvoiceDetailsModal
                 invoice={invoice}
@@ -639,7 +704,7 @@ function OrderTypeBadge({ row }) {
     );
 }
 
-function InvoicesTable({ loading, filtered, cellTh, cellTd, invoiceLoadingId, onOpenInvoice }) {
+function InvoicesTable({ loading, filtered, cellTh, cellTd, detailLoadingId, onOpenDetails }) {
     return (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
             <thead>
@@ -676,8 +741,6 @@ function InvoicesTable({ loading, filtered, cellTh, cellTd, invoiceLoadingId, on
                     const realBalance = r.realBalance != null
                         ? Number(r.realBalance)
                         : Number(r.balance ?? 0);
-                    const realStatus = String(r.realPaymentStatus ?? r.paymentStatus ?? '').toLowerCase();
-                    const isPaid = realStatus === 'paid';
                     return (
                         <tr key={r.id} style={{ borderTop: '1px solid #f1f5f9' }}>
                             <td style={cellTd}>{formatDate(r.invoiceDate ?? r.invoice_date ?? r.createdAt)}</td>
@@ -694,18 +757,18 @@ function InvoicesTable({ loading, filtered, cellTh, cellTd, invoiceLoadingId, on
                                 <div>{r.workshopName ?? r.workshop?.name ?? '—'}</div>
                                 <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{r.branchName ?? r.branch?.name ?? '—'}</div>
                             </td>
-                            <td style={cellTd}><PaidStatusBadge paid={isPaid ? total : realPaid} balance={isPaid ? 0 : realBalance} /></td>
+                            <td style={cellTd}><PaidStatusBadge paid={realPaid} balance={realBalance} /></td>
                             <td style={{ ...cellTd, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{num(total)}</td>
                             <td style={{ ...cellTd, textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: '#15803d' }}>{num(realPaid)}</td>
                             <td style={{ ...cellTd, textAlign: 'right', fontWeight: 700, fontVariantNumeric: 'tabular-nums', color: realBalance > 0 ? '#b91c1c' : '#94a3b8' }}>{num(realBalance)}</td>
                             <td style={{ ...cellTd, textAlign: 'right' }}>
                                 <button
                                     type="button"
-                                    onClick={() => onOpenInvoice(r.id)}
-                                    disabled={invoiceLoadingId === String(r.id)}
-                                    style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', cursor: invoiceLoadingId === String(r.id) ? 'wait' : 'pointer', fontSize: '0.75rem', fontWeight: 700 }}
+                                    onClick={() => onOpenDetails(r)}
+                                    disabled={detailLoadingId === String(r.id)}
+                                    style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', cursor: detailLoadingId === String(r.id) ? 'wait' : 'pointer', fontSize: '0.75rem', fontWeight: 700 }}
                                 >
-                                    {invoiceLoadingId === String(r.id) ? <Loader2 size={12} className="spin" /> : <FileText size={12} />} View
+                                    {detailLoadingId === String(r.id) ? <Loader2 size={12} className="spin" /> : <FileText size={12} />} View
                                 </button>
                             </td>
                         </tr>
@@ -713,6 +776,218 @@ function InvoicesTable({ loading, filtered, cellTh, cellTd, invoiceLoadingId, on
                 })}
             </tbody>
         </table>
+    );
+}
+
+/** Summary + line items modal — tax invoice opens separately via "View invoice". */
+function CorporateTransactionDetailsModal({
+    row,
+    data,
+    loading,
+    error,
+    invoiceLoading,
+    onClose,
+    onViewInvoice,
+}) {
+    const total = Number(row?.totalAmount ?? data?.totalAmount ?? 0);
+    const realPaid = row?.realPaid != null
+        ? Number(row.realPaid)
+        : Math.max(0, total - Number(row?.realBalance ?? data?.balance ?? 0));
+    const realBalance = row?.realBalance != null
+        ? Number(row.realBalance)
+        : Number(row?.balance ?? 0);
+
+    return (
+        <Modal
+            title={`Corporate transaction${data?.invoiceNo || row?.invoiceNo ? ` — ${data?.invoiceNo ?? row?.invoiceNo}` : ''}`}
+            onClose={onClose}
+            width="min(1100px, 98vw)"
+            contentClassName="ws-modal-order-details"
+        >
+            {loading ? (
+                <ShimmerTextBlock lines={8} />
+            ) : error ? (
+                <div style={{ color: '#B91C1C' }}>{error}</div>
+            ) : data ? (
+                <div className="ws-order-details-modal-body">
+                    <div className="ws-report-table-wrapper">
+                        <table className="ws-table">
+                            <tbody>
+                                <tr><th>INVOICE NO</th><td>{data.invoiceNo ?? row?.invoiceNo ?? '—'}</td></tr>
+                                <tr>
+                                    <th>INVOICE DATE</th>
+                                    <td>{formatDateTime(data.issuedAt ?? data.invoiceDate ?? row?.invoiceDate)}</td>
+                                </tr>
+                                <tr>
+                                    <th>CORPORATE ACCOUNT</th>
+                                    <td>{row?.corporateAccountName ?? data.customer?.name ?? '—'}</td>
+                                </tr>
+                                <tr>
+                                    <th>ORDER TYPE</th>
+                                    <td>{orderTypeLabel(data.salesOrder?.source ?? row?.orderSource)}</td>
+                                </tr>
+                                <tr><th>WORKSHOP</th><td>{data.workshopName ?? row?.workshopName ?? '—'}</td></tr>
+                                <tr><th>BRANCH</th><td>{data.branchName ?? row?.branchName ?? '—'}</td></tr>
+                                <tr><th>ORDER #</th><td>{data.salesOrder?.id ?? row?.salesOrderId ?? '—'}</td></tr>
+                                <tr><th>ORDER STATUS</th><td>{formatStatusLabel(data.salesOrder?.status ?? row?.orderStatus)}</td></tr>
+                                <tr>
+                                    <th>ORDER CREATED</th>
+                                    <td>{formatDateTime(data.salesOrder?.createdAt)}</td>
+                                </tr>
+                                <tr><th>CUSTOMER</th><td>{data.customer?.name ?? '—'}</td></tr>
+                                <tr><th>PHONE</th><td>{data.customer?.mobile ?? row?.customerMobile ?? '—'}</td></tr>
+                                <tr>
+                                    <th>VEHICLE</th>
+                                    <td>
+                                        {data.vehicle?.plateNo ?? row?.plateNo ?? '—'}
+                                        {data.vehicle && (data.vehicle.make || data.vehicle.model || data.vehicle.year)
+                                            ? ` · ${[data.vehicle.year, data.vehicle.make, data.vehicle.model].filter(Boolean).join(' ')}`
+                                            : ''}
+                                    </td>
+                                </tr>
+                                <tr><th>SUBTOTAL</th><td>SAR {toNumber(data.subtotal).toLocaleString()}</td></tr>
+                                <tr><th>VAT</th><td>SAR {toNumber(data.vatAmount).toLocaleString()}</td></tr>
+                                <tr><th>DISCOUNT</th><td>SAR {toNumber(data.discountAmount).toLocaleString()}</td></tr>
+                                <tr>
+                                    <th>TOTAL</th>
+                                    <td className="ws-font-bold">SAR {toNumber(data.totalAmount).toLocaleString()}</td>
+                                </tr>
+                                <tr>
+                                    <th>COLLECTED</th>
+                                    <td style={{ color: '#15803d', fontWeight: 700 }}>SAR {realPaid.toLocaleString()}</td>
+                                </tr>
+                                <tr>
+                                    <th>BALANCE</th>
+                                    <td style={{ color: realBalance > 0 ? '#b91c1c' : '#64748b', fontWeight: 700 }}>
+                                        SAR {realBalance.toLocaleString()}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <th>PAYMENT STATUS</th>
+                                    <td><PaidStatusBadge paid={realPaid} balance={realBalance} /></td>
+                                </tr>
+                                <tr>
+                                    <th>PAYMENT METHOD</th>
+                                    <td>{(data.deferredPaymentMethod ?? row?.deferredPaymentMethod ?? '—').toString().replace(/_/g, ' ')}</td>
+                                </tr>
+                                {data.createdBy ? (
+                                    <tr>
+                                        <th>CREATED BY</th>
+                                        <td>
+                                            {data.createdBy.name ?? data.createdBy.email ?? '—'}
+                                            {data.createdBy.userType ? ` · ${formatStatusLabel(data.createdBy.userType)}` : ''}
+                                        </td>
+                                    </tr>
+                                ) : null}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {Array.isArray(data.lineItems) && data.lineItems.length > 0 ? (
+                        <div className="ws-report-table-wrapper" style={{ marginTop: 16 }}>
+                            <p style={{ margin: '0 0 8px', fontWeight: 700, fontSize: '0.875rem' }}>Line items</p>
+                            <div className="ws-order-details-table-scroll">
+                                <table className="ws-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Item</th>
+                                            <th>Department</th>
+                                            <th>Qty</th>
+                                            <th>Unit price</th>
+                                            <th>Line total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {data.lineItems.map((item) => (
+                                            <tr key={item.id}>
+                                                <td>{item.itemName ?? '—'}</td>
+                                                <td>{item.departmentName ?? '—'}</td>
+                                                <td>{toNumber(item.qty)}</td>
+                                                <td>{toNumber(item.unitPrice).toLocaleString()}</td>
+                                                <td className="ws-font-bold">{toNumber(item.lineTotal).toLocaleString()}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    ) : null}
+
+                    {Array.isArray(data.payments) && data.payments.length > 0 ? (
+                        <div className="ws-report-table-wrapper" style={{ marginTop: 16 }}>
+                            <p style={{ margin: '0 0 8px', fontWeight: 700, fontSize: '0.875rem' }}>Payments</p>
+                            <table className="ws-table">
+                                <thead>
+                                    <tr>
+                                        <th>Method</th>
+                                        <th>Amount (SAR)</th>
+                                        <th>Paid at</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {data.payments.map((p) => (
+                                        <tr key={p.id}>
+                                            <td>{p.method ?? '—'}</td>
+                                            <td className="ws-font-bold">{toNumber(p.amount).toLocaleString()}</td>
+                                            <td>{formatDateTime(p.paidAt)}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    ) : null}
+
+                    <div style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 10,
+                        justifyContent: 'flex-end',
+                        marginTop: 20,
+                        paddingTop: 16,
+                        borderTop: '1px solid #e2e8f0',
+                    }}>
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            style={{
+                                padding: '8px 14px',
+                                borderRadius: 10,
+                                border: '1px solid #cbd5e1',
+                                background: '#fff',
+                                cursor: 'pointer',
+                                fontSize: '0.8125rem',
+                                fontWeight: 700,
+                            }}
+                        >
+                            Close
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onViewInvoice}
+                            disabled={invoiceLoading}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: 6,
+                                padding: '8px 14px',
+                                borderRadius: 10,
+                                border: '1px solid #bfdbfe',
+                                background: '#eff6ff',
+                                color: '#1d4ed8',
+                                cursor: invoiceLoading ? 'wait' : 'pointer',
+                                fontSize: '0.8125rem',
+                                fontWeight: 700,
+                            }}
+                        >
+                            {invoiceLoading ? <Loader2 size={14} className="spin" /> : <Printer size={14} />}
+                            View invoice
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                <div style={{ color: '#64748b' }}>No details available.</div>
+            )}
+        </Modal>
     );
 }
 

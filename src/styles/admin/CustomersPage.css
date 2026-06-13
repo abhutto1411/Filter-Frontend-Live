@@ -440,6 +440,11 @@
     color: #B91C1C;
 }
 
+.billing-status-partial {
+    background: #FEF3C7;
+    color: #92400E;
+}
+
 .billing-status-neutral {
     background: #F3F4F6;
     color: #6B7280;

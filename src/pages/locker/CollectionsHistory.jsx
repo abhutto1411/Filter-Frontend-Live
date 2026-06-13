@@ -1,25 +1,55 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { DollarSign, RefreshCw, TrendingUp } from 'lucide-react';
 import { apiFetch } from '../../services/api';
 import { qs } from '../../services/workshopStaffApi';
+import LockerFilterBar from './LockerFilterBar';
+import { buildLockerFilterQuery, defaultHistoryDateRange, fmtSar } from './lockerFilterUtils';
 
-const fmtSar = (n) =>
-    `SAR ${Number(n || 0).toLocaleString('en-US', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-    })}`;
+const EMPTY_FILTERS = {
+    from: '',
+    to: '',
+    branchId: 'all',
+    cashierId: 'all',
+    officerId: 'all',
+};
 
 export default function CollectionsHistory() {
     const [rows, setRows] = useState([]);
+    const [summary, setSummary] = useState(null);
+    const [filters, setFilters] = useState(() => {
+        const d = defaultHistoryDateRange();
+        return { ...EMPTY_FILTERS, from: d.from, to: d.to };
+    });
+    const [appliedFilters, setAppliedFilters] = useState(() => {
+        const d = defaultHistoryDateRange();
+        return { ...EMPTY_FILTERS, from: d.from, to: d.to };
+    });
+    const [branches, setBranches] = useState([]);
+    const [cashiers, setCashiers] = useState([]);
+    const [officers, setOfficers] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
 
-    const load = useCallback(async () => {
+    useEffect(() => {
+        Promise.all([
+            apiFetch('/locker/branches').then((r) => r?.branches || []).catch(() => []),
+            apiFetch('/locker/cashiers').then((r) => r?.cashiers || []).catch(() => []),
+            apiFetch('/locker/field-officers').then((r) => r?.officers || []).catch(() => []),
+        ]).then(([b, c, o]) => {
+            setBranches(b);
+            setCashiers(c);
+            setOfficers(o);
+        });
+    }, []);
+
+    const load = useCallback(async (activeFilters = appliedFilters) => {
         setLoading(true);
         setError('');
         try {
             const res = await apiFetch(
-                `/locker/financial/history${qs({ page: 1, limit: 100 })}`,
+                `/locker/financial/history${qs(
+                    buildLockerFilterQuery(activeFilters, { page: 1, limit: 100 }),
+                )}`,
             );
             const list =
                 res?.items ||
@@ -28,16 +58,25 @@ export default function CollectionsHistory() {
                 res?.data?.items ||
                 [];
             setRows(Array.isArray(list) ? list : []);
+            setSummary(res?.summary || null);
         } catch (e) {
             setError(e?.message || 'Failed to load history');
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [appliedFilters]);
 
     useEffect(() => {
-        load();
-    }, [load]);
+        load(appliedFilters);
+    }, [appliedFilters, load]);
+
+    const applyFilters = () => setAppliedFilters({ ...filters });
+    const resetFilters = () => {
+        const d = defaultHistoryDateRange();
+        const next = { ...EMPTY_FILTERS, from: d.from, to: d.to };
+        setFilters(next);
+        setAppliedFilters(next);
+    };
 
     return (
         <div>
@@ -48,7 +87,7 @@ export default function CollectionsHistory() {
                 </div>
                 <button
                     className="btn-secondary"
-                    onClick={load}
+                    onClick={() => load(appliedFilters)}
                     disabled={loading}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
                 >
@@ -57,6 +96,55 @@ export default function CollectionsHistory() {
             </div>
 
             {error ? <div className="wlk-error" style={{ marginBottom: 12 }}>{error}</div> : null}
+
+            <LockerFilterBar
+                filters={filters}
+                onChange={setFilters}
+                onApply={applyFilters}
+                onReset={resetFilters}
+                branches={branches}
+                cashiers={cashiers}
+                officers={officers}
+                showOfficer
+                loading={loading}
+            />
+
+            <div className="ws-kpi-grid wlk-summary-kpi">
+                <div className="ws-kpi-card">
+                    <div>
+                        <p className="ws-kpi-label">Expected Amount</p>
+                        <p className="ws-kpi-value">{fmtSar(summary?.totalExpected)}</p>
+                        <p className="ws-kpi-sub">Filtered collections</p>
+                    </div>
+                    <div className="ws-kpi-icon ws-kpi-icon--blue">
+                        <DollarSign size={22} />
+                    </div>
+                </div>
+                <div className="ws-kpi-card">
+                    <div>
+                        <p className="ws-kpi-label">Received Amount</p>
+                        <p className="ws-kpi-value">{fmtSar(summary?.totalReceived)}</p>
+                        <p className="ws-kpi-sub">Cash collected</p>
+                    </div>
+                    <div className="ws-kpi-icon ws-kpi-icon--green">
+                        <DollarSign size={22} />
+                    </div>
+                </div>
+                <div className="ws-kpi-card">
+                    <div>
+                        <p className="ws-kpi-label">Differences</p>
+                        <p className="ws-kpi-value">{fmtSar(summary?.totalDifference)}</p>
+                        <p className="ws-kpi-sub">
+                            Over {summary?.overCount ?? 0} ({fmtSar(summary?.overAmount)}) · Short{' '}
+                            {summary?.shortCount ?? 0} ({fmtSar(summary?.shortAmount)}) · Matched{' '}
+                            {summary?.matchedCount ?? 0}
+                        </p>
+                    </div>
+                    <div className="ws-kpi-icon ws-kpi-icon--yellow">
+                        <TrendingUp size={22} />
+                    </div>
+                </div>
+            </div>
 
             <div className="ws-section">
                 <table className="ws-table">
@@ -77,7 +165,7 @@ export default function CollectionsHistory() {
                         {rows.length === 0 ? (
                             <tr>
                                 <td colSpan={9} style={{ textAlign: 'center', padding: 18, color: '#9ca3af' }}>
-                                    No history available
+                                    No history matches filters
                                 </td>
                             </tr>
                         ) : (
