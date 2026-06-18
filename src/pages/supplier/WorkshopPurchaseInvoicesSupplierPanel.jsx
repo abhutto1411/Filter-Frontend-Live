@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, CheckCircle, X, Eye, Pencil, FileText, FilePlus2 } from 'lucide-react';
+import { RefreshCw, FileText } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import Modal from '../../components/Modal';
 import {
@@ -17,6 +17,7 @@ import {
 import SupplierWorkshopPurchaseInvoiceEditModal from './SupplierWorkshopPurchaseInvoiceEditModal';
 import { ShimmerTable, ShimmerTextBlock } from '../../components/supplier/Shimmer';
 import WorkshopPurchaseInvoiceView from '../../components/supplier/WorkshopPurchaseInvoiceView';
+import RowActionsMenu from '../../components/RowActionsMenu';
 
 /**
  * Workshop → supplier purchase invoices (list, view, workshop-style PI edit via PATCH, approve, reject).
@@ -174,17 +175,7 @@ export default function WorkshopPurchaseInvoicesSupplierPanel({
     return (
         <div style={embedded ? { marginBottom: 24 } : undefined}>
             {error && (
-                <div
-                    style={{
-                        marginBottom: 16,
-                        color: '#B91C1C',
-                        background: '#FEF2F2',
-                        border: '1px solid #FECACA',
-                        borderRadius: 10,
-                        padding: 12,
-                        fontSize: '0.875rem',
-                    }}
-                >
+                <div className="theme-alert">
                     {error}
                 </div>
             )}
@@ -280,7 +271,7 @@ export default function WorkshopPurchaseInvoicesSupplierPanel({
                                     return (
                                     <tr key={r.id}>
                                         <td>
-                                            <strong style={{ color: '#EA580C' }}>{r.invoice_number}</strong>
+                                            <strong className="theme-invoice-id">{r.invoice_number}</strong>
                                         </td>
                                         <td style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
                                             {r.vendor_invoice_ref || '—'}
@@ -340,135 +331,68 @@ export default function WorkshopPurchaseInvoicesSupplierPanel({
                                             <span
                                                 className={`ws-badge ws-badge--${
                                                     r.status === 'rejected'
-                                                        ? 'red'
+                                                        ? 'gray'
                                                         : r.status === 'pending'
                                                           ? 'yellow'
                                                           : r.status === 'delivered' || r.status === 'approved'
                                                             ? 'green'
-                                                            : 'blue'
+                                                            : 'yellow'
                                                 }`}
                                             >
                                                 {r.status === 'on_the_way' ? 'On the way' : (r.status || '').replace(/_/g, ' ')}
                                             </span>
                                         </td>
                                         <td>
-                                            <div style={{ display: 'flex', gap: 4 }}>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => openView(r)}
-                                                    style={{
-                                                        padding: 6,
-                                                        borderRadius: 6,
-                                                        border: 'none',
-                                                        background: '#F3F4F6',
-                                                        cursor: 'pointer',
-                                                    }}
-                                                    title="View"
-                                                >
-                                                    <Eye size={14} />
-                                                </button>
-                                                {r.supplier_invoice_id ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => openLinkedSalesInvoice(r.supplier_invoice_id)}
-                                                        style={{
-                                                            padding: 6,
-                                                            borderRadius: 6,
-                                                            border: 'none',
-                                                            background: '#DBEAFE',
-                                                            color: '#1D4ED8',
-                                                            cursor: 'pointer',
-                                                        }}
-                                                        title="Open sales invoice (AR)"
-                                                    >
-                                                        <FileText size={14} />
-                                                    </button>
-                                                ) : null}
-                                                {r.status === 'pending' && (
-                                                    <>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => openEdit(r)}
-                                                            disabled={actionId !== null}
-                                                            style={{
-                                                                padding: 6,
-                                                                borderRadius: 6,
-                                                                border: 'none',
-                                                                background: '#E0E7FF',
-                                                                color: '#4338CA',
-                                                                cursor: actionId ? 'not-allowed' : 'pointer',
-                                                                opacity: actionId ? 0.6 : 1,
-                                                            }}
-                                                            title="Edit purchase invoice (lines, dates, totals)"
-                                                        >
-                                                            <Pencil size={14} />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleApprove(r.id)}
-                                                            disabled={actionId !== null}
-                                                            style={{
-                                                                padding: 6,
-                                                                borderRadius: 6,
-                                                                border: 'none',
-                                                                background: '#D1FAE5',
-                                                                color: '#059669',
-                                                                cursor: actionId ? 'not-allowed' : 'pointer',
-                                                                opacity: actionId ? 0.6 : 1,
-                                                            }}
-                                                            title="Approve workshop order (no stock/GL until sales invoice is issued)"
-                                                        >
-                                                            <CheckCircle size={14} />
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                setRejectOpen(r);
-                                                                setRejectReason('');
-                                                            }}
-                                                            disabled={actionId !== null}
-                                                            style={{
-                                                                padding: 6,
-                                                                borderRadius: 6,
-                                                                border: 'none',
-                                                                background: '#FEE2E2',
-                                                                color: '#DC2626',
-                                                                cursor: actionId ? 'not-allowed' : 'pointer',
-                                                                opacity: actionId ? 0.6 : 1,
-                                                            }}
-                                                            title="Reject"
-                                                        >
-                                                            <X size={14} />
-                                                        </button>
-                                                    </>
-                                                )}
-                                                {approvedAwaitingSi ? (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handlePrepareSalesInvoice(r)}
-                                                        disabled={actionId !== null}
-                                                        style={{
-                                                            padding: '6px 10px',
-                                                            borderRadius: 6,
-                                                            border: 'none',
-                                                            background: '#1D4ED8',
-                                                            color: '#fff',
-                                                            cursor: actionId ? 'not-allowed' : 'pointer',
-                                                            opacity: actionId ? 0.6 : 1,
-                                                            fontSize: '0.6875rem',
-                                                            fontWeight: 700,
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: 4,
-                                                            whiteSpace: 'nowrap',
-                                                        }}
-                                                        title="Open Sales Invoices with lines from this order"
-                                                    >
-                                                        <FilePlus2 size={13} />
-                                                        Prepare sales invoice
-                                                    </button>
-                                                ) : null}
-                                            </div>
+                                            <RowActionsMenu
+                                                disabled={actionId !== null}
+                                                ariaLabel={`Actions for ${r.invoice_number || 'invoice'}`}
+                                                items={[
+                                                    { label: 'View', onClick: () => openView(r) },
+                                                    ...(r.supplier_invoice_id
+                                                        ? [
+                                                              {
+                                                                  label: 'Open sales invoice (AR)',
+                                                                  onClick: () =>
+                                                                      openLinkedSalesInvoice(
+                                                                          r.supplier_invoice_id,
+                                                                      ),
+                                                              },
+                                                          ]
+                                                        : []),
+                                                    ...(r.status === 'pending'
+                                                        ? [
+                                                              {
+                                                                  label: 'Edit purchase invoice',
+                                                                  onClick: () => openEdit(r),
+                                                                  disabled: actionId !== null,
+                                                              },
+                                                              {
+                                                                  label: 'Approve',
+                                                                  onClick: () => handleApprove(r.id),
+                                                                  disabled: actionId !== null,
+                                                              },
+                                                              {
+                                                                  label: 'Reject',
+                                                                  onClick: () => {
+                                                                      setRejectOpen(r);
+                                                                      setRejectReason('');
+                                                                  },
+                                                                  disabled: actionId !== null,
+                                                              },
+                                                          ]
+                                                        : []),
+                                                    ...(approvedAwaitingSi
+                                                        ? [
+                                                              {
+                                                                  label: 'Prepare sales invoice',
+                                                                  onClick: () =>
+                                                                      handlePrepareSalesInvoice(r),
+                                                                  disabled: actionId !== null,
+                                                              },
+                                                          ]
+                                                        : []),
+                                                ]}
+                                            />
                                         </td>
                                     </tr>
                                     );
@@ -496,21 +420,7 @@ export default function WorkshopPurchaseInvoicesSupplierPanel({
                         ) : (
                             <>
                                 {viewRow?.supplier_invoice_id ? (
-                                    <div
-                                        style={{
-                                            marginBottom: 12,
-                                            padding: '10px 14px',
-                                            borderRadius: 8,
-                                            background: '#EFF6FF',
-                                            border: '1px solid #BFDBFE',
-                                            fontSize: '0.875rem',
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            justifyContent: 'space-between',
-                                            gap: 12,
-                                            flexWrap: 'wrap',
-                                        }}
-                                    >
+                                    <div className="theme-callout" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                                         <span>
                                             Linked <strong>sales invoice (AR)</strong> — same accounting as Sales
                                             Invoices.
@@ -570,8 +480,7 @@ export default function WorkshopPurchaseInvoicesSupplierPanel({
                                 </button>
                                 <button
                                     type="button"
-                                    className="btn-submit"
-                                    style={{ background: '#DC2626' }}
+                                    className="btn-submit theme-action-btn theme-action-btn--dark"
                                     disabled={!rejectReason.trim() || actionId !== null}
                                     onClick={handleReject}
                                 >

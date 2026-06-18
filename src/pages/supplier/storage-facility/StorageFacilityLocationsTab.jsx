@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useStorageFacilityApi } from './StorageFacilityPortalContext';
-import { MapPin, Pencil, Plus, Trash2 } from 'lucide-react';
+import { MapPin, Plus } from 'lucide-react';
 import Modal from '../../../components/Modal';
+import RowActionsMenu from '../../../components/RowActionsMenu';
 import { ShimmerTable } from '../../../components/supplier/Shimmer';
 
 
@@ -141,24 +142,21 @@ export default function StorageFacilityLocationsTab({ brandId }) {
                                 <td>{loc.code || '—'}</td>
                                 <td>{KIND_LABEL[loc.locationKind] || loc.locationKind}</td>
                                 <td>
-                                    <button
-                                        type="button"
-                                        className="mgr-si-record-pay"
-                                        style={{ marginRight: 6 }}
-                                        onClick={() => openEdit(loc)}
-                                    >
-                                        <Pencil size={12} style={{ verticalAlign: 'middle' }} /> Edit
-                                    </button>
-                                    {!loc.isSystem ? (
-                                        <button
-                                            type="button"
-                                            className="mgr-si-record-pay"
-                                            style={{ color: '#b91c1c' }}
-                                            onClick={() => remove(loc)}
-                                        >
-                                            <Trash2 size={12} style={{ verticalAlign: 'middle' }} />
-                                        </button>
-                                    ) : null}
+                                    <RowActionsMenu
+                                        ariaLabel={`Actions for ${loc.name || 'location'}`}
+                                        items={[
+                                            {
+                                                label: 'Edit',
+                                                onClick: () => openEdit(loc),
+                                            },
+                                            {
+                                                label: 'Delete',
+                                                onClick: () => remove(loc),
+                                                hidden: Boolean(loc.isSystem),
+                                                danger: true,
+                                            },
+                                        ]}
+                                    />
                                 </td>
                             </tr>
                         ))}

@@ -1,4 +1,4 @@
-/* Staff & Roles — KPI strip + layout (Supplier Portal) */
+/* Staff & Roles — theme colors only (yellow / dark / white / neutral) */
 
 .se-staff-kpi-grid {
     display: grid;
@@ -14,35 +14,14 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
-    border: 1px solid rgba(15, 23, 42, 0.08);
+    border: 1px solid var(--color-border);
     background: #fff;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-}
-
-.se-staff-kpi-card--purple {
-    background: linear-gradient(135deg, #faf5ff 0%, #f5f3ff 100%);
-    border-color: #e9d5ff;
-}
-.se-staff-kpi-card--blue {
-    background: linear-gradient(135deg, #eff6ff 0%, #f0f9ff 100%);
-    border-color: #bfdbfe;
-}
-.se-staff-kpi-card--orange {
-    background: linear-gradient(135deg, #fff7ed 0%, #fffbeb 100%);
-    border-color: #fed7aa;
-}
-.se-staff-kpi-card--green {
-    background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
-    border-color: #a7f3d0;
-}
-.se-staff-kpi-card--gray {
-    background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
-    border-color: #e5e7eb;
+    box-shadow: var(--shadow-card);
 }
 
 .se-staff-kpi-label {
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -51,7 +30,7 @@
 
 .se-staff-kpi-value {
     font-size: 1.75rem;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-text-dark);
     line-height: 1.1;
     margin: 0;
@@ -65,27 +44,8 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-}
-
-.se-staff-kpi-icon--purple {
-    background: #ede9fe;
-    color: #7c3aed;
-}
-.se-staff-kpi-icon--blue {
-    background: #dbeafe;
-    color: #2563eb;
-}
-.se-staff-kpi-icon--orange {
-    background: #ffedd5;
-    color: #ea580c;
-}
-.se-staff-kpi-icon--green {
-    background: #d1fae5;
-    color: #059669;
-}
-.se-staff-kpi-icon--gray {
-    background: #e5e7eb;
-    color: #4b5563;
+    background: var(--color-accent);
+    color: #23262D;
 }
 
 .se-role-pill {
@@ -94,32 +54,14 @@
     padding: 4px 10px;
     border-radius: 999px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.se-role-pill--purple {
-    background: #f3e8ff;
-    color: #6b21a8;
-}
-.se-role-pill--blue {
-    background: #dbeafe;
-    color: #1d4ed8;
-}
-.se-role-pill--orange {
-    background: #ffedd5;
-    color: #c2410c;
-}
-.se-role-pill--green {
-    background: #d1fae5;
-    color: #047857;
-}
-.se-role-pill--slate {
-    background: #f1f5f9;
-    color: #334155;
+    background: var(--color-accent);
+    color: #111111;
+    border: 1px solid rgba(252, 194, 69, 0.35);
 }
 
 .se-avail-pill {
@@ -128,24 +70,22 @@
     padding: 4px 10px;
     border-radius: 999px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
+}
+
+.se-avail-pill--green,
+.se-avail-pill--amber,
+.se-avail-pill--gray,
+.se-avail-pill--muted {
+    background: #f3f4f6;
+    color: #374151;
+    border: 1px solid var(--color-border);
 }
 
 .se-avail-pill--green {
-    background: #dcfce7;
-    color: #166534;
-}
-.se-avail-pill--amber {
-    background: #fef3c7;
-    color: #92400e;
-}
-.se-avail-pill--gray {
-    background: #f3f4f6;
-    color: #4b5563;
-}
-.se-avail-pill--muted {
-    background: #f9fafb;
-    color: #9ca3af;
+    background: var(--color-accent);
+    color: #111111;
+    border-color: rgba(252, 194, 69, 0.45);
 }
 
 .se-btn-add-staff {
@@ -155,14 +95,14 @@
     padding: 10px 18px;
     border-radius: 10px;
     border: none;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.875rem;
     cursor: pointer;
-    color: #fff;
-    background: #111827;
+    color: #111111;
+    background: var(--color-primary);
 }
 .se-btn-add-staff:hover {
-    background: #1f2937;
+    background: var(--color-primary-dark);
 }
 
 .se-action-outline {
@@ -175,7 +115,7 @@
     cursor: pointer;
 }
 .se-action-outline:hover {
-    background: #f9fafb;
+    background: var(--color-bg-muted);
 }
 .se-action-outline:disabled {
     opacity: 0.55;

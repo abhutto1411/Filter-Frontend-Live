@@ -416,7 +416,7 @@ export default function MarketingLayout() {
                         display: flex;
                         background: #f3f4f6;
                         overflow: hidden;
-                        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+                        font-family: 'Poppins', sans-serif;
                     }
 
                     .marketing-yellow-sidebar {
@@ -567,14 +567,16 @@ export default function MarketingLayout() {
                         white-space: nowrap;
                     }
 
-                    .mk-sidebar-link:hover,
-                    .mk-sidebar-link.active {
-                        background: rgba(185, 139, 0, 0.30);
+                    .mk-sidebar-link:hover {
+                        background: rgba(0, 0, 0, 0.08);
                         color: #111827;
                     }
 
                     .mk-sidebar-link.active {
-                        font-weight: 800;
+                        background: var(--sidebar-active-bg);
+                        color: var(--sidebar-text-active);
+                        font-weight: 600;
+                        box-shadow: inset 4px 0 0 var(--color-primary);
                     }
 
                     .mk-sidebar-link svg {

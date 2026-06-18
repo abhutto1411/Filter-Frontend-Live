@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { FileSpreadsheet, FileText, Plus, Trash2 } from 'lucide-react';
+import { FileSpreadsheet, FileText, Plus } from 'lucide-react';
 import Modal from '../../components/Modal';
+import RowActionsMenu from '../../components/RowActionsMenu';
 import {
     addSupplierExternalPartyLedger,
     createSupplierExternalParty,
@@ -344,29 +345,21 @@ export default function SupplierNonAffiliatedCustomers() {
                                         </div>
                                     </td>
                                     <td>{fmtBalance(r.balance)}</td>
-                                    <td>
-                                        <button
-                                            type="button"
-                                            className="btn-portal-outline"
-                                            style={{ padding: '6px 10px', marginRight: 6 }}
-                                            onClick={(ev) => {
-                                                ev.stopPropagation();
-                                                openEdit(r);
-                                            }}
-                                        >
-                                            Edit
-                                        </button>
-                                        <button
-                                            type="button"
-                                            className="btn-portal-outline"
-                                            style={{ padding: '6px 10px' }}
-                                            onClick={(ev) => {
-                                                ev.stopPropagation();
-                                                onDeactivate(r);
-                                            }}
-                                        >
-                                            <Trash2 size={14} aria-hidden />
-                                        </button>
+                                    <td onClick={(ev) => ev.stopPropagation()}>
+                                        <RowActionsMenu
+                                            ariaLabel={`Actions for ${r.displayName || 'customer'}`}
+                                            items={[
+                                                {
+                                                    label: 'Edit',
+                                                    onClick: () => openEdit(r),
+                                                },
+                                                {
+                                                    label: 'Deactivate',
+                                                    onClick: () => onDeactivate(r),
+                                                    danger: true,
+                                                },
+                                            ]}
+                                        />
                                     </td>
                                 </tr>
                             ))

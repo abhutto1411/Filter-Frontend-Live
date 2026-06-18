@@ -22,6 +22,7 @@ import {
     rejectCorporatePaymentApproval,
     getSuperAdminInvoiceView,
     getSuperAdminSalesReturns,
+    getSuperAdminSalesReturn,
     approveSuperAdminSalesReturn,
     rejectSuperAdminSalesReturn,
 } from '../../services/superAdminApi';
@@ -727,6 +728,201 @@ function CorporatePaymentApprovalDetailsModal({ id, item, onClose, onApprove, on
                     ) : null}
                 </div>
             ) : null}
+            <InvoiceDetailsModal
+                invoice={invoice}
+                isOpen={!!invoice}
+                footerVariant="corporate"
+                onClose={() => setInvoice(null)}
+            />
+        </Modal>
+    );
+}
+
+/** Sales return detail for Super Admin Approvals — uses dedicated sales-return API. */
+function SalesReturnApprovalDetailsModal({ id, item, onClose, onApprove, onReject }) {
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [err, setErr] = useState('');
+    const [invoice, setInvoice] = useState(null);
+    const [invoiceLoadingId, setInvoiceLoadingId] = useState(null);
+    const [invoiceErr, setInvoiceErr] = useState('');
+
+    useEffect(() => {
+        let cancelled = false;
+        setLoading(true);
+        setErr('');
+        getSuperAdminSalesReturn(id)
+            .then((res) => {
+                if (!cancelled) setData(res?.salesReturn ?? res?.data?.salesReturn ?? null);
+            })
+            .catch((e) => {
+                if (!cancelled) setErr(e?.message || 'Could not load sales return');
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+        return () => { cancelled = true; };
+    }, [id]);
+
+    const openInvoice = async (invoiceId) => {
+        if (!invoiceId) return;
+        setInvoiceLoadingId(String(invoiceId));
+        setInvoiceErr('');
+        try {
+            const raw = await getSuperAdminInvoiceView(invoiceId);
+            const inv = raw?.invoice ?? raw?.data?.invoice ?? raw?.data ?? raw;
+            setInvoice(normalizeInvoiceForModal(inv));
+        } catch (e) {
+            setInvoiceErr(e?.message || 'Could not load invoice');
+        } finally {
+            setInvoiceLoadingId(null);
+        }
+    };
+
+    const num = (v) =>
+        `SAR ${Number(v || 0).toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        })}`;
+
+    const title = data?.returnNo ?? data?.creditNoteNo ?? item?.meta?.returnNo ?? `#${id}`;
+
+    return (
+        <Modal
+            title={`Sales return · ${title}`}
+            onClose={onClose}
+            width={760}
+            footer={(
+                <>
+                    <button type="button" className="btn-view-details" onClick={onClose}>Close</button>
+                    {data?.status === 'pending' && (
+                        <>
+                            {onReject && (
+                                <button type="button" className="btn-reject" onClick={onReject}>
+                                    <X size={16} /> Reject
+                                </button>
+                            )}
+                            {onApprove && (
+                                <button type="button" className="btn-approve" onClick={onApprove}>
+                                    <Check size={16} /> Approve
+                                </button>
+                            )}
+                        </>
+                    )}
+                </>
+            )}
+        >
+            {loading ? (
+                <div style={{ padding: 24, textAlign: 'center' }}>
+                    <Loader size={20} className="spin" /> Loading…
+                </div>
+            ) : err ? (
+                <p style={{ color: '#b91c1c' }}>{err}</p>
+            ) : data ? (
+                <div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                        <div>
+                            <p style={{ margin: 0, fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Return</p>
+                            <p style={{ margin: '4px 0 0', fontWeight: 700 }}>{data.creditNoteNo || data.returnNo || '—'}</p>
+                            <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#64748b' }}>
+                                {formatDate(data.returnDate ?? data.createdAt)}
+                            </p>
+                        </div>
+                        <div>
+                            <p style={{ margin: 0, fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Invoice</p>
+                            <p style={{ margin: '4px 0 0', fontWeight: 700 }}>{data.invoiceNo ?? '—'}</p>
+                            <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#64748b' }}>
+                                {data.workshopName ?? '—'} · {data.branchName ?? '—'}
+                            </p>
+                        </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                        <div style={{ padding: 12, background: '#f8fafc', borderRadius: 10 }}>
+                            <p style={{ margin: 0, fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Customer</p>
+                            <p style={{ margin: '4px 0 0', fontWeight: 700 }}>{data.customerName ?? '—'}</p>
+                            <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#64748b' }}>{data.customerPhone ?? ''}</p>
+                        </div>
+                        <div style={{ padding: 12, background: '#f8fafc', borderRadius: 10 }}>
+                            <p style={{ margin: 0, fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>Amount</p>
+                            <p style={{ margin: '4px 0 0', fontWeight: 700, color: '#b91c1c' }}>{num(data.totalAmount)}</p>
+                            <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: '#64748b' }}>
+                                Subtotal {num(data.subtotal)} · VAT {num(data.vatAmount)}
+                            </p>
+                        </div>
+                    </div>
+                    {(data.reason || data.returnScope) && (
+                        <div style={{ marginBottom: 12, padding: 10, background: '#fefce8', borderRadius: 10, fontSize: '0.875rem' }}>
+                            {data.returnScope ? (
+                                <p style={{ margin: '0 0 4px' }}>
+                                    <strong>Type:</strong>{' '}
+                                    {data.returnScope === 'full' ? 'Full return' : data.returnScope === 'partial' ? 'Partial return' : data.returnScope}
+                                </p>
+                            ) : null}
+                            {data.reason ? <p style={{ margin: 0 }}><strong>Reason:</strong> {data.reason}</p> : null}
+                        </div>
+                    )}
+                    <p style={{ margin: '0 0 6px', fontSize: '0.7rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>
+                        Line items ({(data.items || []).length})
+                    </p>
+                    <div style={{ marginBottom: 14, border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+                            <thead style={{ background: '#f8fafc' }}>
+                                <tr>
+                                    <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Item</th>
+                                    <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: '0.7rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Qty</th>
+                                    <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: '0.7rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Unit</th>
+                                    <th style={{ padding: '8px 10px', textAlign: 'right', fontSize: '0.7rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Total</th>
+                                    <th style={{ padding: '8px 10px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {(data.items || []).length === 0 ? (
+                                    <tr>
+                                        <td colSpan={5} style={{ padding: 12, textAlign: 'center', color: '#94a3b8' }}>No line items.</td>
+                                    </tr>
+                                ) : (data.items || []).map((it, idx) => (
+                                    <tr key={it.id ?? idx} style={{ borderTop: idx === 0 ? 'none' : '1px solid #f1f5f9' }}>
+                                        <td style={{ padding: '10px' }}>{it.name ?? '—'}</td>
+                                        <td style={{ padding: '10px', textAlign: 'right' }}>
+                                            {it.qty}{it.originalQty != null ? ` / ${it.originalQty}` : ''}
+                                        </td>
+                                        <td style={{ padding: '10px', textAlign: 'right' }}>{num(it.unitPrice)}</td>
+                                        <td style={{ padding: '10px', textAlign: 'right', fontWeight: 700 }}>{num(it.lineTotal)}</td>
+                                        <td style={{ padding: '10px' }}>{it.reason ?? '—'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    {data.invoiceId ? (
+                        <div style={{ marginBottom: 12 }}>
+                            <button
+                                type="button"
+                                onClick={() => openInvoice(data.invoiceId)}
+                                disabled={invoiceLoadingId === String(data.invoiceId)}
+                                className="btn-view-details"
+                            >
+                                {invoiceLoadingId === String(data.invoiceId)
+                                    ? <Loader size={12} className="spin" />
+                                    : <FileText size={12} />}
+                                {' '}View invoice
+                            </button>
+                        </div>
+                    ) : null}
+                    {data.status === 'rejected' && data.rejectionReason ? (
+                        <div style={{ marginTop: 12, padding: 10, background: '#fef2f2', color: '#991b1b', borderRadius: 10, fontSize: '0.875rem' }}>
+                            <strong>Rejection reason:</strong> {data.rejectionReason}
+                        </div>
+                    ) : null}
+                    {invoiceErr ? (
+                        <div style={{ marginTop: 12, padding: 10, background: '#fef2f2', color: '#991b1b', borderRadius: 10, fontSize: '0.8125rem' }}>
+                            {invoiceErr}
+                        </div>
+                    ) : null}
+                </div>
+            ) : (
+                <p style={{ color: '#94a3b8' }}>Sales return not found.</p>
+            )}
             <InvoiceDetailsModal
                 invoice={invoice}
                 isOpen={!!invoice}
@@ -1450,7 +1646,19 @@ export default function ApprovalsPage({ isTab = false, onlySettings = false }) {
                 />
             )}
 
-            {detailsTarget && detailsTarget.entityType !== 'corporate_payment_approval' && (
+            {detailsTarget && detailsTarget.entityType === 'sales_return' && (
+                <SalesReturnApprovalDetailsModal
+                    id={detailsTarget.id}
+                    item={detailsTarget.item}
+                    onClose={() => setDetailsTarget(null)}
+                    onApprove={canApproveType(detailsTarget.entityType) ? () => setApproveTarget(detailsTarget.item) : undefined}
+                    onReject={canRejectType(detailsTarget.entityType) ? () => setRejectTarget(detailsTarget.item) : undefined}
+                />
+            )}
+
+            {detailsTarget
+                && detailsTarget.entityType !== 'corporate_payment_approval'
+                && detailsTarget.entityType !== 'sales_return' && (
                 <ApprovalDetailsModal
                     entityType={detailsTarget.entityType}
                     id={detailsTarget.id}

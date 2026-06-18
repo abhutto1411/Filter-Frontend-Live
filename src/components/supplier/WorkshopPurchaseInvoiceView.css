@@ -15,17 +15,7 @@
     --tx-paper: #ffffff;
 
     position: relative;
-    font-family:
-        ui-sans-serif,
-        system-ui,
-        -apple-system,
-        'Segoe UI',
-        Roboto,
-        'Helvetica Neue',
-        'Noto Sans Arabic',
-        'Segoe UI Historic',
-        Arial,
-        sans-serif;
+    font-family: 'Poppins', 'Noto Sans Arabic', sans-serif;
     color: var(--tx-ink);
     font-size: 13px;
     line-height: 1.45;
@@ -63,7 +53,7 @@
     gap: 8px;
     padding: 8px 14px;
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
     color: #fff;
     background: var(--tx-green-dark);
     border: none;
@@ -86,7 +76,7 @@
     padding: 6px 12px;
     border-radius: 4px;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: capitalize;
     border: 1px solid var(--tx-border);
     background: #fff;
@@ -131,7 +121,7 @@
     top: 42%;
     transform: translate(-50%, -50%) rotate(-12deg);
     font-size: clamp(3rem, 14vw, 7rem);
-    font-weight: 900;
+    font-weight: 800;
     letter-spacing: 0.2em;
     color: rgba(46, 125, 50, 0.06);
     white-space: nowrap;
@@ -179,7 +169,7 @@
 .wpi-view__corp-name {
     margin: 0 0 6px;
     font-size: 15px;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--tx-red);
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -197,14 +187,14 @@
 .wpi-view__corp-vat {
     margin: 0;
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--tx-ink);
 }
 
 .wpi-view__corp-vat-ar {
     margin: 8px 0 0;
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--tx-ink);
 }
 
@@ -230,7 +220,7 @@
 
 .wpi-view__corp-logo-letter {
     font-size: 28px;
-    font-weight: 900;
+    font-weight: 800;
     color: var(--tx-green-dark);
     line-height: 1;
 }
@@ -243,7 +233,7 @@
 .wpi-view__corp-name-ar {
     margin: 0 0 6px;
     font-size: 15px;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--tx-red);
     line-height: 1.35;
 }
@@ -267,7 +257,7 @@
 
 .wpi-view__brand-pill {
     font-size: 9px;
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
     padding: 4px 8px;
@@ -291,7 +281,7 @@
 .wpi-view__title-ribbon-ar {
     display: block;
     font-size: 18px;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--tx-green-dark);
     margin-bottom: 2px;
 }
@@ -299,7 +289,7 @@
 .wpi-view__title-ribbon-en {
     display: block;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--tx-green-dark);
@@ -348,7 +338,7 @@
 .wpi-view__panel-title {
     margin: 0 0 10px;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--tx-green-dark);
@@ -368,7 +358,7 @@
 .wpi-view__field-label {
     display: block;
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--tx-muted);
     margin-bottom: 2px;
 }
@@ -382,13 +372,13 @@
 
 .wpi-view__field-label-bi-en {
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--tx-muted);
 }
 
 .wpi-view__field-label-bi-ar {
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--tx-muted);
 }
 
@@ -432,7 +422,7 @@
 .wpi-view__table-wrap th {
     padding: 10px 8px;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     text-align: left;
     border-right: 1px solid rgba(255, 255, 255, 0.2);
     vertical-align: top;
@@ -451,7 +441,7 @@
 .wpi-view__th-sub {
     display: block;
     font-size: 9px;
-    font-weight: 700;
+    font-weight: 600;
     opacity: 0.95;
     margin-top: 3px;
 }
@@ -583,7 +573,7 @@
 
 .wpi-view__zatca-qr-title {
     font-size: 11px;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--tx-green-dark);
     margin-bottom: 10px;
 }
@@ -614,7 +604,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 800;
+    font-weight: 700;
     color: #94a3b8;
     background: #f8fafc;
 }
@@ -642,7 +632,7 @@
 }
 
 .wpi-view__sum-row-val {
-    font-weight: 700;
+    font-weight: 600;
     font-variant-numeric: tabular-nums;
 }
 
@@ -653,7 +643,7 @@
 }
 
 .wpi-view__sum-row--net .wpi-view__sum-row-label {
-    font-weight: 800;
+    font-weight: 700;
     color: var(--tx-green-dark);
     text-transform: uppercase;
     font-size: 11px;
@@ -662,14 +652,14 @@
 
 .wpi-view__sum-row--net .wpi-view__sum-row-val {
     font-size: 16px;
-    font-weight: 900;
+    font-weight: 800;
     color: var(--tx-green-dark);
 }
 
 .wpi-view__sum-words {
     padding: 8px 12px 10px;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--tx-green-dark);
     text-align: center;
     border-top: 1px solid var(--tx-green-mid);
@@ -707,7 +697,7 @@
     margin-top: 28px;
     border-top: 1px solid var(--tx-ink);
     padding-top: 6px;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .wpi-view__sig-ar {

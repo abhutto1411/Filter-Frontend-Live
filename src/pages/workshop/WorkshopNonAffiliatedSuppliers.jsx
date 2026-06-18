@@ -205,7 +205,6 @@ export default function WorkshopNonAffiliatedSuppliers({
         try {
             const payload = {
                 name: form.name?.trim(),
-                branchId: form.branchId || undefined,
                 phone: form.phone || undefined,
                 email: form.email || undefined,
                 address: form.address || undefined,
@@ -214,10 +213,14 @@ export default function WorkshopNonAffiliatedSuppliers({
                 contactPerson: form.contactPerson || undefined,
             };
             if (editTarget) {
+                // Send null explicitly so backend clears branch (workshop-wide).
+                // Omitting branchId skips the update entirely.
+                payload.branchId = form.branchId ? String(form.branchId) : null;
                 await updateLocalSupplier(editTarget.id, payload);
             } else {
                 await createLocalSupplier({
                     ...payload,
+                    branchId: form.branchId ? String(form.branchId) : undefined,
                     openingBalance: Number(form.openingBalance || 0) || 0,
                     openingBalanceDate: form.openingBalanceDate || todayIso(),
                 });

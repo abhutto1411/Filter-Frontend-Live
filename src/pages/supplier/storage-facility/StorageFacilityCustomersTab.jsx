@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useStorageFacilityApi } from './StorageFacilityPortalContext';
 import { ArrowLeft, Plus, Search } from 'lucide-react';
 import Modal from '../../../components/Modal';
+import RowActionsMenu from '../../../components/RowActionsMenu';
 import { ShimmerTable } from '../../../components/supplier/Shimmer';
 
 import '../../../styles/admin/AccountingPage.css';
@@ -321,14 +322,13 @@ export default function StorageFacilityCustomersTab({ brandId }) {
             {err ? <div className="mgr-si-error">{err}</div> : null}
 
             {loading ? (
-                <ShimmerTable rows={8} columns={5} />
+                <ShimmerTable rows={8} columns={4} />
             ) : (
                 <div className="premium-table mgr-si-table-wrap">
                     <table className="mgr-si-table mgr-sf-ar-customers-table">
                         <thead>
                             <tr className="table-header-row">
-                                <th className="table-th mgr-sf-ar-th-narrow">Edit</th>
-                                <th className="table-th mgr-sf-ar-th-narrow">View</th>
+                                <th className="table-th mgr-si-th-actions">Actions</th>
                                 <th className="table-th">Name</th>
                                 <th className="table-th mgr-si-cell-amount">Accounts receivable</th>
                                 <th className="table-th">Status</th>
@@ -337,7 +337,7 @@ export default function StorageFacilityCustomersTab({ brandId }) {
                         <tbody>
                             {filteredRows.length === 0 ? (
                                 <tr>
-                                    <td colSpan={5} className="table-cell" style={{ padding: 24 }}>
+                                    <td colSpan={4} className="table-cell" style={{ padding: 24 }}>
                                         No customers yet. Click <strong>New Customer</strong> to add one.
                                     </td>
                                 </tr>
@@ -357,34 +357,30 @@ export default function StorageFacilityCustomersTab({ brandId }) {
                                         role="button"
                                     >
                                         <td
-                                            className="table-cell"
+                                            className="table-cell mgr-si-cell-actions"
                                             onClick={(e) => e.stopPropagation()}
                                         >
-                                            <button
-                                                type="button"
-                                                className="mgr-sf-ar-link-btn"
-                                                onClick={() => {
-                                                    const name = prompt('Customer name', row.name);
-                                                    if (!name?.trim()) return;
-                                                    sfApi.updateStorageCustomer(brandId, row.id, {
-                                                        name: name.trim(),
-                                                    }).then(load);
-                                                }}
-                                            >
-                                                Edit
-                                            </button>
-                                        </td>
-                                        <td
-                                            className="table-cell"
-                                            onClick={(e) => e.stopPropagation()}
-                                        >
-                                            <button
-                                                type="button"
-                                                className="mgr-sf-ar-link-btn"
-                                                onClick={() => openDetail(row.id)}
-                                            >
-                                                View
-                                            </button>
+                                            <RowActionsMenu
+                                                ariaLabel={`Actions for ${row.name || 'customer'}`}
+                                                items={[
+                                                    {
+                                                        label: 'Edit',
+                                                        onClick: () => {
+                                                            const name = prompt('Customer name', row.name);
+                                                            if (!name?.trim()) return;
+                                                            sfApi
+                                                                .updateStorageCustomer(brandId, row.id, {
+                                                                    name: name.trim(),
+                                                                })
+                                                                .then(load);
+                                                        },
+                                                    },
+                                                    {
+                                                        label: 'View',
+                                                        onClick: () => openDetail(row.id),
+                                                    },
+                                                ]}
+                                            />
                                         </td>
                                         <td className="table-cell mgr-si-cell-customer">{row.name}</td>
                                         <td

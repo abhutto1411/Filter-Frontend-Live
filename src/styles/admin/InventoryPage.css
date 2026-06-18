@@ -50,7 +50,7 @@
 
 .products-title {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 4px;
 }
 
@@ -69,7 +69,7 @@
     padding: 10px 20px;
     border-radius: 10px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     background: #E5E7EB;
     color: var(--color-text-muted);
     border: none;
@@ -98,7 +98,7 @@
     padding: 8px 18px;
     border-radius: 10px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     background: #FFFFFF;
     color: var(--color-text-muted);
     border: 1px solid #E5E7EB;
@@ -148,7 +148,7 @@
 
 .stock-movements-title {
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 700;
     margin-bottom: 4px;
 }
 
@@ -164,7 +164,7 @@
     padding: 8px 16px;
     border-radius: 8px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     background: #FFFFFF;
     color: var(--color-text-dark);
     border: 1px solid #E5E7EB;
@@ -205,13 +205,13 @@
 
 .summary-label {
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
 }
 
 .summary-value {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     color: var(--color-text-dark);
 }
 
@@ -376,7 +376,7 @@
 }
 
 .mc-inv-search-suggest-name {
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.875rem;
     color: var(--color-text-dark);
     overflow: hidden;
@@ -418,7 +418,7 @@
 }
 
 .opening-qty-readonly {
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.875rem;
 }
 
@@ -540,7 +540,7 @@
 
 .log-filter-label {
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
 }
 
@@ -605,13 +605,13 @@
 
 .log-summary-label {
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
 }
 
 .log-summary-value {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
 }
 
 .log-summary-card.success .log-summary-value {
@@ -652,7 +652,7 @@
     padding: 4px 12px;
     border-radius: 99px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .stock-out-val {
@@ -692,7 +692,7 @@
 
 .placeholder-content h3 {
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 700;
     margin-bottom: 16px;
 }
 
@@ -715,7 +715,7 @@
 
 .stock-movements-title {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 4px;
 }
 
@@ -752,7 +752,7 @@
 .stock-movements-table .table-th {
     padding: 16px 24px;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     color: #6B7280;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -768,7 +768,7 @@
 }
 
 .stock-movements-table .cell-main-text {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
 }
 
@@ -781,7 +781,7 @@
     padding: 4px 10px;
     border-radius: 8px;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
 }
 
@@ -819,7 +819,7 @@
 .categories-title,
 .uom-title {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 4px;
 }
 
@@ -838,7 +838,7 @@
 .uom-table .table-th {
     padding: 16px 24px;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     color: #6B7280;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -857,7 +857,7 @@
 
 .categories-table .cell-main-text,
 .uom-table .cell-main-text {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
 }
 
@@ -881,14 +881,14 @@
 
 .uom-stat-label {
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
     text-transform: uppercase;
 }
 
 .uom-stat-val {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     color: var(--color-text-dark);
 }
 
@@ -939,7 +939,7 @@
 
 .log-filter-label {
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
     margin-bottom: 8px;
     display: block;
@@ -955,7 +955,7 @@
 
 .dept-cat-title {
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 700;
     margin-bottom: 4px;
 }
 
@@ -971,7 +971,7 @@
     border-radius: 8px !important;
     border: none !important;
     font-size: 0.875rem !important;
-    font-weight: 700 !important;
+    font-weight: 600 !important;
 }
 
 .dept-cat-nav-bar {
@@ -997,7 +997,7 @@
     padding: 8px 16px;
     border-radius: 8px;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #4B5563;
     border: none;
     background: transparent;
@@ -1059,7 +1059,7 @@
 
 .btn-edit {
     color: #111827;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.8125rem;
     background: transparent;
     border: none;
@@ -1072,7 +1072,7 @@
 
 .section-title {
     font-size: 1rem;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-text-dark);
     margin-bottom: 20px;
     display: flex;
@@ -1105,7 +1105,7 @@
     padding: 8px 24px;
     border-radius: 10px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     border: none;
     cursor: pointer;
     transition: all 0.2s;
@@ -1173,7 +1173,7 @@
 
 .rule-field-label {
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
 }
 
@@ -1225,7 +1225,7 @@
     padding: 10px 16px;
     border-radius: 10px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-primary-dark);
     cursor: pointer;
     transition: all 0.2s;
@@ -1272,7 +1272,7 @@
 
 .image-upload-area .upload-text {
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
 }
 

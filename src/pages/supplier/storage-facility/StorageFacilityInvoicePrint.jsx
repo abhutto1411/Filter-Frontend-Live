@@ -22,7 +22,7 @@ export default function StorageFacilityInvoicePrint({ brandName, invoice, onClos
                 max-width: 720px;
                 margin: 0 auto;
                 padding: 24px;
-                font-family: system-ui, sans-serif;
+                font-family: 'Poppins', sans-serif;
                 color: #111;
               }
               .sf-invoice-print-sheet h1 { font-size: 1.25rem; margin: 0 0 8px; }

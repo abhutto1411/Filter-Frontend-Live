@@ -4,8 +4,7 @@ import {
     Package, Layers, Tags, Wrench, RefreshCw, ShieldCheck, Search, Plus,
     ChevronLeft, ChevronRight, X, AlertCircle, CheckCircle2, Filter, Gauge, Calendar, Percent,
 } from 'lucide-react';
-import { AnimatePresence } from 'framer-motion';
-import Modal from '../../components/Modal';
+import WorkshopSubScreen from '../../components/workshop/WorkshopSubScreen';
 import {
     getCatalogDepartments,
     getCatalogCategories,
@@ -1684,6 +1683,58 @@ export default function WorkshopCatalogNew({
         );
     };
 
+    if (deptCatModal) {
+        return (
+            <CategorySelectionScreen
+                state={deptCatModal}
+                onChange={setDeptCatModal}
+                onClose={() => setDeptCatModal(null)}
+                onSubmit={submitDepartmentsAdopt}
+                branches={branchList}
+                backLabel="Back to Departments"
+            />
+        );
+    }
+
+    if (categoryAdopt) {
+        return (
+            <CategoryAdoptScreen
+                state={categoryAdopt}
+                onChange={setCategoryAdopt}
+                onClose={() => setCategoryAdopt(null)}
+                onSubmit={submitCategoriesAdopt}
+                branches={branchList}
+                backLabel="Back to Categories"
+            />
+        );
+    }
+
+    if (productAdopt) {
+        return (
+            <ProductAdoptScreen
+                state={productAdopt}
+                onChange={setProductAdopt}
+                onClose={() => setProductAdopt(null)}
+                onSubmit={submitProductsAdopt}
+                branches={branchList}
+                backLabel="Back to Products"
+            />
+        );
+    }
+
+    if (serviceAdopt) {
+        return (
+            <ServiceAdoptScreen
+                state={serviceAdopt}
+                onChange={setServiceAdopt}
+                onClose={() => setServiceAdopt(null)}
+                onSubmit={submitServicesAdopt}
+                branches={branchList}
+                backLabel="Back to Services"
+            />
+        );
+    }
+
     return (
         <div className="mc-container">
             <div className="mc-header">
@@ -1750,43 +1801,11 @@ export default function WorkshopCatalogNew({
                     canAdd: canAddSvc,
                 })}
             </div>
-
-            <CategorySelectionModal
-                state={deptCatModal}
-                onChange={setDeptCatModal}
-                onClose={() => setDeptCatModal(null)}
-                onSubmit={submitDepartmentsAdopt}
-                branches={branchList}
-            />
-
-            <CategoryAdoptModal
-                state={categoryAdopt}
-                onChange={setCategoryAdopt}
-                onClose={() => setCategoryAdopt(null)}
-                onSubmit={submitCategoriesAdopt}
-                branches={branchList}
-            />
-
-            <ProductAdoptModal
-                state={productAdopt}
-                onChange={setProductAdopt}
-                onClose={() => setProductAdopt(null)}
-                onSubmit={submitProductsAdopt}
-                branches={branchList}
-            />
-
-            <ServiceAdoptModal
-                state={serviceAdopt}
-                onChange={setServiceAdopt}
-                onClose={() => setServiceAdopt(null)}
-                onSubmit={submitServicesAdopt}
-                branches={branchList}
-            />
         </div>
     );
 }
 
-/* ─── Modals ────────────────────────────────────────────────────────────── */
+/* ─── Adopt sub-screens ─────────────────────────────────────────────────── */
 
 /**
  * Reusable branch-target multi-select.
@@ -1850,148 +1869,144 @@ function BranchTargetPicker({ branches, value, onChange, scopeOnly = false }) {
     );
 }
 
-function CategoryAdoptModal({ state, onChange, onClose, onSubmit, branches }) {
+function CategoryAdoptScreen({ state, onChange, onClose, onSubmit, branches, backLabel }) {
     return (
-        <AnimatePresence>
-            {state && (
-                <Modal
-                    title={`Add ${state.ids.length} categor${state.ids.length === 1 ? 'y' : 'ies'} to branches`}
-                    onClose={state.loading ? () => {} : onClose}
-                    contentClassName="modal-content mc-modal-redesign"
-                    footer={
-                        <div className="mc-modal-footer row" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                            <button type="button" className="mc-btn-ghost mc-btn-large" onClick={onClose} disabled={state.loading}>
-                                Cancel
-                            </button>
-                            <button type="button" className="mc-btn-primary blue-btn mc-btn-large" onClick={onSubmit} disabled={state.loading}>
-                                {state.loading ? 'Adding…' : 'Add'}
-                            </button>
-                        </div>
-                    }
-                >
-                    {state.error && (
-                        <div style={{ padding: 10, background: '#FEE2E2', color: '#B91C1C', borderRadius: 8, fontSize: '0.875rem', marginBottom: 12 }}>
-                            {state.error}
-                        </div>
-                    )}
-                    <p style={{ marginTop: 0, fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-                        Parent departments will be auto-adopted to the same branches if needed.
-                    </p>
+        <WorkshopSubScreen
+            title={`Add ${state.ids.length} categor${state.ids.length === 1 ? 'y' : 'ies'} to branches`}
+            subtitle="Parent departments will be auto-adopted to the same branches if needed."
+            backLabel={backLabel}
+            onBack={onClose}
+            backDisabled={state.loading}
+            size="form"
+            footer={(
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', width: '100%' }}>
+                    <button type="button" className="mc-btn-ghost mc-btn-large" onClick={onClose} disabled={state.loading}>
+                        Cancel
+                    </button>
+                    <button type="button" className="mc-btn-primary blue-btn mc-btn-large" onClick={onSubmit} disabled={state.loading}>
+                        {state.loading ? 'Adding…' : 'Add'}
+                    </button>
+                </div>
+            )}
+        >
+            <div className="ws-section" style={{ padding: 20 }}>
+                {state.error && (
+                    <div style={{ padding: 10, background: '#FEE2E2', color: '#B91C1C', borderRadius: 8, fontSize: '0.875rem', marginBottom: 12 }}>
+                        {state.error}
+                    </div>
+                )}
+                <BranchTargetPicker
+                    branches={branches}
+                    value={state.targetBranchIds}
+                    onChange={(v) => onChange((prev) => prev && { ...prev, targetBranchIds: v })}
+                    scopeOnly
+                />
+            </div>
+        </WorkshopSubScreen>
+    );
+}
+
+function CategorySelectionScreen({ state, onChange, onClose, onSubmit, branches, backLabel }) {
+    return (
+        <WorkshopSubScreen
+            title="Pick categories for each department"
+            subtitle="For each department you selected, choose which categories should be added. Each chosen branch gets the same selection."
+            backLabel={backLabel}
+            onBack={onClose}
+            backDisabled={state.loading}
+            size="full"
+            footer={(
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', width: '100%' }}>
+                    <button type="button" className="mc-btn-ghost mc-btn-large" onClick={onClose} disabled={state.loading}>
+                        Cancel
+                    </button>
+                    <button type="button" className="mc-btn-primary blue-btn mc-btn-large" onClick={onSubmit} disabled={state.loading}>
+                        {state.loading ? 'Adding…' : 'Add to my workshop'}
+                    </button>
+                </div>
+            )}
+        >
+            <div className="ws-section" style={{ padding: 20 }}>
+                {state.error && (
+                    <div style={{ padding: 10, background: '#FEE2E2', color: '#B91C1C', borderRadius: 8, fontSize: '0.875rem', marginBottom: 12 }}>
+                        {state.error}
+                    </div>
+                )}
+                <div style={{ marginBottom: 14 }}>
                     <BranchTargetPicker
                         branches={branches}
                         value={state.targetBranchIds}
                         onChange={(v) => onChange((prev) => prev && { ...prev, targetBranchIds: v })}
                         scopeOnly
                     />
-                </Modal>
-            )}
-        </AnimatePresence>
-    );
-}
-
-function CategorySelectionModal({ state, onChange, onClose, onSubmit, branches }) {
-    return (
-        <AnimatePresence>
-            {state && (
-                <Modal
-                    title="Pick categories for each department"
-                    onClose={onClose}
-                    contentClassName="modal-content mc-modal-redesign"
-                    footer={
-                        <div className="mc-modal-footer row" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                            <button type="button" className="mc-btn-ghost mc-btn-large" onClick={onClose} disabled={state.loading}>
-                                Cancel
-                            </button>
-                            <button type="button" className="mc-btn-primary blue-btn mc-btn-large" onClick={onSubmit} disabled={state.loading}>
-                                {state.loading ? 'Adding…' : 'Add to my workshop'}
-                            </button>
-                        </div>
-                    }
-                >
-                    <p style={{ marginTop: 0, fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>
-                        For each department you selected, choose which categories should be added. You can pick all, some, or skip categories entirely. Each chosen branch gets the same selection.
-                    </p>
-                    {state.error && (
-                        <div style={{ padding: 10, background: '#FEE2E2', color: '#B91C1C', borderRadius: 8, fontSize: '0.875rem', marginBottom: 12 }}>
-                            {state.error}
-                        </div>
-                    )}
-                    <div style={{ marginBottom: 14 }}>
-                        <BranchTargetPicker
-                            branches={branches}
-                            value={state.targetBranchIds}
-                            onChange={(v) => onChange((prev) => prev && { ...prev, targetBranchIds: v })}
-                            scopeOnly
-                        />
-                    </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                        {state.departments.map((d) => {
-                            const sel = state.selections[String(d.id)] || { mode: 'all', pickedIds: new Set(), categories: [] };
-                            const setMode = (mode) =>
-                                onChange((prev) => prev && {
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                    {state.departments.map((d) => {
+                        const sel = state.selections[String(d.id)] || { mode: 'all', pickedIds: new Set(), categories: [] };
+                        const setMode = (mode) =>
+                            onChange((prev) => prev && {
+                                ...prev,
+                                selections: {
+                                    ...prev.selections,
+                                    [String(d.id)]: { ...prev.selections[String(d.id)], mode },
+                                },
+                            });
+                        const togglePick = (catId) =>
+                            onChange((prev) => {
+                                if (!prev) return prev;
+                                const cur = prev.selections[String(d.id)];
+                                const next = new Set(cur.pickedIds);
+                                const key = String(catId);
+                                if (next.has(key)) next.delete(key);
+                                else next.add(key);
+                                return {
                                     ...prev,
                                     selections: {
                                         ...prev.selections,
-                                        [String(d.id)]: { ...prev.selections[String(d.id)], mode },
+                                        [String(d.id)]: { ...cur, pickedIds: next, mode: 'pick' },
                                     },
-                                });
-                            const togglePick = (catId) =>
-                                onChange((prev) => {
-                                    if (!prev) return prev;
-                                    const cur = prev.selections[String(d.id)];
-                                    const next = new Set(cur.pickedIds);
-                                    const key = String(catId);
-                                    if (next.has(key)) next.delete(key);
-                                    else next.add(key);
-                                    return {
-                                        ...prev,
-                                        selections: {
-                                            ...prev.selections,
-                                            [String(d.id)]: { ...cur, pickedIds: next, mode: 'pick' },
-                                        },
-                                    };
-                                });
-                            return (
-                                <div key={String(d.id)} style={{ border: '1px solid var(--color-border-light, #E5E7EB)', borderRadius: 10, padding: 12 }}>
-                                    <div style={{ fontWeight: 700, marginBottom: 8 }}>{d.name}</div>
-                                    <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 8 }}>
-                                        {['all', 'pick', 'none'].map((m) => (
-                                            <label key={m} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.875rem', cursor: 'pointer' }}>
-                                                <input
-                                                    type="radio"
-                                                    name={`dept-${d.id}-mode`}
-                                                    checked={sel.mode === m}
-                                                    onChange={() => setMode(m)}
-                                                />
-                                                {m === 'all' ? 'All categories' : m === 'pick' ? 'Pick categories' : 'No categories (department only)'}
-                                            </label>
-                                        ))}
-                                    </div>
-                                    {sel.mode === 'pick' && (
-                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 6 }}>
-                                            {(sel.categories || []).length === 0 ? (
-                                                <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: 0 }}>No categories available for this department.</p>
-                                            ) : (
-                                                sel.categories.map((c) => (
-                                                    <label key={String(c.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.875rem', cursor: 'pointer' }}>
-                                                        <input
-                                                            type="checkbox"
-                                                            checked={sel.pickedIds.has(String(c.id))}
-                                                            onChange={() => togglePick(c.id)}
-                                                        />
-                                                        {c.name}
-                                                    </label>
-                                                ))
-                                            )}
-                                        </div>
-                                    )}
+                                };
+                            });
+                        return (
+                            <div key={String(d.id)} style={{ border: '1px solid var(--color-border-light, #E5E7EB)', borderRadius: 10, padding: 12 }}>
+                                <div style={{ fontWeight: 700, marginBottom: 8 }}>{d.name}</div>
+                                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 8 }}>
+                                    {['all', 'pick', 'none'].map((m) => (
+                                        <label key={m} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.875rem', cursor: 'pointer' }}>
+                                            <input
+                                                type="radio"
+                                                name={`dept-${d.id}-mode`}
+                                                checked={sel.mode === m}
+                                                onChange={() => setMode(m)}
+                                            />
+                                            {m === 'all' ? 'All categories' : m === 'pick' ? 'Pick categories' : 'No categories (department only)'}
+                                        </label>
+                                    ))}
                                 </div>
-                            );
-                        })}
-                    </div>
-                </Modal>
-            )}
-        </AnimatePresence>
+                                {sel.mode === 'pick' && (
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 6 }}>
+                                        {(sel.categories || []).length === 0 ? (
+                                            <p style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)', margin: 0 }}>No categories available for this department.</p>
+                                        ) : (
+                                            sel.categories.map((c) => (
+                                                <label key={String(c.id)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.875rem', cursor: 'pointer' }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={sel.pickedIds.has(String(c.id))}
+                                                        onChange={() => togglePick(c.id)}
+                                                    />
+                                                    {c.name}
+                                                </label>
+                                            ))
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        </WorkshopSubScreen>
     );
 }
 
@@ -2023,178 +2038,180 @@ function MissingDependenciesList({ missing }) {
     );
 }
 
-function ProductAdoptModal({ state, onChange, onClose, onSubmit, branches }) {
+function ProductAdoptScreen({ state, onChange, onClose, onSubmit, branches, backLabel }) {
     return (
-        <AnimatePresence>
-            {state && (
-                <Modal
-                    title={`Add ${state.rows.length} product${state.rows.length === 1 ? '' : 's'} to your workshop`}
-                    onClose={state.loading ? () => {} : onClose}
-                    contentClassName="modal-content mc-modal-redesign"
-                    footer={
-                        <div className="mc-modal-footer row" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                            <button type="button" className="mc-btn-ghost mc-btn-large" onClick={onClose} disabled={state.loading}>
-                                Cancel
-                            </button>
-                            <button type="button" className="mc-btn-primary blue-btn mc-btn-large" onClick={onSubmit} disabled={state.loading}>
-                                {state.loading ? 'Adding…' : 'Add to my workshop'}
-                            </button>
-                        </div>
-                    }
-                >
-                    {state.error && (
-                        <div style={{ padding: 10, background: '#FEE2E2', color: '#B91C1C', borderRadius: 8, fontSize: '0.875rem', marginBottom: 12 }}>
-                            {state.error}
-                        </div>
-                    )}
-
-                    {state.resolveNote ? (
-                        <div style={{ padding: 10, background: '#FFFBEB', color: '#92400E', borderRadius: 8, fontSize: '0.875rem', marginBottom: 12 }}>
-                            {state.resolveNote}
-                        </div>
-                    ) : null}
-
-                    {state.loading && (state.missing.departments.length === 0 && state.missing.categories.length === 0) ? (
-                        <div className="mc-grid-loading"><RefreshCw className="spin" size={24} /> <p>Checking dependencies…</p></div>
-                    ) : (
-                        <>
-                            <MissingDependenciesList missing={state.missing} />
-
-                            <div style={{ marginTop: 14 }}>
-                                <BranchTargetPicker
-                                    branches={branches}
-                                    value={state.targetBranchIds}
-                                    onChange={(v) => onChange((prev) => prev && { ...prev, targetBranchIds: v })}
-                                    scopeOnly
-                                />
-                            </div>
-
-                            <div style={{ marginTop: 14, padding: 12, border: '1px solid var(--color-border-light, #E5E7EB)', borderRadius: 8 }}>
-                                <div style={{ fontWeight: 700, marginBottom: 4, fontSize: '0.875rem' }}>
-                                    Critical stock (per product, per branch)
-                                </div>
-                                <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: 10 }}>
-                                    Optional alert threshold when each branch adopts. Leave blank for 0.
-                                </div>
-
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, alignItems: 'end', padding: '8px 10px', background: 'var(--color-bg-muted, #F9FAFB)', borderRadius: 6, marginBottom: 10 }}>
-                                    <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)' }}>Apply to all rows</div>
-                                    <input
-                                        type="number"
-                                        min="0"
-                                        placeholder="Critical"
-                                        value={state.bulkCriticalStockPoint ?? ''}
-                                        onChange={(e) => onChange((prev) => prev && { ...prev, bulkCriticalStockPoint: e.target.value })}
-                                        style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', width: 90, fontSize: '0.8125rem' }}
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => onChange((prev) => prev && {
-                                            ...prev,
-                                            items: prev.items.map((it) => ({
-                                                ...it,
-                                                criticalStockPoint: prev.bulkCriticalStockPoint !== '' && prev.bulkCriticalStockPoint != null ? prev.bulkCriticalStockPoint : it.criticalStockPoint,
-                                            })),
-                                        })}
-                                        style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--color-border)', background: '#fff', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
-                                    >
-                                        Apply
-                                    </button>
-                                </div>
-
-                                <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: 6 }}>
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
-                                        <thead>
-                                            <tr style={{ background: 'var(--color-bg-muted, #F9FAFB)', textAlign: 'left' }}>
-                                                <th style={{ padding: '8px 10px', fontWeight: 700 }}>Product</th>
-                                                <th style={{ padding: '8px 10px', fontWeight: 700, width: 130 }}>Critical Stock</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {(state.items || []).map((it, idx) => (
-                                                <tr key={it.productId} style={{ borderTop: idx === 0 ? 'none' : '1px solid var(--color-border)' }}>
-                                                    <td style={{ padding: '8px 10px' }}>{it.name}</td>
-                                                    <td style={{ padding: '6px 10px' }}>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            placeholder="0"
-                                                            value={it.criticalStockPoint}
-                                                            onChange={(e) => {
-                                                                const v = e.target.value;
-                                                                onChange((prev) => prev && {
-                                                                    ...prev,
-                                                                    items: prev.items.map((row, i) => i === idx ? { ...row, criticalStockPoint: v } : row),
-                                                                });
-                                                            }}
-                                                            style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', width: '100%', fontSize: '0.8125rem' }}
-                                                        />
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </Modal>
+        <WorkshopSubScreen
+            title={`Add ${state.rows.length} product${state.rows.length === 1 ? '' : 's'} to your workshop`}
+            subtitle="Review dependencies, target branches, and optional critical stock thresholds."
+            backLabel={backLabel}
+            onBack={onClose}
+            backDisabled={state.loading}
+            size="xl"
+            footer={(
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', width: '100%' }}>
+                    <button type="button" className="mc-btn-ghost mc-btn-large" onClick={onClose} disabled={state.loading}>
+                        Cancel
+                    </button>
+                    <button type="button" className="mc-btn-primary blue-btn mc-btn-large" onClick={onSubmit} disabled={state.loading}>
+                        {state.loading ? 'Adding…' : 'Add to my workshop'}
+                    </button>
+                </div>
             )}
-        </AnimatePresence>
+        >
+            <div className="ws-section" style={{ padding: 20 }}>
+                {state.error && (
+                    <div style={{ padding: 10, background: '#FEE2E2', color: '#B91C1C', borderRadius: 8, fontSize: '0.875rem', marginBottom: 12 }}>
+                        {state.error}
+                    </div>
+                )}
+
+                {state.resolveNote ? (
+                    <div style={{ padding: 10, background: '#FFFBEB', color: '#92400E', borderRadius: 8, fontSize: '0.875rem', marginBottom: 12 }}>
+                        {state.resolveNote}
+                    </div>
+                ) : null}
+
+                {state.loading && (state.missing.departments.length === 0 && state.missing.categories.length === 0) ? (
+                    <div className="mc-grid-loading"><RefreshCw className="spin" size={24} /> <p>Checking dependencies…</p></div>
+                ) : (
+                    <>
+                        <MissingDependenciesList missing={state.missing} />
+
+                        <div style={{ marginTop: 14 }}>
+                            <BranchTargetPicker
+                                branches={branches}
+                                value={state.targetBranchIds}
+                                onChange={(v) => onChange((prev) => prev && { ...prev, targetBranchIds: v })}
+                                scopeOnly
+                            />
+                        </div>
+
+                        <div style={{ marginTop: 14, padding: 12, border: '1px solid var(--color-border-light, #E5E7EB)', borderRadius: 8 }}>
+                            <div style={{ fontWeight: 700, marginBottom: 4, fontSize: '0.875rem' }}>
+                                Critical stock (per product, per branch)
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginBottom: 10 }}>
+                                Optional alert threshold when each branch adopts. Leave blank for 0.
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, alignItems: 'end', padding: '8px 10px', background: 'var(--color-bg-muted, #F9FAFB)', borderRadius: 6, marginBottom: 10 }}>
+                                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)' }}>Apply to all rows</div>
+                                <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="Critical"
+                                    value={state.bulkCriticalStockPoint ?? ''}
+                                    onChange={(e) => onChange((prev) => prev && { ...prev, bulkCriticalStockPoint: e.target.value })}
+                                    style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', width: 90, fontSize: '0.8125rem' }}
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => onChange((prev) => prev && {
+                                        ...prev,
+                                        items: prev.items.map((it) => ({
+                                            ...it,
+                                            criticalStockPoint: prev.bulkCriticalStockPoint !== '' && prev.bulkCriticalStockPoint != null ? prev.bulkCriticalStockPoint : it.criticalStockPoint,
+                                        })),
+                                    })}
+                                    style={{ padding: '6px 12px', borderRadius: 6, border: '1px solid var(--color-border)', background: '#fff', fontWeight: 700, fontSize: '0.75rem', cursor: 'pointer' }}
+                                >
+                                    Apply
+                                </button>
+                            </div>
+
+                            <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: 6 }}>
+                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+                                    <thead>
+                                        <tr style={{ background: 'var(--color-bg-muted, #F9FAFB)', textAlign: 'left' }}>
+                                            <th style={{ padding: '8px 10px', fontWeight: 700 }}>Product</th>
+                                            <th style={{ padding: '8px 10px', fontWeight: 700, width: 130 }}>Critical Stock</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(state.items || []).map((it, idx) => (
+                                            <tr key={it.productId} style={{ borderTop: idx === 0 ? 'none' : '1px solid var(--color-border)' }}>
+                                                <td style={{ padding: '8px 10px' }}>{it.name}</td>
+                                                <td style={{ padding: '6px 10px' }}>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        placeholder="0"
+                                                        value={it.criticalStockPoint}
+                                                        onChange={(e) => {
+                                                            const v = e.target.value;
+                                                            onChange((prev) => prev && {
+                                                                ...prev,
+                                                                items: prev.items.map((row, i) => i === idx ? { ...row, criticalStockPoint: v } : row),
+                                                            });
+                                                        }}
+                                                        style={{ padding: '6px 8px', borderRadius: 6, border: '1px solid var(--color-border)', width: '100%', fontSize: '0.8125rem' }}
+                                                    />
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </>
+                )}
+            </div>
+        </WorkshopSubScreen>
     );
 }
 
-function ServiceAdoptModal({ state, onChange, onClose, onSubmit, branches }) {
+function ServiceAdoptScreen({ state, onChange, onClose, onSubmit, branches, backLabel }) {
     return (
-        <AnimatePresence>
-            {state && (
-                <Modal
-                    title={`Add ${state.rows.length} service${state.rows.length === 1 ? '' : 's'} to your workshop`}
-                    onClose={state.loading ? () => {} : onClose}
-                    contentClassName="modal-content mc-modal-redesign"
-                    footer={
-                        <div className="mc-modal-footer row" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                            <button type="button" className="mc-btn-ghost mc-btn-large" onClick={onClose} disabled={state.loading}>
-                                Cancel
-                            </button>
-                            <button type="button" className="mc-btn-primary blue-btn mc-btn-large" onClick={onSubmit} disabled={state.loading}>
-                                {state.loading ? 'Adding…' : 'Add to my workshop'}
-                            </button>
-                        </div>
-                    }
-                >
-                    {state.error && (
-                        <div style={{ padding: 10, background: '#FEE2E2', color: '#B91C1C', borderRadius: 8, fontSize: '0.875rem', marginBottom: 12 }}>
-                            {state.error}
-                        </div>
-                    )}
-
-                    {state.resolveNote ? (
-                        <div style={{ padding: 10, background: '#FFFBEB', color: '#92400E', borderRadius: 8, fontSize: '0.875rem', marginBottom: 12 }}>
-                            {state.resolveNote}
-                        </div>
-                    ) : null}
-
-                    {state.loading && (state.missing.departments.length === 0 && state.missing.categories.length === 0) ? (
-                        <div className="mc-grid-loading"><RefreshCw className="spin" size={24} /> <p>Checking dependencies…</p></div>
-                    ) : (
-                        <>
-                            <MissingDependenciesList missing={state.missing} />
-                            <div style={{ marginTop: 14 }}>
-                                <BranchTargetPicker
-                                    branches={branches}
-                                    value={state.targetBranchIds}
-                                    onChange={(v) => onChange((prev) => prev && { ...prev, targetBranchIds: v })}
-                                    scopeOnly
-                                />
-                            </div>
-                            <div style={{ marginTop: 14, fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                                Services being added: {state.rows.map((r) => r.name).slice(0, 5).join(', ')}{state.rows.length > 5 ? `, and ${state.rows.length - 5} more` : ''}.
-                            </div>
-                        </>
-                    )}
-                </Modal>
+        <WorkshopSubScreen
+            title={`Add ${state.rows.length} service${state.rows.length === 1 ? '' : 's'} to your workshop`}
+            subtitle="Review auto-adopted dependencies and choose target branches."
+            backLabel={backLabel}
+            onBack={onClose}
+            backDisabled={state.loading}
+            size="wide"
+            footer={(
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', width: '100%' }}>
+                    <button type="button" className="mc-btn-ghost mc-btn-large" onClick={onClose} disabled={state.loading}>
+                        Cancel
+                    </button>
+                    <button type="button" className="mc-btn-primary blue-btn mc-btn-large" onClick={onSubmit} disabled={state.loading}>
+                        {state.loading ? 'Adding…' : 'Add to my workshop'}
+                    </button>
+                </div>
             )}
-        </AnimatePresence>
+        >
+            <div className="ws-section" style={{ padding: 20 }}>
+                {state.error && (
+                    <div style={{ padding: 10, background: '#FEE2E2', color: '#B91C1C', borderRadius: 8, fontSize: '0.875rem', marginBottom: 12 }}>
+                        {state.error}
+                    </div>
+                )}
+
+                {state.resolveNote ? (
+                    <div style={{ padding: 10, background: '#FFFBEB', color: '#92400E', borderRadius: 8, fontSize: '0.875rem', marginBottom: 12 }}>
+                        {state.resolveNote}
+                    </div>
+                ) : null}
+
+                {state.loading && (state.missing.departments.length === 0 && state.missing.categories.length === 0) ? (
+                    <div className="mc-grid-loading"><RefreshCw className="spin" size={24} /> <p>Checking dependencies…</p></div>
+                ) : (
+                    <>
+                        <MissingDependenciesList missing={state.missing} />
+                        <div style={{ marginTop: 14 }}>
+                            <BranchTargetPicker
+                                branches={branches}
+                                value={state.targetBranchIds}
+                                onChange={(v) => onChange((prev) => prev && { ...prev, targetBranchIds: v })}
+                                scopeOnly
+                            />
+                        </div>
+                        <div style={{ marginTop: 14, fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                            Services being added: {state.rows.map((r) => r.name).slice(0, 5).join(', ')}{state.rows.length > 5 ? `, and ${state.rows.length - 5} more` : ''}.
+                        </div>
+                    </>
+                )}
+            </div>
+        </WorkshopSubScreen>
     );
 }

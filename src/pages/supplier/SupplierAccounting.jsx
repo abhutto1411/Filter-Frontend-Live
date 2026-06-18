@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { BookOpen } from 'lucide-react';
+import { BookOpen, BarChart3, DollarSign, FileText, ShoppingCart } from 'lucide-react';
 import { getSupplierAccountingScreen } from '../../services/supplierApi';
 import { ShimmerKpiGrid, ShimmerTable } from '../../components/supplier/Shimmer';
 
@@ -126,23 +126,43 @@ export default function SupplierAccounting() {
                 </>
             ) : (
             <>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 16 }}>
-                <div style={{ background: '#EFF6FF', borderRadius: 14, padding: 14 }}>
-                    <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#2563EB', margin: 0 }}>ACCOUNTS RECEIVABLE</p>
-                    <p style={{ fontSize: '1.25rem', fontWeight: 900, margin: '6px 0 0 0', color: '#1E3A8A' }}>{currency} {totalAR.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                </div>
-                <div style={{ background: '#FEF2F2', borderRadius: 14, padding: 14 }}>
-                    <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#DC2626', margin: 0 }}>ACCOUNTS PAYABLE</p>
-                    <p style={{ fontSize: '1.25rem', fontWeight: 900, margin: '6px 0 0 0', color: '#B91C1C' }}>{currency} {totalAP.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                </div>
-                <div style={{ background: '#ECFDF3', borderRadius: 14, padding: 14 }}>
-                    <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#16A34A', margin: 0 }}>CASH IN BANK BALANCE</p>
-                    <p style={{ fontSize: '1.25rem', fontWeight: 900, margin: '6px 0 0 0', color: '#14532D' }}>{currency} {cashInBank.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                </div>
-                <div style={{ background: '#F1F5F9', borderRadius: 14, padding: 14 }}>
-                    <p style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0F172A', margin: 0 }}>NET P&L (EST.)</p>
-                    <p style={{ fontSize: '1.25rem', fontWeight: 900, margin: '6px 0 0 0', color: '#10B981' }}>{currency} {netPL.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                </div>
+            <div className="ws-kpi-grid">
+                {[
+                    {
+                        key: 'ar',
+                        label: 'ACCOUNTS RECEIVABLE',
+                        value: `${currency} ${totalAR.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+                        Icon: FileText,
+                    },
+                    {
+                        key: 'ap',
+                        label: 'ACCOUNTS PAYABLE',
+                        value: `${currency} ${totalAP.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+                        Icon: ShoppingCart,
+                    },
+                    {
+                        key: 'cash',
+                        label: 'CASH IN BANK BALANCE',
+                        value: `${currency} ${cashInBank.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+                        Icon: DollarSign,
+                    },
+                    {
+                        key: 'pl',
+                        label: 'NET P&L (EST.)',
+                        value: `${currency} ${netPL.toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+                        Icon: BarChart3,
+                    },
+                ].map(({ key, label, value, Icon }) => (
+                    <div key={key} className="ws-kpi-card">
+                        <div>
+                            <p className="ws-kpi-label">{label}</p>
+                            <p className="ws-kpi-value">{value}</p>
+                        </div>
+                        <div className="ws-kpi-icon ws-kpi-icon--dark">
+                            <Icon size={22} />
+                        </div>
+                    </div>
+                ))}
             </div>
 
             <div style={{ marginBottom: 12 }}>

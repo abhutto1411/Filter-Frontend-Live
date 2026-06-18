@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Plus, Pencil, Trash2, X, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search } from 'lucide-react';
+import WorkshopSubScreen from '../workshop/WorkshopSubScreen';
 import {
     createWorkshopCommissionRule,
     deleteWorkshopCommissionRule,
@@ -198,6 +199,140 @@ export default function WorkshopCommissionRules() {
         });
     }, [rules]);
 
+    if (modalOpen) {
+        return (
+            <WorkshopSubScreen
+                title={editingId ? 'Edit Commission Rule' : 'New Commission Rule'}
+                subtitle="Service, role, and commission rate for the priority engine."
+                backLabel="Back to Commission Rules"
+                onBack={closeModal}
+                backDisabled={submitting}
+                size="form"
+                maxWidth="600px"
+                footer={(
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, width: '100%' }}>
+                        <button
+                            type="button"
+                            onClick={closeModal}
+                            disabled={submitting}
+                            className="ws-btn-secondary"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onSubmit}
+                            disabled={submitting}
+                            className="ws-btn-confirm"
+                        >
+                            {submitting ? 'Saving...' : editingId ? 'Update Rule' : 'Create Rule'}
+                        </button>
+                    </div>
+                )}
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                        <div>
+                            <label style={{ display: 'block', fontSize: 13, color: '#374151', marginBottom: 4 }}>Priority *</label>
+                            <input
+                                type="number"
+                                min={1}
+                                value={form.priority}
+                                onChange={(e) => setForm((p) => ({ ...p, priority: e.target.value }))}
+                                style={inputStyle}
+                            />
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', fontSize: 13, color: '#374151', marginBottom: 4 }}>Status</label>
+                            <select
+                                value={form.status}
+                                onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}
+                                style={inputStyle}
+                            >
+                                <option value="active">active</option>
+                                <option value="inactive">inactive</option>
+                            </select>
+                        </div>
+                        <div style={{ gridColumn: 'span 2' }}>
+                            <label style={{ display: 'block', fontSize: 13, color: '#374151', marginBottom: 4 }}>Service *</label>
+                            <select
+                                value={form.serviceId}
+                                onChange={(e) => onServicePick(e.target.value)}
+                                style={inputStyle}
+                            >
+                                <option value="">Custom service name (no link)</option>
+                                {services.map((s) => (
+                                    <option key={String(s.id)} value={String(s.id)}>
+                                        {s.name || s.serviceName}
+                                    </option>
+                                ))}
+                            </select>
+                            <input
+                                placeholder="Service name (e.g. Oil Change)"
+                                value={form.serviceName}
+                                onChange={(e) => setForm((p) => ({ ...p, serviceName: e.target.value }))}
+                                style={{ ...inputStyle, marginTop: 8 }}
+                            />
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', fontSize: 13, color: '#374151', marginBottom: 4 }}>Employee role</label>
+                            <select
+                                value={form.employeeRole}
+                                onChange={(e) => setForm((p) => ({ ...p, employeeRole: e.target.value }))}
+                                style={inputStyle}
+                            >
+                                {ROLE_OPTIONS.map((r) => (
+                                    <option key={r} value={r}>
+                                        {r}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', fontSize: 13, color: '#374151', marginBottom: 4 }}>Type</label>
+                            <select
+                                value={form.commissionType}
+                                onChange={(e) => setForm((p) => ({ ...p, commissionType: e.target.value }))}
+                                style={inputStyle}
+                            >
+                                {TYPE_OPTIONS.map((t) => (
+                                    <option key={t.value} value={t.value}>
+                                        {t.label}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label style={{ display: 'block', fontSize: 13, color: '#374151', marginBottom: 4 }}>
+                                Value {form.commissionType === 'Percentage' ? '(%)' : '(SAR)'}
+                            </label>
+                            <input
+                                type="number"
+                                step="0.01"
+                                value={form.value}
+                                onChange={(e) => setForm((p) => ({ ...p, value: e.target.value }))}
+                                style={inputStyle}
+                            />
+                        </div>
+                        <div></div>
+                        <div style={{ gridColumn: 'span 2' }}>
+                            <label style={{ display: 'block', fontSize: 13, color: '#374151', marginBottom: 4 }}>Notes</label>
+                            <textarea
+                                rows={3}
+                                value={form.notes}
+                                onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
+                                style={{ ...inputStyle, resize: 'vertical', minHeight: 60 }}
+                            />
+                        </div>
+                        {submitError && (
+                            <div style={{ gridColumn: 'span 2', color: '#dc2626', fontSize: 13 }}>{submitError}</div>
+                        )}
+                    </div>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
     return (
         <div style={{ padding: 16, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
@@ -384,175 +519,6 @@ export default function WorkshopCommissionRules() {
                 </table>
             </div>
 
-            {modalOpen && (
-                <div
-                    onClick={closeModal}
-                    style={{
-                        position: 'fixed',
-                        inset: 0,
-                        background: 'rgba(0,0,0,0.5)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        zIndex: 9999,
-                    }}
-                >
-                    <div
-                        onClick={(e) => e.stopPropagation()}
-                        style={{
-                            background: '#fff',
-                            borderRadius: 12,
-                            padding: 24,
-                            width: '100%',
-                            maxWidth: 600,
-                            boxSizing: 'border-box',
-                        }}
-                    >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                            <h3 style={{ margin: 0, fontSize: '1.125rem', fontWeight: 700 }}>
-                                {editingId ? 'Edit Commission Rule' : 'New Commission Rule'}
-                            </h3>
-                            <button
-                                type="button"
-                                onClick={closeModal}
-                                style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 0 }}
-                            >
-                                <X size={18} />
-                            </button>
-                        </div>
-
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                            <div>
-                                <label style={{ display: 'block', fontSize: 13, color: '#374151', marginBottom: 4 }}>Priority *</label>
-                                <input
-                                    type="number"
-                                    min={1}
-                                    value={form.priority}
-                                    onChange={(e) => setForm((p) => ({ ...p, priority: e.target.value }))}
-                                    style={inputStyle}
-                                />
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', fontSize: 13, color: '#374151', marginBottom: 4 }}>Status</label>
-                                <select
-                                    value={form.status}
-                                    onChange={(e) => setForm((p) => ({ ...p, status: e.target.value }))}
-                                    style={inputStyle}
-                                >
-                                    <option value="active">active</option>
-                                    <option value="inactive">inactive</option>
-                                </select>
-                            </div>
-                            <div style={{ gridColumn: 'span 2' }}>
-                                <label style={{ display: 'block', fontSize: 13, color: '#374151', marginBottom: 4 }}>Service *</label>
-                                <select
-                                    value={form.serviceId}
-                                    onChange={(e) => onServicePick(e.target.value)}
-                                    style={inputStyle}
-                                >
-                                    <option value="">Custom service name (no link)</option>
-                                    {services.map((s) => (
-                                        <option key={String(s.id)} value={String(s.id)}>
-                                            {s.name || s.serviceName}
-                                        </option>
-                                    ))}
-                                </select>
-                                <input
-                                    placeholder="Service name (e.g. Oil Change)"
-                                    value={form.serviceName}
-                                    onChange={(e) => setForm((p) => ({ ...p, serviceName: e.target.value }))}
-                                    style={{ ...inputStyle, marginTop: 8 }}
-                                />
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', fontSize: 13, color: '#374151', marginBottom: 4 }}>Employee role</label>
-                                <select
-                                    value={form.employeeRole}
-                                    onChange={(e) => setForm((p) => ({ ...p, employeeRole: e.target.value }))}
-                                    style={inputStyle}
-                                >
-                                    {ROLE_OPTIONS.map((r) => (
-                                        <option key={r} value={r}>
-                                            {r}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', fontSize: 13, color: '#374151', marginBottom: 4 }}>Type</label>
-                                <select
-                                    value={form.commissionType}
-                                    onChange={(e) => setForm((p) => ({ ...p, commissionType: e.target.value }))}
-                                    style={inputStyle}
-                                >
-                                    {TYPE_OPTIONS.map((t) => (
-                                        <option key={t.value} value={t.value}>
-                                            {t.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', fontSize: 13, color: '#374151', marginBottom: 4 }}>
-                                    Value {form.commissionType === 'Percentage' ? '(%)' : '(SAR)'}
-                                </label>
-                                <input
-                                    type="number"
-                                    step="0.01"
-                                    value={form.value}
-                                    onChange={(e) => setForm((p) => ({ ...p, value: e.target.value }))}
-                                    style={inputStyle}
-                                />
-                            </div>
-                            <div></div>
-                            <div style={{ gridColumn: 'span 2' }}>
-                                <label style={{ display: 'block', fontSize: 13, color: '#374151', marginBottom: 4 }}>Notes</label>
-                                <textarea
-                                    rows={3}
-                                    value={form.notes}
-                                    onChange={(e) => setForm((p) => ({ ...p, notes: e.target.value }))}
-                                    style={{ ...inputStyle, resize: 'vertical', minHeight: 60 }}
-                                />
-                            </div>
-                            {submitError && (
-                                <div style={{ gridColumn: 'span 2', color: '#dc2626', fontSize: 13 }}>{submitError}</div>
-                            )}
-                            <div style={{ gridColumn: 'span 2', display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                                <button
-                                    type="button"
-                                    onClick={closeModal}
-                                    disabled={submitting}
-                                    style={{
-                                        border: '1px solid #e5e7eb',
-                                        background: '#fff',
-                                        borderRadius: 6,
-                                        padding: '8px 16px',
-                                        cursor: submitting ? 'not-allowed' : 'pointer',
-                                    }}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={onSubmit}
-                                    disabled={submitting}
-                                    style={{
-                                        border: 'none',
-                                        background: '#D4A017',
-                                        color: '#fff',
-                                        borderRadius: 6,
-                                        padding: '8px 16px',
-                                        fontWeight: 600,
-                                        cursor: submitting ? 'not-allowed' : 'pointer',
-                                    }}
-                                >
-                                    {submitting ? 'Saving...' : editingId ? 'Update Rule' : 'Create Rule'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

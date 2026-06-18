@@ -1,8 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, ShoppingCart, BarChart3, AlertTriangle, Calendar, Zap, Eye, Trash2 } from 'lucide-react';
-import { AnimatePresence } from 'framer-motion';
-import Modal from '../../components/Modal';
+import { Plus, BarChart3, AlertTriangle, Calendar, Zap, Trash2 } from 'lucide-react';
+import WorkshopSubScreen from '../../components/workshop/WorkshopSubScreen';
 import { useAuth } from '../../context/AuthContext';
 
 const PURCHASES_TABS = [
@@ -967,6 +966,19 @@ export default function WorkshopPurchases({ tabState, clearTabState, selectedBra
         setViewInvoiceError('');
         setViewInvoiceLoading(false);
     }, []);
+    const closePurchaseInvoiceForm = useCallback(() => {
+        setModalOpen(false);
+        setSubmitInvoiceError('');
+        setFreightSar('0');
+        setAmountsTaxInclusive(false);
+        setInvoiceBranchId('');
+        setProductSearchByLineId({});
+        setActiveProductSearchLineId(null);
+        setProductDropdownPosition(null);
+        setEditingDraftId(null);
+        clearDraftEditSession();
+    }, [clearDraftEditSession]);
+
 
     const openViewInvoiceModal = useCallback(async (listRow) => {
         if (!listRow?.id) return;
@@ -2287,6 +2299,1279 @@ export default function WorkshopPurchases({ tabState, clearTabState, selectedBra
         }
     };
 
+    if (modalOpen) {
+        return (
+            <WorkshopSubScreen
+                title={editingDraftId || editingLocalPiId ? 'Edit Purchase Invoice Draft' : 'New Purchase Invoice'}
+                subtitle="Record supplier purchases, line items, and stock for a branch."
+                backLabel="Back to Purchase Invoices"
+                onBack={closePurchaseInvoiceForm}
+                backDisabled={submittingInvoice}
+                size="full"
+                maxWidth="1350px"
+                className="ws-pi-sub-screen"
+                footer={(
+                    <div className="pi-modal-footer">
+                        <div className="pi-footer-left">
+                            <button
+                                type="button"
+                                className="btn-pi-cancel"
+                                onClick={closePurchaseInvoiceForm}
+                                disabled={submittingInvoice}
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                        <div className="pi-footer-right" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+                            {submitInvoiceError && (
+                                <p style={{ margin: 0, fontSize: '0.8125rem', color: '#B91C1C', maxWidth: 420, textAlign: 'right' }}>
+                                    {submitInvoiceError}
+                                </p>
+                            )}
+                            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                <button
+                                    type="button"
+                                    className="btn-pi-draft"
+                                    onClick={() => handleCreateInvoice('draft')}
+                                    disabled={!canSavePurchaseInvoiceDraft || submittingInvoice}
+                                >
+                                    {submittingInvoice
+                                        ? 'Saving…'
+                                        : editingDraftId || editingLocalPiId
+                                          ? 'Update Draft'
+                                          : 'Save as Draft'}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="btn-pi-create"
+                                    onClick={() => handleCreateInvoice('pending')}
+                                    disabled={!canSubmitPurchaseInvoice || submittingInvoice}
+                                    title={
+                                        !canSubmitPurchaseInvoice
+                                            ? 'Need invoice branch, linked supplier with ID, at least one line with a branch product, and loaded suppliers.'
+                                            : undefined
+                                    }
+                                >
+                                    {submittingInvoice
+                                        ? 'Creating…'
+                                        : editingDraftId || editingLocalPiId
+                                          ? isModalLocalSupplier
+                                              ? 'Complete invoice'
+                                              : 'Send to Supplier'
+                                          : isModalLocalSupplier
+                                            ? 'Create purchase invoice'
+                                            : 'Create Purchase Invoice'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+            >
+                <div className="modal-content-purchase">
+                    <div className="pi-form-container">
+                        {branchesForUi.length === 0 && (
+                            <p
+                                style={{
+                                    padding: '10px 14px',
+                                    marginBottom: 12,
+                                    borderRadius: 8,
+                                    background: '#FFF7ED',
+                                    border: '1px solid #FED7AA',
+                                    fontSize: '0.875rem',
+                                }}
+                            >
+                                Add a workshop branch before creating purchase invoices.
+                            </p>
+                        )}
+                        {branchesForUi.length > 0 && (
+                            <div className="pi-field pi-full-width" style={{ marginBottom: 16 }}>
+                                <label>Branch for this invoice *</label>
+                                <select
+                                    value={invoiceBranchId}
+                                    onChange={(e) => handleInvoiceBranchChange(e.target.value)}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px 14px',
+                                        border: '1px solid #e2e8f0',
+                                        borderRadius: 10,
+                                        fontSize: '0.9375rem',
+                                        background: '#f8fafc',
+                                    }}
+                                >
+                                    {branchesForUi.map((b) => (
+                                        <option key={b.id} value={String(b.id)}>
+                                            {b.name}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="pi-sub-label" style={{ marginTop: 6 }}>
+                                    Products and quantities apply to this branch only. When the supplier approves and
+                                    stock is updated, inventory changes on this branch.
+                                </p>
+                            </div>
+                        )}
+                        {!invoiceBranchId && branchesForUi.length > 0 && (
+                            <p
+                                style={{
+                                    padding: '10px 14px',
+                                    marginBottom: 12,
+                                    borderRadius: 8,
+                                    background: '#FFF7ED',
+                                    border: '1px solid #FED7AA',
+                                    fontSize: '0.875rem',
+                                }}
+                            >
+                                Choose a branch above to load branch products for line items.
+                            </p>
+                        )}
+                        {branchProductsError && (
+                            <p style={{ color: '#B45309', fontSize: '0.875rem', marginBottom: 8 }}>{branchProductsError}</p>
+                        )}
+                        {!branchProductsLoading &&
+                            invoiceBranchId &&
+                            branchProductOptions.length === 0 &&
+                            !branchProductsError && (
+                                <p
+                                    style={{
+                                        color: '#92400E',
+                                        fontSize: '0.875rem',
+                                        marginBottom: 8,
+                                        padding: '8px 12px',
+                                        background: '#FFFBEB',
+                                        border: '1px solid #FDE68A',
+                                        borderRadius: 8,
+                                    }}
+                                >
+                                    No branch products were returned. Check that this branch has products in catalog
+                                    / inventory, or that the workshop-staff / workshop-catalog APIs are reachable.
+                                </p>
+                            )}
+                        <div className="pi-header-grid">
+                            <div className="pi-field">
+                                <label>Issue date</label>
+                                <div className="pi-input-with-icon">
+                                    <input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
+                                    <Calendar size={16} />
+                                </div>
+                            </div>
+                            <div className="pi-field">
+                                <label>Due date</label>
+                                <div className={`pi-due-grid ${dueDateType === 'EOM' ? 'pi-due-eom' : ''}`}>
+                                    <select value={dueDateType} onChange={(e) => setDueDateType(e.target.value)}>
+                                        <option value="Net">Net</option>
+                                        <option value="Custom">Custom</option>
+                                        <option value="EOM">EOM</option>
+                                    </select>
+                                    {dueDateType === 'Net' && (
+                                        <div className="pi-days-input">
+                                            <input type="number" value={netDays} onChange={(e) => setNetDays(e.target.value)} />
+                                            <span>days</span>
+                                        </div>
+                                    )}
+                                    {dueDateType === 'Custom' && (
+                                        <div className="pi-date-input-small">
+                                            <input type="date" value={customDueDate} onChange={(e) => setCustomDueDate(e.target.value)} />
+                                        </div>
+                                    )}
+                                </div>
+                                <span className="pi-sub-label">Due: {calculateDueDate()}</span>
+                            </div>
+                            <div className="pi-field">
+                                <label>Ref # (Optional)</label>
+                                <input
+                                    type="text"
+                                    placeholder="Vendor inv #"
+                                    value={vendorInvoiceRef}
+                                    onChange={(e) => setVendorInvoiceRef(e.target.value)}
+                                />
+                            </div>
+                        </div>
+                        <div className="pi-field pi-full-width">
+                            <label>Supplier / Vendor *</label>
+                            <select
+                                value={selectedVendor}
+                                onChange={(e) => setSelectedVendor(e.target.value)}
+                                disabled={linkedSuppliersLoading || invoiceSupplierOptions.length === 0}
+                                style={{
+                                    width: '100%',
+                                    padding: '10px 14px',
+                                    border: '1px solid #e2e8f0',
+                                    borderRadius: 10,
+                                    fontSize: '0.9375rem',
+                                    background: '#f8fafc',
+                                }}
+                            >
+                                {linkedSuppliersLoading && (
+                                    <option value="">Loading suppliers…</option>
+                                )}
+                                {!linkedSuppliersLoading && invoiceSupplierOptions.length === 0 && (
+                                    <option value="">No suppliers linked to this workshop</option>
+                                )}
+                                {!linkedSuppliersLoading &&
+                                    invoiceSupplierOptions.map((v) => (
+                                        <option key={v} value={v}>
+                                            {v}
+                                        </option>
+                                    ))}
+                            </select>
+                            {linkedSuppliersUsingRegisteredFallback && (
+                                <p className="pi-sub-label" style={{ color: '#B45309', marginTop: 6 }}>
+                                    Supplier list is using the registered-suppliers fallback (same as Suppliers tab
+                                    when the main endpoint fails).
+                                </p>
+                            )}
+                            {linkedSuppliersError && (
+                                <p className="pi-sub-label" style={{ color: '#B45309', marginTop: 6 }}>
+                                    {linkedSuppliersError}
+                                </p>
+                            )}
+                        </div>
+                        <div className="pi-field pi-full-width">
+                            <label>Description</label>
+                            <input
+                                type="text"
+                                placeholder="Invoice description (optional)"
+                                value={invoiceDescription}
+                                onChange={(e) => setInvoiceDescription(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="pi-lines-section ws-pi-lines-section">
+                            <div className="ws-pi-lines-scroll">
+                                <table className="ws-pi-lines-table">
+                                    <colgroup>
+                                        <col style={{ width: 44 }} />
+                                        <col style={{ width: 40 }} />
+                                        <col style={{ width: showDesc ? '17%' : '21%' }} />
+                                        <col style={{ width: showDesc ? '14%' : '18%' }} />
+                                        {showDesc ? <col style={{ width: '12%' }} /> : null}
+                                        <col style={{ width: 96 }} />
+                                        <col style={{ width: 72 }} />
+                                        <col style={{ width: 96 }} />
+                                        {showDiscount ? <col className="ws-pi-col-discount" style={{ width: 168 }} /> : null}
+                                        <col style={{ width: showDiscount ? '8%' : '10%' }} />
+                                        <col style={{ width: 84 }} />
+                                        <col style={{ width: 80 }} />
+                                        <col style={{ width: showDiscount ? '8%' : '10%' }} />
+                                        <col style={{ width: 130 }} />
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th scope="col" className="ws-pi-th-hash">
+                                                #
+                                            </th>
+                                            <th scope="col" className="ws-pi-th-actions" aria-label="Remove line" />
+                                            <th scope="col">Item</th>
+                                            <th scope="col">Account</th>
+                                            {showDesc ? <th scope="col">Description</th> : null}
+                                            <th scope="col">UOM</th>
+                                            <th scope="col" className="ws-pi-th-num">
+                                                Qty
+                                            </th>
+                                            <th scope="col" className="ws-pi-th-num">
+                                                Unit price {amountsTaxInclusive ? '(incl. VAT)' : '(ex VAT)'}
+                                            </th>
+                                            {showDiscount ? (
+                                                <th scope="col" className="ws-pi-th-num">
+                                                    Discount
+                                                </th>
+                                            ) : null}
+                                            <th scope="col" className="ws-pi-th-num">
+                                                Total
+                                            </th>
+                                            <th scope="col" title="Fixed VAT 15% for workshop supplier purchase invoices">
+                                                Tax code
+                                            </th>
+                                            <th scope="col" className="ws-pi-th-num">
+                                                Tax Amt
+                                            </th>
+                                            <th scope="col" className="ws-pi-th-num">
+                                                Total
+                                            </th>
+                                            <th
+                                                scope="col"
+                                                title="Supplier-scoped: last price you paid this supplier for this product (per unit, incl. VAT when applicable)"
+                                            >
+                                                Last from supplier (incl.)
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {lineItems.map((line, idx) => {
+                                            const piLineColumnCount =
+                                                12 + (showDesc ? 1 : 0) + (showDiscount ? 1 : 0);
+                                            const workingLine = applyDiscountForCalc
+                                                ? line
+                                                : { ...line, discount: 0 };
+                                            const amounts = computeLineFinancials(
+                                                workingLine,
+                                                amountsTaxInclusive,
+                                                lineFinancialsOpts,
+                                            );
+                                            const uomCaps = lineInventoryCapsForInvoice(
+                                                findUomCapsForLine(
+                                                    line,
+                                                    supplierUomByProductId,
+                                                    branchProductOptions,
+                                                ),
+                                                line,
+                                                workshopUomProfiles,
+                                            );
+                                            const capsRow =
+                                                uomCaps ||
+                                                branchProductToUomCaps(
+                                                    branchProductOptions.find(
+                                                        (o) => String(o.id) === String(line.productId),
+                                                    ),
+                                                );
+                                            const uomOpts = capsRow
+                                                ? lineUomOptions(line, capsRow)
+                                                : [String(line.uom || 'piece').trim() || 'piece'];
+                                            const conversionHint = parseWorkshopPurchaseLineUomHint(
+                                                { ...line, price: line.price },
+                                                uomCaps || capsRow,
+                                            );
+                                            return (
+                                                <React.Fragment key={line.id}>
+                                                <tr>
+                                                    <td className="ws-pi-td-hash">{idx + 1}</td>
+                                                    <td className="ws-pi-td-actions">
+                                                        <button
+                                                            type="button"
+                                                            className="ws-pi-remove-line-btn"
+                                                            tabIndex={-1}
+                                                            aria-label="Remove line"
+                                                            title="Remove line"
+                                                            onClick={() => removeLine(line.id)}
+                                                        >
+                                                            <Trash2 size={16} aria-hidden />
+                                                        </button>
+                                                    </td>
+                                                    <td>
+                                                        {(() => {
+                                                            const searchText = getProductSearchText(line);
+                                                            const productResults = getProductSearchResults(searchText);
+                                                            const canSearchProducts = !!invoiceBranchId && !branchProductsLoading;
+                                                            const showProductResults =
+                                                                activeProductSearchLineId === line.id && canSearchProducts;
+                                                            return (
+                                                                <div className="ws-pi-product-search">
+                                                                    <input
+                                                                        type="text"
+                                                                        className="pi-row-input ws-pi-product-search-input"
+                                                                        data-pi-row-product={line.id}
+                                                                        ref={(node) => {
+                                                                            if (node) productSearchInputRefs.current[line.id] = node;
+                                                                            else delete productSearchInputRefs.current[line.id];
+                                                                        }}
+                                                                        value={searchText}
+                                                                        disabled={!invoiceBranchId || branchProductsLoading}
+                                                                        autoComplete="off"
+                                                                        placeholder={
+                                                                            branchProductsLoading
+                                                                                ? 'Loading products...'
+                                                                                : invoiceBranchId
+                                                                                  ? 'Search product...'
+                                                                                  : 'Choose branch first'
+                                                                        }
+                                                                        onFocus={() => {
+                                                                            setActiveProductSearchLineId(line.id);
+                                                                            updateProductDropdownPosition(line.id);
+                                                                        }}
+                                                                        onChange={(e) => handleLineProductSearchChange(line.id, e.target.value)}
+                                                                        onBlur={() => {
+                                                                            window.setTimeout(() => {
+                                                                                setHighlightedProductIndex(-1);
+                                                                                setActiveProductSearchLineId((prev) =>
+                                                                                    prev === line.id ? null : prev,
+                                                                                );
+                                                                                setProductDropdownPosition(null);
+                                                                            }, 120);
+                                                                        }}
+                                                                        onKeyDown={(e) => {
+                                                                            const trimmed = String(searchText || '').trim();
+                                                                            if (e.key === 'Escape') {
+                                                                                if (!showProductResults) return;
+                                                                                e.preventDefault();
+                                                                                setHighlightedProductIndex(-1);
+                                                                                setActiveProductSearchLineId(null);
+                                                                                setProductDropdownPosition(null);
+                                                                                return;
+                                                                            }
+                                                                            if (e.key === 'ArrowDown') {
+                                                                                if (productResults.length === 0) return;
+                                                                                e.preventDefault();
+                                                                                setHighlightedProductIndex((prev) =>
+                                                                                    prev < 0
+                                                                                        ? 0
+                                                                                        : Math.min(
+                                                                                              prev + 1,
+                                                                                              productResults.length - 1,
+                                                                                          ),
+                                                                                );
+                                                                                return;
+                                                                            }
+                                                                            if (e.key === 'ArrowUp') {
+                                                                                if (productResults.length === 0) return;
+                                                                                e.preventDefault();
+                                                                                setHighlightedProductIndex((prev) =>
+                                                                                    prev <= 0 ? -1 : prev - 1,
+                                                                                );
+                                                                                return;
+                                                                            }
+                                                                            if (e.key !== 'Enter') return;
+                                                                            if (productResults.length === 0) return;
+                                                                            e.preventDefault();
+                                                                            const h = highlightedProductIndexRef.current;
+                                                                            const pick =
+                                                                                h >= 0 && h < productResults.length
+                                                                                    ? h
+                                                                                    : 0;
+                                                                            handleLineProductChange(line.id, productResults[pick].id);
+                                                                        }}
+                                                                    />
+                                                                    {showProductResults &&
+                                                                        productDropdownPosition &&
+                                                                        createPortal(
+                                                                            <div
+                                                                                ref={productResultsPanelRef}
+                                                                                className="ws-pi-product-results"
+                                                                                role="listbox"
+                                                                                aria-label="Product search results"
+                                                                                style={{
+                                                                                    top: productDropdownPosition.top,
+                                                                                    left: productDropdownPosition.left,
+                                                                                    width: productDropdownPosition.width,
+                                                                                }}
+                                                                            >
+                                                                                {String(searchText || '').trim() ? (
+                                                                                    productResults.length > 0 ? (
+                                                                                        productResults.map((p, ri) => (
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                key={p.id}
+                                                                                                role="option"
+                                                                                                aria-selected={ri === highlightedProductIndex}
+                                                                                                data-pi-product-result-index={ri}
+                                                                                                className={`ws-pi-product-result${ri === highlightedProductIndex ? ' is-highlighted' : ''}`}
+                                                                                                onMouseEnter={() => setHighlightedProductIndex(ri)}
+                                                                                                onMouseDown={(e) => {
+                                                                                                    e.preventDefault();
+                                                                                                    handleLineProductChange(line.id, p.id);
+                                                                                                }}
+                                                                                            >
+                                                                                                <span>{p.name}</span>
+                                                                                                <small>
+                                                                                                    {p.warehouseUnit &&
+                                                                                                    Number(p.conversionFactor) > 1
+                                                                                                        ? `order in ${p.warehouseUnit} · stock in ${p.workshopUnit || p.unit}`
+                                                                                                        : p.unit || 'piece'}
+                                                                                                </small>
+                                                                                            </button>
+                                                                                        ))
+                                                                                    ) : (
+                                                                                        <div className="ws-pi-product-empty">
+                                                                                            No products match this search.
+                                                                                        </div>
+                                                                                    )
+                                                                                ) : (
+                                                                                    <div className="ws-pi-product-empty">
+                                                                                        Type product name to search.
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>,
+                                                                            document.body,
+                                                                        )}
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                    </td>
+                                                    <td>
+                                                        <select
+                                                            className="pi-row-input ws-pi-select"
+                                                            value={line.account}
+                                                            onChange={(e) => updateLineItem(line.id, 'account', e.target.value)}
+                                                        >
+                                                            {PI_ACCOUNT_OPTIONS.map((opt) => (
+                                                                <option key={opt.code} value={`${opt.code} - ${opt.name}`}>
+                                                                    {opt.code} - {opt.name}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    {showDesc ? (
+                                                        <td>
+                                                            <input
+                                                                type="text"
+                                                                value={line.description}
+                                                                className="pi-row-input"
+                                                                onChange={(e) => updateLineItem(line.id, 'description', e.target.value)}
+                                                            />
+                                                        </td>
+                                                    ) : null}
+                                                    <td className="ws-pi-td-uom">
+                                                        {line.productId && (capsRow || workshopUomProfiles.length > 0) ? (
+                                                            <WorkshopUomSelect
+                                                                variant="invoice-line"
+                                                                line={line}
+                                                                capsRow={capsRow}
+                                                                profiles={workshopUomProfiles}
+                                                                onChange={(parsed) =>
+                                                                    updateLineItem(line.id, 'uom', parsed)
+                                                                }
+                                                            />
+                                                        ) : uomOpts.length > 1 ? (
+                                                            <select
+                                                                className="pi-row-input ws-pi-select"
+                                                                value={line.uom ?? uomOpts[0]}
+                                                                onChange={(e) =>
+                                                                    updateLineItem(line.id, 'uom', e.target.value)
+                                                                }
+                                                            >
+                                                                {uomOpts.map((opt) => (
+                                                                    <option key={opt} value={opt}>
+                                                                        {opt}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        ) : (
+                                                            <span className="ws-pi-td-muted">{line.uom}</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="ws-pi-td-num ws-pi-td-qty">
+                                                        <input
+                                                            type="text"
+                                                            value={line.qty === '' || line.qty === undefined ? '' : String(line.qty)}
+                                                            className="pi-row-input-num pi-math-input"
+                                                            onChange={(e) => updateLineItem(line.id, 'qty', e.target.value)}
+                                                            onKeyDown={(e) => handleMathKeyDown(e, line.id, 'qty')}
+                                                            onBlur={(e) => handleMathBlur(e, line.id, 'qty')}
+                                                        />
+                                                    </td>
+                                                    <td
+                                                        className="ws-pi-td-num ws-pi-price-cell"
+                                                        title={
+                                                            amountsTaxInclusive
+                                                                ? 'Prefilled from supplier last price incl. VAT (or master catalog incl.). Editable.'
+                                                                : 'Prefilled from supplier last price ex VAT (or master catalog ex VAT). Editable.'
+                                                        }
+                                                    >
+                                                        <input
+                                                            type="text"
+                                                            value={line.productId ? line.price : ''}
+                                                            className="pi-row-input-num pi-math-input"
+                                                            placeholder={line.productId ? '' : '—'}
+                                                            onChange={(e) => updateLineItem(line.id, 'price', e.target.value)}
+                                                            onKeyDown={(e) => handleMathKeyDown(e, line.id, 'price')}
+                                                            onBlur={(e) => handleMathBlur(e, line.id, 'price')}
+                                                            disabled={!line.productId}
+                                                        />
+                                                    </td>
+                                                    {showDiscount ? (
+                                                        <td className="ws-pi-td-num ws-pi-td-discount">
+                                                            <div className="ws-pi-discount-cell">
+                                                                <input
+                                                                    type="text"
+                                                                    className="pi-row-input-num pi-math-input ws-pi-discount-input"
+                                                                    value={
+                                                                        line.discount === '' || line.discount === undefined
+                                                                            ? ''
+                                                                            : String(line.discount)
+                                                                    }
+                                                                    onChange={(e) => updateLineItem(line.id, 'discount', e.target.value)}
+                                                                    onKeyDown={(e) => handleMathKeyDown(e, line.id, 'discount')}
+                                                                    onBlur={(e) => handleMathBlur(e, line.id, 'discount')}
+                                                                />
+                                                                <select
+                                                                    className="pi-row-input ws-pi-discount-kind"
+                                                                    value={line.discountMode === 'fixed_sar' ? 'fixed_sar' : 'percent'}
+                                                                    onChange={(e) => updateLineItem(line.id, 'discountMode', e.target.value)}
+                                                                >
+                                                                    <option value="percent">%</option>
+                                                                    <option value="fixed_sar">SAR</option>
+                                                                </select>
+                                                            </div>
+                                                        </td>
+                                                    ) : null}
+                                                    <td className="ws-pi-td-num">SAR {amounts.lineExStr}</td>
+                                                    <td className="ws-pi-td-tax">
+                                                        <select
+                                                            className="pi-row-input ws-pi-select"
+                                                            value={line.taxCode || TAX_LABEL}
+                                                            onChange={(e) => updateLineItem(line.id, 'taxCode', e.target.value)}
+                                                            onKeyDown={(e) => handleTaxSelectTabFromLastRow(e, idx)}
+                                                        >
+                                                            {TAXES.map((t) => (
+                                                                <option key={t.code} value={t.code}>
+                                                                    {t.code}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="ws-pi-td-num">SAR {amounts.taxAmtStr}</td>
+                                                    <td className="ws-pi-td-num ws-pi-td-strong">SAR {amounts.grandInclStr}</td>
+                                                    <td className="ws-pi-td-num">
+                                                        {(() => {
+                                                            if (!line.productId) {
+                                                                return <span style={{ color: '#94a3b8', fontSize: 11 }}>—</span>;
+                                                            }
+                                                            if (lastPricesLoading) {
+                                                                return <span style={{ color: '#94a3b8', fontSize: 11 }}>Loading…</span>;
+                                                            }
+                                                            const last = lastPricesByProductId[String(line.productId)];
+                                                            if (!last) {
+                                                                return (
+                                                                    <span
+                                                                        style={{
+                                                                            color: '#a16207',
+                                                                            fontSize: 11,
+                                                                            fontStyle: 'italic',
+                                                                            whiteSpace: 'nowrap',
+                                                                        }}
+                                                                        title="No prior purchase from this supplier for this product — supplier-scoped last price unavailable."
+                                                                    >
+                                                                        Not purchased yet
+                                                                    </span>
+                                                                );
+                                                            }
+                                                            /** Per-unit after line discount; incl-VAT matches line total ÷ qty on prior PI */
+                                                            const lastIncl = Number(last.lastUnitPriceInclVat ?? 0);
+                                                            const lastEx = Number(last.lastUnitPriceExVat ?? 0);
+                                                            const lastQty = Number(last.qty ?? 0);
+                                                            const meta = [];
+                                                            if (Number.isFinite(lastQty) && lastQty > 1) {
+                                                                meta.push(`qty ${lastQty.toLocaleString(undefined, { maximumFractionDigits: 3 })}`);
+                                                            }
+                                                            if (last.hadLineDiscount) meta.push('after disc.');
+                                                            const tooltip =
+                                                                `Per unit after line discount\n` +
+                                                                `Incl. VAT: SAR ${Number.isFinite(lastIncl) ? lastIncl.toFixed(2) : '0.00'}\n` +
+                                                                (!amountsTaxInclusive &&
+                                                                Number.isFinite(lastEx) &&
+                                                                lastEx > 0
+                                                                    ? `Ex VAT: SAR ${lastEx.toFixed(2)}\n`
+                                                                    : '') +
+                                                                `Invoice ${last.lastInvoiceNumber || '—'}` +
+                                                                (last.lastIssueDate ? `\nDate: ${last.lastIssueDate}` : '') +
+                                                                (meta.length ? `\n(${meta.join(', ')})` : '');
+                                                            return (
+                                                                <div
+                                                                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
+                                                                    title={tooltip}
+                                                                >
+                                                                    <span style={{ fontWeight: 600, color: '#0f766e' }}>
+                                                                        SAR {Number.isFinite(lastIncl) ? lastIncl.toFixed(2) : '0.00'}
+                                                                    </span>
+                                                                    {!amountsTaxInclusive &&
+                                                                    Number.isFinite(lastEx) &&
+                                                                    lastEx > 0 &&
+                                                                    Math.abs(lastEx - lastIncl) > 0.005 ? (
+                                                                        <span style={{ fontSize: 10, color: '#64748b' }}>
+                                                                            ex VAT SAR {lastEx.toFixed(2)}
+                                                                        </span>
+                                                                    ) : null}
+                                                                    {last.lastIssueDate ? (
+                                                                        <span style={{ fontSize: 10, color: '#64748b' }}>
+                                                                            {last.lastIssueDate}
+                                                                            {meta.length ? ` · ${meta.join(' · ')}` : ''}
+                                                                        </span>
+                                                                    ) : null}
+                                                                </div>
+                                                            );
+                                                        })()}
+                                                    </td>
+                                                </tr>
+                                                {conversionHint ? (
+                                                    <tr className="ws-pi-conversion-subrow">
+                                                        <td colSpan={2} aria-hidden />
+                                                        <td colSpan={piLineColumnCount - 2}>
+                                                            <div className="ws-pi-uom-conversion-hint">
+                                                                <span className="ws-pi-uom-conversion-rule">
+                                                                    {conversionHint.rule}
+                                                                </span>
+                                                                <span className="ws-pi-uom-conversion-stock">
+                                                                    {conversionHint.stock}
+                                                                </span>
+                                                                {conversionHint.prices ? (
+                                                                    <span className="ws-pi-uom-conversion-prices">
+                                                                        {conversionHint.prices}
+                                                                    </span>
+                                                                ) : null}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                ) : null}
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div className="pi-line-row">
+                                <div style={{ flex: 1 }} />
+                                <button type="button" className="btn-add-line" onClick={addEmptyLine}>
+                                    <Plus size={16} /> Add line
+                                </button>
+                            </div>
+                            <div className="pi-hint">
+                                <Zap size={14} /> Tip: By default the unit column is <strong>ex VAT</strong> (15% VAT is
+                                added on each line). Check <strong>Amounts are tax inclusive</strong> to enter
+                                VAT-inclusive unit prices. When a product has a conversion rule (e.g. 1 Box = 12 Liter),
+                                invoice qty is in the purchase unit and branch stock is updated in the workshop unit.
+                                Qty, unit price, and discount support math (e.g. 12*5).
+                            </div>
+                        </div>
+
+                        <div className="pi-config-row">
+                            <label className="pi-checkbox">
+                                <input
+                                    type="checkbox"
+                                    checked={showDesc}
+                                    onChange={(e) => setShowDesc(e.target.checked)}
+                                />
+                                <span>Column — Description</span>
+                            </label>
+                            <label className="pi-checkbox">
+                                <input
+                                    type="checkbox"
+                                    checked={showDiscount}
+                                    onChange={(e) => setShowDiscount(e.target.checked)}
+                                />
+                                <span>Column — Discount</span>
+                            </label>
+                            <label className="pi-checkbox">
+                                <input
+                                    type="checkbox"
+                                    checked={amountsTaxInclusive}
+                                    onChange={(e) => setAmountsTaxInclusive(e.target.checked)}
+                                />
+                                <span>Amounts are tax inclusive</span>
+                            </label>
+                        </div>
+
+                        <div className="pi-footer-grid">
+                            <div className="pi-footer-column">
+                                <div className="pi-field-inline">
+                                    <label>Invoice Discount</label>
+                                    <div className="pi-discount-group">
+                                        <input
+                                            type="text"
+                                            value={invoiceDiscountValue}
+                                            onChange={(e) => setInvoiceDiscountValue(e.target.value)}
+                                        />
+                                        <select
+                                            value={invoiceDiscountMode}
+                                            onChange={(e) => setInvoiceDiscountMode(e.target.value)}
+                                        >
+                                            <option value="fixed_sar">Fixed (SAR)</option>
+                                            <option value="percent">Percent (%)</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div className="pi-field-inline">
+                                    <label>Freight (SAR)</label>
+                                    <input
+                                        type="text"
+                                        value={freightSar}
+                                        onChange={(e) => setFreightSar(e.target.value)}
+                                        placeholder="0"
+                                        style={{ maxWidth: 140 }}
+                                    />
+                                </div>
+                                <div className="pi-field pi-full-width">
+                                    <label>Notes</label>
+                                    <textarea
+                                        placeholder="Internal notes"
+                                        rows={4}
+                                        value={invoiceNotes}
+                                        onChange={(e) => setInvoiceNotes(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                            <div className="pi-footer-column pi-summary-column">
+                                <div className="pi-summary-card">
+                                    <div className="pi-summary-row">
+                                        <span>Subtotal:</span>
+                                        <span>SAR {summary.subtotal}</span>
+                                    </div>
+                                    {summary.showFreightRow ? (
+                                        <div className="pi-summary-row">
+                                            <span>Freight / Other charges:</span>
+                                            <span>SAR {summary.freightInFormatted}</span>
+                                        </div>
+                                    ) : null}
+                                    {summary.showInvoiceDiscountRow ? (
+                                        <div className="pi-summary-row">
+                                            <span>{summary.invoiceDiscountSummaryLabel}</span>
+                                            <span style={{ color: '#B91C1C' }}>
+                                                − SAR {summary.invoiceDiscountFormatted}
+                                            </span>
+                                        </div>
+                                    ) : null}
+                                    <div className="pi-summary-row">
+                                        <span>Total Tax (VAT):</span>
+                                        <span>SAR {summary.totalTax}</span>
+                                    </div>
+                                    <div className="pi-summary-row pi-grand-total">
+                                        <span>Grand Total:</span>
+                                        <span>SAR {summary.grandTotal}</span>
+                                    </div>
+                                </div>
+                                <div className="pi-ap-alert">
+                                    <span>
+                                        {isSelectedSupplierWorkshopLocal ? (
+                                            <>
+                                                Creates <strong>Accounts Payable</strong>. This supplier is{' '}
+                                                <strong>workshop-only (not onboarded)</strong> — branch inventory will be{' '}
+                                                <strong>updated automatically</strong> on save (no supplier approval).
+                                            </>
+                                        ) : (
+                                            <>
+                                                Creates <strong>Accounts Payable</strong>. After goods received, click &quot;Update Stock&quot; in the
+                                                list.
+                                            </>
+                                        )}
+                                    </span>
+                                </div>
+                                <label className="pi-checkbox pi-price-update">
+                                    <input
+                                        type="checkbox"
+                                        checked={updateLastPurchasePrice}
+                                        onChange={(e) => setUpdateLastPurchasePrice(e.target.checked)}
+                                    />
+                                    <span>Update last purchase price for all products on save (master catalog)</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
+    if (viewModalOpen && viewInvoiceRow) {
+        return (
+            <WorkshopSubScreen
+                title={`Purchase Invoice ${viewInvoiceRow.invoice_number || viewInvoiceRow.id}`}
+                subtitle={viewInvoiceRow.vendor_name || viewInvoiceRow.supplier || 'Supplier purchase invoice'}
+                backLabel="Back to Purchase Invoices"
+                onBack={closeViewInvoiceModal}
+                size="xl"
+                maxWidth="1100px"
+                className="ws-pi-sub-screen"
+                footer={(
+                    <div className="pi-modal-footer">
+                        <div className="pi-footer-left">
+                            <button type="button" className="btn-pi-cancel" onClick={closeViewInvoiceModal}>
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                )}
+            >
+                <div className="modal-content-purchase">
+                    <div className="pi-form-container" data-ws-pi-printable-view="1">
+                        {viewInvoiceError && (
+                            <p
+                                style={{
+                                    marginBottom: 12,
+                                    padding: '10px 14px',
+                                    borderRadius: 8,
+                                    background: '#FEF2F2',
+                                    border: '1px solid #FECACA',
+                                    color: '#B91C1C',
+                                    fontSize: '0.875rem',
+                                }}
+                            >
+                                {viewInvoiceError}
+                            </p>
+                        )}
+                        <div
+                            style={{
+                                display: 'flex',
+                                justifyContent: 'flex-end',
+                                gap: 8,
+                                marginBottom: 12,
+                            }}
+                        >
+                            <button
+                                type="button"
+                                className="btn-pi-cancel"
+                                onClick={() => printableRef.current?.downloadPdf?.()}
+                                disabled={viewInvoiceLoading}
+                            >
+                                Download PDF
+                            </button>
+                        </div>
+                        {viewInvoiceLoading ? (
+                            <ShimmerTextBlock lines={10} />
+                        ) : (
+                            <WorkshopPurchaseInvoiceView
+                                ref={printableRef}
+                                compact
+                                variant="workshop_receive"
+                                detail={mapWorkshopPurchaseInvoiceForViewDetail(viewInvoiceRow)}
+                                listRow={{
+                                    id: viewInvoiceRow.id,
+                                    invoice_number:
+                                        mapWorkshopPurchaseInvoiceForViewDetail(viewInvoiceRow).invoiceNumber ??
+                                        viewInvoiceRow.invoice_number,
+                                    invoiceNo:
+                                        mapWorkshopPurchaseInvoiceForViewDetail(viewInvoiceRow).invoiceNumber ??
+                                        viewInvoiceRow.invoice_number,
+                                    date: viewInvoiceRow.date,
+                                    status: viewInvoiceRow.status,
+                                    grand_total: viewInvoiceRow.grand_total,
+                                    vendor_name: viewInvoiceRow.vendor_name ?? viewInvoiceRow.supplier,
+                                    branch_name: viewInvoiceRow.branch_name,
+                                }}
+                            />
+                        )}
+                        {false && (<>
+                        <div style={{ display: 'none' }}>
+                            <span>
+                                {viewInvoiceRow.status || '—'}
+                            </span>
+                            <span
+                                className={`ws-badge ${viewInvoiceRow.payment_status === 'paid' ? 'ws-badge--green' : 'ws-badge--yellow'}`}
+                            >
+                                {viewInvoiceRow.payment_status}
+                            </span>
+                            <span className={`ws-badge ${viewInvoiceRow.stock_updated ? 'ws-badge--green' : 'ws-badge--yellow'}`}>
+                                Stock: {viewInvoiceRow.stock_updated ? 'Updated' : 'Pending'}
+                            </span>
+                            {viewUi.amountsTaxInclusive ? (
+                                <span className="ws-badge ws-badge--yellow" title="Unit prices were entered VAT-inclusive on create">
+                                    Unit prices: VAT-inclusive
+                                </span>
+                            ) : null}
+                        </div>
+                        <div className="pi-field pi-full-width" style={{ marginBottom: 16 }}>
+                            <label>Receiving branch</label>
+                            <div
+                                style={{
+                                    padding: '10px 14px',
+                                    border: '1px solid #e2e8f0',
+                                    borderRadius: 10,
+                                    background: '#f8fafc',
+                                }}
+                            >
+                                {viewInvoiceRow.branch_name || viewInvoiceRow.branch_id ? (
+                                    <>
+                                        <strong>{viewInvoiceRow.branch_name || '—'}</strong>
+                                        {viewInvoiceRow.branch_id ? (
+                                            <span
+                                                style={{
+                                                    marginLeft: 10,
+                                                    fontSize: '0.8125rem',
+                                                    color: 'var(--color-text-muted)',
+                                                    fontWeight: 600,
+                                                }}
+                                            >
+                                                ID: {viewInvoiceRow.branch_id}
+                                            </span>
+                                        ) : null}
+                                    </>
+                                ) : (
+                                    <span style={{ color: 'var(--color-text-muted)' }}>—</span>
+                                )}
+                            </div>
+                            {!(viewInvoiceRow.branch_id || viewInvoiceRow.branch_name) ? (
+                                <p className="pi-sub-label" style={{ marginTop: 6, color: '#B45309' }}>
+                                    Branch not returned on this invoice yet. Ask backend to include branch (id +
+                                    name) on GET workshop purchase invoice detail so receiving location shows
+                                    here.
+                                </p>
+                            ) : (
+                                <p className="pi-sub-label" style={{ marginTop: 6 }}>
+                                    Inventory updates on supplier approval apply to this branch.
+                                </p>
+                            )}
+                        </div>
+                        <div className="pi-header-grid">
+                            <div className="pi-field">
+                                <label>Invoice #</label>
+                                <div
+                                    style={{
+                                        padding: '10px 14px',
+                                        border: '1px solid #e2e8f0',
+                                        borderRadius: 10,
+                                        background: '#f8fafc',
+                                        fontWeight: 700,
+                                        color: '#EA580C',
+                                    }}
+                                >
+                                    {viewInvoiceRow.invoice_number || viewInvoiceRow.id}
+                                </div>
+                            </div>
+                            <div className="pi-field">
+                                <label>Issue date</label>
+                                <div
+                                    style={{
+                                        padding: '10px 14px',
+                                        border: '1px solid #e2e8f0',
+                                        borderRadius: 10,
+                                        background: '#f8fafc',
+                                    }}
+                                >
+                                    {viewInvoiceRow.date || '—'}
+                                </div>
+                            </div>
+                            <div className="pi-field">
+                                <label>Due date</label>
+                                <div
+                                    style={{
+                                        padding: '10px 14px',
+                                        border: '1px solid #e2e8f0',
+                                        borderRadius: 10,
+                                        background: '#f8fafc',
+                                    }}
+                                >
+                                    {viewInvoiceRow.due_date || '—'}
+                                </div>
+                            </div>
+                            <div className="pi-field">
+                                <label>Vendor ref</label>
+                                <div
+                                    style={{
+                                        padding: '10px 14px',
+                                        border: '1px solid #e2e8f0',
+                                        borderRadius: 10,
+                                        background: '#f8fafc',
+                                    }}
+                                >
+                                    {viewInvoiceRow.vendor_invoice_ref || '—'}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="pi-field pi-full-width">
+                            <label>Vendor</label>
+                            <div
+                                style={{
+                                    padding: '10px 14px',
+                                    border: '1px solid #e2e8f0',
+                                    borderRadius: 10,
+                                    background: '#f8fafc',
+                                }}
+                            >
+                                {viewInvoiceRow.vendor_name || viewInvoiceRow.supplier || '—'}
+                            </div>
+                        </div>
+                        <div className="pi-field pi-full-width">
+                            <label>Description</label>
+                            <div
+                                style={{
+                                    padding: '10px 14px',
+                                    border: '1px solid #e2e8f0',
+                                    borderRadius: 10,
+                                    background: '#f8fafc',
+                                    minHeight: 44,
+                                }}
+                            >
+                                {viewInvoiceRow.description || '—'}
+                            </div>
+                        </div>
+                        <div className="pi-lines-section ws-pi-lines-section">
+                            <div className="ws-pi-lines-scroll">
+                                <table className="ws-pi-lines-table">
+                                    <colgroup>
+                                        <col style={{ width: 44 }} />
+                                        <col style={{ width: viewUi.showDesc ? '20%' : '28%' }} />
+                                        <col style={{ width: viewUi.showDesc ? '16%' : '22%' }} />
+                                        {viewUi.showDesc ? <col style={{ width: '14%' }} /> : null}
+                                        <col style={{ width: 72 }} />
+                                        <col style={{ width: 72 }} />
+                                        <col style={{ width: 96 }} />
+                                        {viewUi.showDiscount ? <col style={{ width: 88 }} /> : null}
+                                        <col style={{ width: viewUi.showDiscount ? '9%' : '11%' }} />
+                                        <col style={{ width: 88 }} />
+                                        <col style={{ width: 88 }} />
+                                        <col style={{ width: viewUi.showDiscount ? '9%' : '11%' }} />
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th scope="col" className="ws-pi-th-hash">
+                                                #
+                                            </th>
+                                            <th scope="col">Item</th>
+                                            <th scope="col">Account</th>
+                                            {viewUi.showDesc ? <th scope="col">Description</th> : null}
+                                            <th scope="col">UOM</th>
+                                            <th scope="col" className="ws-pi-th-num">
+                                                Qty
+                                            </th>
+                                            <th scope="col" className="ws-pi-th-num">
+                                                Unit price (ex VAT)
+                                            </th>
+                                            {viewUi.showDiscount ? (
+                                                <th scope="col" className="ws-pi-th-num">
+                                                    Discount{viewUi.discountIsPercent ? ' %' : ' (SAR)'}
+                                                </th>
+                                            ) : null}
+                                            <th scope="col" className="ws-pi-th-num">
+                                                Taxable (ex VAT)
+                                            </th>
+                                            <th scope="col">Tax</th>
+                                            <th scope="col" className="ws-pi-th-num">
+                                                Tax Amt
+                                            </th>
+                                            <th scope="col" className="ws-pi-th-num">
+                                                Line total (incl VAT)
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {viewLineRows.length === 0 ? (
+                                            <tr>
+                                                <td
+                                                    colSpan={
+                                                        10 +
+                                                        (viewUi.showDesc ? 1 : 0) +
+                                                        (viewUi.showDiscount ? 1 : 0)
+                                                    }
+                                                    style={{ padding: 24, textAlign: 'center', color: 'var(--color-text-muted)' }}
+                                                >
+                                                    No line items on this invoice
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            viewLineRows.map((row, idx) => {
+                                                const fallbackTaxable = roundMoney2(
+                                                    row.unitEx * row.qty - (viewUi.showDiscount ? row.lineDisc : 0),
+                                                );
+                                                const displayTaxable =
+                                                    row.taxableFromApi != null ? row.taxableFromApi : Math.max(0, fallbackTaxable);
+                                                return (
+                                                    <tr key={row.key}>
+                                                        <td className="ws-pi-td-hash">{idx + 1}</td>
+                                                        <td className="ws-pi-td-strong">{row.item}</td>
+                                                        <td style={{ fontSize: '0.8125rem' }}>{row.account}</td>
+                                                        {viewUi.showDesc ? (
+                                                            <td style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                                                                {row.desc || '—'}
+                                                            </td>
+                                                        ) : null}
+                                                        <td className="ws-pi-td-muted">{row.uom}</td>
+                                                        <td className="ws-pi-td-num">{row.qty}</td>
+                                                        <td className="ws-pi-td-num">SAR {row.unitEx.toFixed(2)}</td>
+                                                        {viewUi.showDiscount ? (
+                                                            <td className="ws-pi-td-num">SAR {row.lineDisc.toFixed(2)}</td>
+                                                        ) : null}
+                                                        <td className="ws-pi-td-num">SAR {displayTaxable.toFixed(2)}</td>
+                                                        <td className="ws-pi-td-tax">{row.taxCode}</td>
+                                                        <td className="ws-pi-td-num">SAR {row.taxAmt.toFixed(2)}</td>
+                                                        <td className="ws-pi-td-num ws-pi-td-strong">SAR {row.totalIncl.toFixed(2)}</td>
+                                                    </tr>
+                                                );
+                                            })
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div className="pi-footer-grid" style={{ marginTop: 16 }}>
+                            <div className="pi-footer-column">
+                                <div className="pi-field-inline">
+                                    <label>Invoice discount</label>
+                                    <div
+                                        style={{
+                                            padding: '10px 14px',
+                                            border: '1px solid #e2e8f0',
+                                            borderRadius: 10,
+                                            background: '#f8fafc',
+                                        }}
+                                    >
+                                        {viewDiscountLabel}
+                                    </div>
+                                </div>
+                                <div className="pi-field pi-full-width">
+                                    <label>Notes</label>
+                                    <div
+                                        style={{
+                                            padding: '10px 14px',
+                                            border: '1px solid #e2e8f0',
+                                            borderRadius: 10,
+                                            background: '#f8fafc',
+                                            whiteSpace: 'pre-wrap',
+                                            minHeight: 80,
+                                        }}
+                                    >
+                                        {viewInvoiceRow.notes || '—'}
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="pi-footer-column pi-summary-column">
+                                <div className="pi-summary-card">
+                                    <div className="pi-summary-row">
+                                        <span>Subtotal (ex VAT):</span>
+                                        <span>
+                                            SAR{' '}
+                                            {viewInvoiceRow.subtotal.toLocaleString(undefined, {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2,
+                                            })}
+                                        </span>
+                                    </div>
+                                    <div className="pi-summary-row">
+                                        <span>Total tax ({TAX_LABEL}):</span>
+                                        <span>
+                                            SAR{' '}
+                                            {viewInvoiceRow.vat_amount.toLocaleString(undefined, {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2,
+                                            })}
+                                        </span>
+                                    </div>
+                                    <div className="pi-summary-row">
+                                        <span>Freight:</span>
+                                        <span>
+                                            SAR{' '}
+                                            {(viewInvoiceRow.freight_in ?? 0).toLocaleString(undefined, {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2,
+                                            })}
+                                        </span>
+                                    </div>
+                                    <div className="pi-summary-row pi-grand-total">
+                                        <span>Grand total:</span>
+                                        <span>
+                                            SAR{' '}
+                                            {viewInvoiceRow.grand_total.toLocaleString(undefined, {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2,
+                                            })}
+                                        </span>
+                                    </div>
+                                    <div className="pi-summary-row">
+                                        <span>Paid:</span>
+                                        <span style={{ color: '#059669' }}>
+                                            SAR{' '}
+                                            {viewInvoiceRow.amount_paid.toLocaleString(undefined, {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2,
+                                            })}
+                                        </span>
+                                    </div>
+                                    <div className="pi-summary-row">
+                                        <span>Balance due:</span>
+                                        <span style={{ color: '#DC2626', fontWeight: 700 }}>
+                                            SAR{' '}
+                                            {viewInvoiceRow.balance_due.toLocaleString(undefined, {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2,
+                                            })}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        </>)}
+                    </div>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
     return (
         <div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 24 }}>
@@ -2570,1312 +3855,6 @@ export default function WorkshopPurchases({ tabState, clearTabState, selectedBra
                 </div>
             )}
 
-            <AnimatePresence>
-                {modalOpen && (
-                    <Modal
-                        title={
-                            <div className="pi-modal-title">
-                                <span className="pi-breadcrumb">
-                                    Purchase Invoices ›{' '}
-                                    <span className="pi-b-active">
-                                        {editingDraftId || editingLocalPiId ? 'Edit Draft' : 'New'}
-                                    </span>
-                                </span>
-                                <div className="pi-title-main">
-                                    <ShoppingCart className="pi-icon-orange" size={24} />
-                                    <span>
-                                        {editingDraftId || editingLocalPiId
-                                            ? 'Edit Purchase Invoice Draft'
-                                            : 'Purchase Invoice'}
-                                    </span>
-                                </div>
-                            </div>
-                        }
-                        onClose={() => {
-                            setModalOpen(false);
-                            setSubmitInvoiceError('');
-                            setFreightSar('0');
-                            setAmountsTaxInclusive(false);
-                            setInvoiceBranchId('');
-                            setProductSearchByLineId({});
-                            setActiveProductSearchLineId(null);
-                            setProductDropdownPosition(null);
-                            setEditingDraftId(null);
-                            clearDraftEditSession();
-                        }}
-                        width="1350px"
-                        contentClassName="modal-content-purchase"
-                        footer={
-                            <div className="pi-modal-footer">
-                                <div className="pi-footer-left">
-                                    <button
-                                        type="button"
-                                        className="btn-pi-cancel"
-                                        onClick={() => {
-                                            setModalOpen(false);
-                                            setSubmitInvoiceError('');
-                                            setFreightSar('0');
-                                            setAmountsTaxInclusive(false);
-                                            setInvoiceBranchId('');
-                                            setProductSearchByLineId({});
-                                            setActiveProductSearchLineId(null);
-                                            setProductDropdownPosition(null);
-                                            setEditingDraftId(null);
-                                            clearDraftEditSession();
-                                        }}
-                                    >
-                                        Cancel
-                                    </button>
-                                </div>
-                                <div className="pi-footer-right" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
-                                    {submitInvoiceError && (
-                                        <p style={{ margin: 0, fontSize: '0.8125rem', color: '#B91C1C', maxWidth: 420, textAlign: 'right' }}>
-                                            {submitInvoiceError}
-                                        </p>
-                                    )}
-                                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                                    <button
-                                        type="button"
-                                        className="btn-pi-draft"
-                                        onClick={() => handleCreateInvoice('draft')}
-                                        disabled={!canSavePurchaseInvoiceDraft || submittingInvoice}
-                                    >
-                                        {submittingInvoice
-                                            ? 'Saving…'
-                                            : editingDraftId || editingLocalPiId
-                                              ? 'Update Draft'
-                                              : 'Save as Draft'}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="btn-pi-create"
-                                        onClick={() => handleCreateInvoice('pending')}
-                                        disabled={!canSubmitPurchaseInvoice || submittingInvoice}
-                                        title={
-                                            !canSubmitPurchaseInvoice
-                                                ? 'Need invoice branch, linked supplier with ID, at least one line with a branch product, and loaded suppliers.'
-                                                : undefined
-                                        }
-                                    >
-                                        {submittingInvoice
-                                            ? 'Creating…'
-                                            : editingDraftId || editingLocalPiId
-                                              ? isModalLocalSupplier
-                                                  ? 'Complete invoice'
-                                                  : 'Send to Supplier'
-                                              : isModalLocalSupplier
-                                                ? 'Create purchase invoice'
-                                                : 'Create Purchase Invoice'}
-                                    </button>
-                                    </div>
-                                </div>
-                            </div>
-                        }
-                    >
-                        <div className="pi-form-container">
-                            {branchesForUi.length === 0 && (
-                                <p
-                                    style={{
-                                        padding: '10px 14px',
-                                        marginBottom: 12,
-                                        borderRadius: 8,
-                                        background: '#FFF7ED',
-                                        border: '1px solid #FED7AA',
-                                        fontSize: '0.875rem',
-                                    }}
-                                >
-                                    Add a workshop branch before creating purchase invoices.
-                                </p>
-                            )}
-                            {branchesForUi.length > 0 && (
-                                <div className="pi-field pi-full-width" style={{ marginBottom: 16 }}>
-                                    <label>Branch for this invoice *</label>
-                                    <select
-                                        value={invoiceBranchId}
-                                        onChange={(e) => handleInvoiceBranchChange(e.target.value)}
-                                        style={{
-                                            width: '100%',
-                                            padding: '10px 14px',
-                                            border: '1px solid #e2e8f0',
-                                            borderRadius: 10,
-                                            fontSize: '0.9375rem',
-                                            background: '#f8fafc',
-                                        }}
-                                    >
-                                        {branchesForUi.map((b) => (
-                                            <option key={b.id} value={String(b.id)}>
-                                                {b.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <p className="pi-sub-label" style={{ marginTop: 6 }}>
-                                        Products and quantities apply to this branch only. When the supplier approves and
-                                        stock is updated, inventory changes on this branch.
-                                    </p>
-                                </div>
-                            )}
-                            {!invoiceBranchId && branchesForUi.length > 0 && (
-                                <p
-                                    style={{
-                                        padding: '10px 14px',
-                                        marginBottom: 12,
-                                        borderRadius: 8,
-                                        background: '#FFF7ED',
-                                        border: '1px solid #FED7AA',
-                                        fontSize: '0.875rem',
-                                    }}
-                                >
-                                    Choose a branch above to load branch products for line items.
-                                </p>
-                            )}
-                            {branchProductsError && (
-                                <p style={{ color: '#B45309', fontSize: '0.875rem', marginBottom: 8 }}>{branchProductsError}</p>
-                            )}
-                            {!branchProductsLoading &&
-                                invoiceBranchId &&
-                                branchProductOptions.length === 0 &&
-                                !branchProductsError && (
-                                    <p
-                                        style={{
-                                            color: '#92400E',
-                                            fontSize: '0.875rem',
-                                            marginBottom: 8,
-                                            padding: '8px 12px',
-                                            background: '#FFFBEB',
-                                            border: '1px solid #FDE68A',
-                                            borderRadius: 8,
-                                        }}
-                                    >
-                                        No branch products were returned. Check that this branch has products in catalog
-                                        / inventory, or that the workshop-staff / workshop-catalog APIs are reachable.
-                                    </p>
-                                )}
-                            <div className="pi-header-grid">
-                                <div className="pi-field">
-                                    <label>Issue date</label>
-                                    <div className="pi-input-with-icon">
-                                        <input type="date" value={issueDate} onChange={(e) => setIssueDate(e.target.value)} />
-                                        <Calendar size={16} />
-                                    </div>
-                                </div>
-                                <div className="pi-field">
-                                    <label>Due date</label>
-                                    <div className={`pi-due-grid ${dueDateType === 'EOM' ? 'pi-due-eom' : ''}`}>
-                                        <select value={dueDateType} onChange={(e) => setDueDateType(e.target.value)}>
-                                            <option value="Net">Net</option>
-                                            <option value="Custom">Custom</option>
-                                            <option value="EOM">EOM</option>
-                                        </select>
-                                        {dueDateType === 'Net' && (
-                                            <div className="pi-days-input">
-                                                <input type="number" value={netDays} onChange={(e) => setNetDays(e.target.value)} />
-                                                <span>days</span>
-                                            </div>
-                                        )}
-                                        {dueDateType === 'Custom' && (
-                                            <div className="pi-date-input-small">
-                                                <input type="date" value={customDueDate} onChange={(e) => setCustomDueDate(e.target.value)} />
-                                            </div>
-                                        )}
-                                    </div>
-                                    <span className="pi-sub-label">Due: {calculateDueDate()}</span>
-                                </div>
-                                <div className="pi-field">
-                                    <label>Ref # (Optional)</label>
-                                    <input
-                                        type="text"
-                                        placeholder="Vendor inv #"
-                                        value={vendorInvoiceRef}
-                                        onChange={(e) => setVendorInvoiceRef(e.target.value)}
-                                    />
-                                </div>
-                            </div>
-                            <div className="pi-field pi-full-width">
-                                <label>Supplier / Vendor *</label>
-                                <select
-                                    value={selectedVendor}
-                                    onChange={(e) => setSelectedVendor(e.target.value)}
-                                    disabled={linkedSuppliersLoading || invoiceSupplierOptions.length === 0}
-                                    style={{
-                                        width: '100%',
-                                        padding: '10px 14px',
-                                        border: '1px solid #e2e8f0',
-                                        borderRadius: 10,
-                                        fontSize: '0.9375rem',
-                                        background: '#f8fafc',
-                                    }}
-                                >
-                                    {linkedSuppliersLoading && (
-                                        <option value="">Loading suppliers…</option>
-                                    )}
-                                    {!linkedSuppliersLoading && invoiceSupplierOptions.length === 0 && (
-                                        <option value="">No suppliers linked to this workshop</option>
-                                    )}
-                                    {!linkedSuppliersLoading &&
-                                        invoiceSupplierOptions.map((v) => (
-                                            <option key={v} value={v}>
-                                                {v}
-                                            </option>
-                                        ))}
-                                </select>
-                                {linkedSuppliersUsingRegisteredFallback && (
-                                    <p className="pi-sub-label" style={{ color: '#B45309', marginTop: 6 }}>
-                                        Supplier list is using the registered-suppliers fallback (same as Suppliers tab
-                                        when the main endpoint fails).
-                                    </p>
-                                )}
-                                {linkedSuppliersError && (
-                                    <p className="pi-sub-label" style={{ color: '#B45309', marginTop: 6 }}>
-                                        {linkedSuppliersError}
-                                    </p>
-                                )}
-                            </div>
-                            <div className="pi-field pi-full-width">
-                                <label>Description</label>
-                                <input
-                                    type="text"
-                                    placeholder="Invoice description (optional)"
-                                    value={invoiceDescription}
-                                    onChange={(e) => setInvoiceDescription(e.target.value)}
-                                />
-                            </div>
-
-                            <div className="pi-lines-section ws-pi-lines-section">
-                                <div className="ws-pi-lines-scroll">
-                                    <table className="ws-pi-lines-table">
-                                        <colgroup>
-                                            <col style={{ width: 44 }} />
-                                            <col style={{ width: 40 }} />
-                                            <col style={{ width: showDesc ? '17%' : '21%' }} />
-                                            <col style={{ width: showDesc ? '14%' : '18%' }} />
-                                            {showDesc ? <col style={{ width: '12%' }} /> : null}
-                                            <col style={{ width: 96 }} />
-                                            <col style={{ width: 72 }} />
-                                            <col style={{ width: 96 }} />
-                                            {showDiscount ? <col className="ws-pi-col-discount" style={{ width: 168 }} /> : null}
-                                            <col style={{ width: showDiscount ? '8%' : '10%' }} />
-                                            <col style={{ width: 84 }} />
-                                            <col style={{ width: 80 }} />
-                                            <col style={{ width: showDiscount ? '8%' : '10%' }} />
-                                            <col style={{ width: 130 }} />
-                                        </colgroup>
-                                        <thead>
-                                            <tr>
-                                                <th scope="col" className="ws-pi-th-hash">
-                                                    #
-                                                </th>
-                                                <th scope="col" className="ws-pi-th-actions" aria-label="Remove line" />
-                                                <th scope="col">Item</th>
-                                                <th scope="col">Account</th>
-                                                {showDesc ? <th scope="col">Description</th> : null}
-                                                <th scope="col">UOM</th>
-                                                <th scope="col" className="ws-pi-th-num">
-                                                    Qty
-                                                </th>
-                                                <th scope="col" className="ws-pi-th-num">
-                                                    Unit price {amountsTaxInclusive ? '(incl. VAT)' : '(ex VAT)'}
-                                                </th>
-                                                {showDiscount ? (
-                                                    <th scope="col" className="ws-pi-th-num">
-                                                        Discount
-                                                    </th>
-                                                ) : null}
-                                                <th scope="col" className="ws-pi-th-num">
-                                                    Total
-                                                </th>
-                                                <th scope="col" title="Fixed VAT 15% for workshop supplier purchase invoices">
-                                                    Tax code
-                                                </th>
-                                                <th scope="col" className="ws-pi-th-num">
-                                                    Tax Amt
-                                                </th>
-                                                <th scope="col" className="ws-pi-th-num">
-                                                    Total
-                                                </th>
-                                                <th
-                                                    scope="col"
-                                                    title="Supplier-scoped: last price you paid this supplier for this product (per unit, incl. VAT when applicable)"
-                                                >
-                                                    Last from supplier (incl.)
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {lineItems.map((line, idx) => {
-                                                const piLineColumnCount =
-                                                    12 + (showDesc ? 1 : 0) + (showDiscount ? 1 : 0);
-                                                const workingLine = applyDiscountForCalc
-                                                    ? line
-                                                    : { ...line, discount: 0 };
-                                                const amounts = computeLineFinancials(
-                                                    workingLine,
-                                                    amountsTaxInclusive,
-                                                    lineFinancialsOpts,
-                                                );
-                                                const uomCaps = lineInventoryCapsForInvoice(
-                                                    findUomCapsForLine(
-                                                        line,
-                                                        supplierUomByProductId,
-                                                        branchProductOptions,
-                                                    ),
-                                                    line,
-                                                    workshopUomProfiles,
-                                                );
-                                                const capsRow =
-                                                    uomCaps ||
-                                                    branchProductToUomCaps(
-                                                        branchProductOptions.find(
-                                                            (o) => String(o.id) === String(line.productId),
-                                                        ),
-                                                    );
-                                                const uomOpts = capsRow
-                                                    ? lineUomOptions(line, capsRow)
-                                                    : [String(line.uom || 'piece').trim() || 'piece'];
-                                                const conversionHint = parseWorkshopPurchaseLineUomHint(
-                                                    { ...line, price: line.price },
-                                                    uomCaps || capsRow,
-                                                );
-                                                return (
-                                                    <React.Fragment key={line.id}>
-                                                    <tr>
-                                                        <td className="ws-pi-td-hash">{idx + 1}</td>
-                                                        <td className="ws-pi-td-actions">
-                                                            <button
-                                                                type="button"
-                                                                className="ws-pi-remove-line-btn"
-                                                                tabIndex={-1}
-                                                                aria-label="Remove line"
-                                                                title="Remove line"
-                                                                onClick={() => removeLine(line.id)}
-                                                            >
-                                                                <Trash2 size={16} aria-hidden />
-                                                            </button>
-                                                        </td>
-                                                        <td>
-                                                            {(() => {
-                                                                const searchText = getProductSearchText(line);
-                                                                const productResults = getProductSearchResults(searchText);
-                                                                const canSearchProducts = !!invoiceBranchId && !branchProductsLoading;
-                                                                const showProductResults =
-                                                                    activeProductSearchLineId === line.id && canSearchProducts;
-                                                                return (
-                                                                    <div className="ws-pi-product-search">
-                                                                        <input
-                                                                            type="text"
-                                                                            className="pi-row-input ws-pi-product-search-input"
-                                                                            data-pi-row-product={line.id}
-                                                                            ref={(node) => {
-                                                                                if (node) productSearchInputRefs.current[line.id] = node;
-                                                                                else delete productSearchInputRefs.current[line.id];
-                                                                            }}
-                                                                            value={searchText}
-                                                                            disabled={!invoiceBranchId || branchProductsLoading}
-                                                                            autoComplete="off"
-                                                                            placeholder={
-                                                                                branchProductsLoading
-                                                                                    ? 'Loading products...'
-                                                                                    : invoiceBranchId
-                                                                                      ? 'Search product...'
-                                                                                      : 'Choose branch first'
-                                                                            }
-                                                                            onFocus={() => {
-                                                                                setActiveProductSearchLineId(line.id);
-                                                                                updateProductDropdownPosition(line.id);
-                                                                            }}
-                                                                            onChange={(e) => handleLineProductSearchChange(line.id, e.target.value)}
-                                                                            onBlur={() => {
-                                                                                window.setTimeout(() => {
-                                                                                    setHighlightedProductIndex(-1);
-                                                                                    setActiveProductSearchLineId((prev) =>
-                                                                                        prev === line.id ? null : prev,
-                                                                                    );
-                                                                                    setProductDropdownPosition(null);
-                                                                                }, 120);
-                                                                            }}
-                                                                            onKeyDown={(e) => {
-                                                                                const trimmed = String(searchText || '').trim();
-                                                                                if (e.key === 'Escape') {
-                                                                                    if (!showProductResults) return;
-                                                                                    e.preventDefault();
-                                                                                    setHighlightedProductIndex(-1);
-                                                                                    setActiveProductSearchLineId(null);
-                                                                                    setProductDropdownPosition(null);
-                                                                                    return;
-                                                                                }
-                                                                                if (e.key === 'ArrowDown') {
-                                                                                    if (productResults.length === 0) return;
-                                                                                    e.preventDefault();
-                                                                                    setHighlightedProductIndex((prev) =>
-                                                                                        prev < 0
-                                                                                            ? 0
-                                                                                            : Math.min(
-                                                                                                  prev + 1,
-                                                                                                  productResults.length - 1,
-                                                                                              ),
-                                                                                    );
-                                                                                    return;
-                                                                                }
-                                                                                if (e.key === 'ArrowUp') {
-                                                                                    if (productResults.length === 0) return;
-                                                                                    e.preventDefault();
-                                                                                    setHighlightedProductIndex((prev) =>
-                                                                                        prev <= 0 ? -1 : prev - 1,
-                                                                                    );
-                                                                                    return;
-                                                                                }
-                                                                                if (e.key !== 'Enter') return;
-                                                                                if (productResults.length === 0) return;
-                                                                                e.preventDefault();
-                                                                                const h = highlightedProductIndexRef.current;
-                                                                                const pick =
-                                                                                    h >= 0 && h < productResults.length
-                                                                                        ? h
-                                                                                        : 0;
-                                                                                handleLineProductChange(line.id, productResults[pick].id);
-                                                                            }}
-                                                                        />
-                                                                        {showProductResults &&
-                                                                            productDropdownPosition &&
-                                                                            createPortal(
-                                                                                <div
-                                                                                    ref={productResultsPanelRef}
-                                                                                    className="ws-pi-product-results"
-                                                                                    role="listbox"
-                                                                                    aria-label="Product search results"
-                                                                                    style={{
-                                                                                        top: productDropdownPosition.top,
-                                                                                        left: productDropdownPosition.left,
-                                                                                        width: productDropdownPosition.width,
-                                                                                    }}
-                                                                                >
-                                                                                    {String(searchText || '').trim() ? (
-                                                                                        productResults.length > 0 ? (
-                                                                                            productResults.map((p, ri) => (
-                                                                                                <button
-                                                                                                    type="button"
-                                                                                                    key={p.id}
-                                                                                                    role="option"
-                                                                                                    aria-selected={ri === highlightedProductIndex}
-                                                                                                    data-pi-product-result-index={ri}
-                                                                                                    className={`ws-pi-product-result${ri === highlightedProductIndex ? ' is-highlighted' : ''}`}
-                                                                                                    onMouseEnter={() => setHighlightedProductIndex(ri)}
-                                                                                                    onMouseDown={(e) => {
-                                                                                                        e.preventDefault();
-                                                                                                        handleLineProductChange(line.id, p.id);
-                                                                                                    }}
-                                                                                                >
-                                                                                                    <span>{p.name}</span>
-                                                                                                    <small>
-                                                                                                        {p.warehouseUnit &&
-                                                                                                        Number(p.conversionFactor) > 1
-                                                                                                            ? `order in ${p.warehouseUnit} · stock in ${p.workshopUnit || p.unit}`
-                                                                                                            : p.unit || 'piece'}
-                                                                                                    </small>
-                                                                                                </button>
-                                                                                            ))
-                                                                                        ) : (
-                                                                                            <div className="ws-pi-product-empty">
-                                                                                                No products match this search.
-                                                                                            </div>
-                                                                                        )
-                                                                                    ) : (
-                                                                                        <div className="ws-pi-product-empty">
-                                                                                            Type product name to search.
-                                                                                        </div>
-                                                                                    )}
-                                                                                </div>,
-                                                                                document.body,
-                                                                            )}
-                                                                    </div>
-                                                                );
-                                                            })()}
-                                                        </td>
-                                                        <td>
-                                                            <select
-                                                                className="pi-row-input ws-pi-select"
-                                                                value={line.account}
-                                                                onChange={(e) => updateLineItem(line.id, 'account', e.target.value)}
-                                                            >
-                                                                {PI_ACCOUNT_OPTIONS.map((opt) => (
-                                                                    <option key={opt.code} value={`${opt.code} - ${opt.name}`}>
-                                                                        {opt.code} - {opt.name}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                        </td>
-                                                        {showDesc ? (
-                                                            <td>
-                                                                <input
-                                                                    type="text"
-                                                                    value={line.description}
-                                                                    className="pi-row-input"
-                                                                    onChange={(e) => updateLineItem(line.id, 'description', e.target.value)}
-                                                                />
-                                                            </td>
-                                                        ) : null}
-                                                        <td className="ws-pi-td-uom">
-                                                            {line.productId && (capsRow || workshopUomProfiles.length > 0) ? (
-                                                                <WorkshopUomSelect
-                                                                    variant="invoice-line"
-                                                                    line={line}
-                                                                    capsRow={capsRow}
-                                                                    profiles={workshopUomProfiles}
-                                                                    onChange={(parsed) =>
-                                                                        updateLineItem(line.id, 'uom', parsed)
-                                                                    }
-                                                                />
-                                                            ) : uomOpts.length > 1 ? (
-                                                                <select
-                                                                    className="pi-row-input ws-pi-select"
-                                                                    value={line.uom ?? uomOpts[0]}
-                                                                    onChange={(e) =>
-                                                                        updateLineItem(line.id, 'uom', e.target.value)
-                                                                    }
-                                                                >
-                                                                    {uomOpts.map((opt) => (
-                                                                        <option key={opt} value={opt}>
-                                                                            {opt}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                            ) : (
-                                                                <span className="ws-pi-td-muted">{line.uom}</span>
-                                                            )}
-                                                        </td>
-                                                        <td className="ws-pi-td-num ws-pi-td-qty">
-                                                            <input
-                                                                type="text"
-                                                                value={line.qty === '' || line.qty === undefined ? '' : String(line.qty)}
-                                                                className="pi-row-input-num pi-math-input"
-                                                                onChange={(e) => updateLineItem(line.id, 'qty', e.target.value)}
-                                                                onKeyDown={(e) => handleMathKeyDown(e, line.id, 'qty')}
-                                                                onBlur={(e) => handleMathBlur(e, line.id, 'qty')}
-                                                            />
-                                                        </td>
-                                                        <td
-                                                            className="ws-pi-td-num ws-pi-price-cell"
-                                                            title={
-                                                                amountsTaxInclusive
-                                                                    ? 'Prefilled from supplier last price incl. VAT (or master catalog incl.). Editable.'
-                                                                    : 'Prefilled from supplier last price ex VAT (or master catalog ex VAT). Editable.'
-                                                            }
-                                                        >
-                                                            <input
-                                                                type="text"
-                                                                value={line.productId ? line.price : ''}
-                                                                className="pi-row-input-num pi-math-input"
-                                                                placeholder={line.productId ? '' : '—'}
-                                                                onChange={(e) => updateLineItem(line.id, 'price', e.target.value)}
-                                                                onKeyDown={(e) => handleMathKeyDown(e, line.id, 'price')}
-                                                                onBlur={(e) => handleMathBlur(e, line.id, 'price')}
-                                                                disabled={!line.productId}
-                                                            />
-                                                        </td>
-                                                        {showDiscount ? (
-                                                            <td className="ws-pi-td-num ws-pi-td-discount">
-                                                                <div className="ws-pi-discount-cell">
-                                                                    <input
-                                                                        type="text"
-                                                                        className="pi-row-input-num pi-math-input ws-pi-discount-input"
-                                                                        value={
-                                                                            line.discount === '' || line.discount === undefined
-                                                                                ? ''
-                                                                                : String(line.discount)
-                                                                        }
-                                                                        onChange={(e) => updateLineItem(line.id, 'discount', e.target.value)}
-                                                                        onKeyDown={(e) => handleMathKeyDown(e, line.id, 'discount')}
-                                                                        onBlur={(e) => handleMathBlur(e, line.id, 'discount')}
-                                                                    />
-                                                                    <select
-                                                                        className="pi-row-input ws-pi-discount-kind"
-                                                                        value={line.discountMode === 'fixed_sar' ? 'fixed_sar' : 'percent'}
-                                                                        onChange={(e) => updateLineItem(line.id, 'discountMode', e.target.value)}
-                                                                    >
-                                                                        <option value="percent">%</option>
-                                                                        <option value="fixed_sar">SAR</option>
-                                                                    </select>
-                                                                </div>
-                                                            </td>
-                                                        ) : null}
-                                                        <td className="ws-pi-td-num">SAR {amounts.lineExStr}</td>
-                                                        <td className="ws-pi-td-tax">
-                                                            <select
-                                                                className="pi-row-input ws-pi-select"
-                                                                value={line.taxCode || TAX_LABEL}
-                                                                onChange={(e) => updateLineItem(line.id, 'taxCode', e.target.value)}
-                                                                onKeyDown={(e) => handleTaxSelectTabFromLastRow(e, idx)}
-                                                            >
-                                                                {TAXES.map((t) => (
-                                                                    <option key={t.code} value={t.code}>
-                                                                        {t.code}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                        </td>
-                                                        <td className="ws-pi-td-num">SAR {amounts.taxAmtStr}</td>
-                                                        <td className="ws-pi-td-num ws-pi-td-strong">SAR {amounts.grandInclStr}</td>
-                                                        <td className="ws-pi-td-num">
-                                                            {(() => {
-                                                                if (!line.productId) {
-                                                                    return <span style={{ color: '#94a3b8', fontSize: 11 }}>—</span>;
-                                                                }
-                                                                if (lastPricesLoading) {
-                                                                    return <span style={{ color: '#94a3b8', fontSize: 11 }}>Loading…</span>;
-                                                                }
-                                                                const last = lastPricesByProductId[String(line.productId)];
-                                                                if (!last) {
-                                                                    return (
-                                                                        <span
-                                                                            style={{
-                                                                                color: '#a16207',
-                                                                                fontSize: 11,
-                                                                                fontStyle: 'italic',
-                                                                                whiteSpace: 'nowrap',
-                                                                            }}
-                                                                            title="No prior purchase from this supplier for this product — supplier-scoped last price unavailable."
-                                                                        >
-                                                                            Not purchased yet
-                                                                        </span>
-                                                                    );
-                                                                }
-                                                                /** Per-unit after line discount; incl-VAT matches line total ÷ qty on prior PI */
-                                                                const lastIncl = Number(last.lastUnitPriceInclVat ?? 0);
-                                                                const lastEx = Number(last.lastUnitPriceExVat ?? 0);
-                                                                const lastQty = Number(last.qty ?? 0);
-                                                                const meta = [];
-                                                                if (Number.isFinite(lastQty) && lastQty > 1) {
-                                                                    meta.push(`qty ${lastQty.toLocaleString(undefined, { maximumFractionDigits: 3 })}`);
-                                                                }
-                                                                if (last.hadLineDiscount) meta.push('after disc.');
-                                                                const tooltip =
-                                                                    `Per unit after line discount\n` +
-                                                                    `Incl. VAT: SAR ${Number.isFinite(lastIncl) ? lastIncl.toFixed(2) : '0.00'}\n` +
-                                                                    (!amountsTaxInclusive &&
-                                                                    Number.isFinite(lastEx) &&
-                                                                    lastEx > 0
-                                                                        ? `Ex VAT: SAR ${lastEx.toFixed(2)}\n`
-                                                                        : '') +
-                                                                    `Invoice ${last.lastInvoiceNumber || '—'}` +
-                                                                    (last.lastIssueDate ? `\nDate: ${last.lastIssueDate}` : '') +
-                                                                    (meta.length ? `\n(${meta.join(', ')})` : '');
-                                                                return (
-                                                                    <div
-                                                                        style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}
-                                                                        title={tooltip}
-                                                                    >
-                                                                        <span style={{ fontWeight: 600, color: '#0f766e' }}>
-                                                                            SAR {Number.isFinite(lastIncl) ? lastIncl.toFixed(2) : '0.00'}
-                                                                        </span>
-                                                                        {!amountsTaxInclusive &&
-                                                                        Number.isFinite(lastEx) &&
-                                                                        lastEx > 0 &&
-                                                                        Math.abs(lastEx - lastIncl) > 0.005 ? (
-                                                                            <span style={{ fontSize: 10, color: '#64748b' }}>
-                                                                                ex VAT SAR {lastEx.toFixed(2)}
-                                                                            </span>
-                                                                        ) : null}
-                                                                        {last.lastIssueDate ? (
-                                                                            <span style={{ fontSize: 10, color: '#64748b' }}>
-                                                                                {last.lastIssueDate}
-                                                                                {meta.length ? ` · ${meta.join(' · ')}` : ''}
-                                                                            </span>
-                                                                        ) : null}
-                                                                    </div>
-                                                                );
-                                                            })()}
-                                                        </td>
-                                                    </tr>
-                                                    {conversionHint ? (
-                                                        <tr className="ws-pi-conversion-subrow">
-                                                            <td colSpan={2} aria-hidden />
-                                                            <td colSpan={piLineColumnCount - 2}>
-                                                                <div className="ws-pi-uom-conversion-hint">
-                                                                    <span className="ws-pi-uom-conversion-rule">
-                                                                        {conversionHint.rule}
-                                                                    </span>
-                                                                    <span className="ws-pi-uom-conversion-stock">
-                                                                        {conversionHint.stock}
-                                                                    </span>
-                                                                    {conversionHint.prices ? (
-                                                                        <span className="ws-pi-uom-conversion-prices">
-                                                                            {conversionHint.prices}
-                                                                        </span>
-                                                                    ) : null}
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    ) : null}
-                                                    </React.Fragment>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <div className="pi-line-row">
-                                    <div style={{ flex: 1 }} />
-                                    <button type="button" className="btn-add-line" onClick={addEmptyLine}>
-                                        <Plus size={16} /> Add line
-                                    </button>
-                                </div>
-                                <div className="pi-hint">
-                                    <Zap size={14} /> Tip: By default the unit column is <strong>ex VAT</strong> (15% VAT is
-                                    added on each line). Check <strong>Amounts are tax inclusive</strong> to enter
-                                    VAT-inclusive unit prices. When a product has a conversion rule (e.g. 1 Box = 12 Liter),
-                                    invoice qty is in the purchase unit and branch stock is updated in the workshop unit.
-                                    Qty, unit price, and discount support math (e.g. 12*5).
-                                </div>
-                            </div>
-
-                            <div className="pi-config-row">
-                                <label className="pi-checkbox">
-                                    <input
-                                        type="checkbox"
-                                        checked={showDesc}
-                                        onChange={(e) => setShowDesc(e.target.checked)}
-                                    />
-                                    <span>Column — Description</span>
-                                </label>
-                                <label className="pi-checkbox">
-                                    <input
-                                        type="checkbox"
-                                        checked={showDiscount}
-                                        onChange={(e) => setShowDiscount(e.target.checked)}
-                                    />
-                                    <span>Column — Discount</span>
-                                </label>
-                                <label className="pi-checkbox">
-                                    <input
-                                        type="checkbox"
-                                        checked={amountsTaxInclusive}
-                                        onChange={(e) => setAmountsTaxInclusive(e.target.checked)}
-                                    />
-                                    <span>Amounts are tax inclusive</span>
-                                </label>
-                            </div>
-
-                            <div className="pi-footer-grid">
-                                <div className="pi-footer-column">
-                                    <div className="pi-field-inline">
-                                        <label>Invoice Discount</label>
-                                        <div className="pi-discount-group">
-                                            <input
-                                                type="text"
-                                                value={invoiceDiscountValue}
-                                                onChange={(e) => setInvoiceDiscountValue(e.target.value)}
-                                            />
-                                            <select
-                                                value={invoiceDiscountMode}
-                                                onChange={(e) => setInvoiceDiscountMode(e.target.value)}
-                                            >
-                                                <option value="fixed_sar">Fixed (SAR)</option>
-                                                <option value="percent">Percent (%)</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div className="pi-field-inline">
-                                        <label>Freight (SAR)</label>
-                                        <input
-                                            type="text"
-                                            value={freightSar}
-                                            onChange={(e) => setFreightSar(e.target.value)}
-                                            placeholder="0"
-                                            style={{ maxWidth: 140 }}
-                                        />
-                                    </div>
-                                    <div className="pi-field pi-full-width">
-                                        <label>Notes</label>
-                                        <textarea
-                                            placeholder="Internal notes"
-                                            rows={4}
-                                            value={invoiceNotes}
-                                            onChange={(e) => setInvoiceNotes(e.target.value)}
-                                        />
-                                    </div>
-                                </div>
-                                <div className="pi-footer-column pi-summary-column">
-                                    <div className="pi-summary-card">
-                                        <div className="pi-summary-row">
-                                            <span>Subtotal:</span>
-                                            <span>SAR {summary.subtotal}</span>
-                                        </div>
-                                        {summary.showFreightRow ? (
-                                            <div className="pi-summary-row">
-                                                <span>Freight / Other charges:</span>
-                                                <span>SAR {summary.freightInFormatted}</span>
-                                            </div>
-                                        ) : null}
-                                        {summary.showInvoiceDiscountRow ? (
-                                            <div className="pi-summary-row">
-                                                <span>{summary.invoiceDiscountSummaryLabel}</span>
-                                                <span style={{ color: '#B91C1C' }}>
-                                                    − SAR {summary.invoiceDiscountFormatted}
-                                                </span>
-                                            </div>
-                                        ) : null}
-                                        <div className="pi-summary-row">
-                                            <span>Total Tax (VAT):</span>
-                                            <span>SAR {summary.totalTax}</span>
-                                        </div>
-                                        <div className="pi-summary-row pi-grand-total">
-                                            <span>Grand Total:</span>
-                                            <span>SAR {summary.grandTotal}</span>
-                                        </div>
-                                    </div>
-                                    <div className="pi-ap-alert">
-                                        <span>
-                                            {isSelectedSupplierWorkshopLocal ? (
-                                                <>
-                                                    Creates <strong>Accounts Payable</strong>. This supplier is{' '}
-                                                    <strong>workshop-only (not onboarded)</strong> — branch inventory will be{' '}
-                                                    <strong>updated automatically</strong> on save (no supplier approval).
-                                                </>
-                                            ) : (
-                                                <>
-                                                    Creates <strong>Accounts Payable</strong>. After goods received, click &quot;Update Stock&quot; in the
-                                                    list.
-                                                </>
-                                            )}
-                                        </span>
-                                    </div>
-                                    <label className="pi-checkbox pi-price-update">
-                                        <input
-                                            type="checkbox"
-                                            checked={updateLastPurchasePrice}
-                                            onChange={(e) => setUpdateLastPurchasePrice(e.target.checked)}
-                                        />
-                                        <span>Update last purchase price for all products on save (master catalog)</span>
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
-                    </Modal>
-                )}
-                {viewModalOpen && viewInvoiceRow && (
-                    <Modal
-                        title={
-                            <div className="pi-modal-title">
-                                <span className="pi-breadcrumb">
-                                    Purchase Invoices › <span className="pi-b-active">View</span>
-                                </span>
-                                <div className="pi-title-main">
-                                    <Eye className="pi-icon-orange" size={24} />
-                                    <span>Purchase Invoice</span>
-                                </div>
-                            </div>
-                        }
-                        onClose={closeViewInvoiceModal}
-                        width="1100px"
-                        contentClassName="modal-content-purchase"
-                        footer={
-                            <div className="pi-modal-footer">
-                                <div className="pi-footer-left">
-                                    <button type="button" className="btn-pi-cancel" onClick={closeViewInvoiceModal}>
-                                        Close
-                                    </button>
-                                </div>
-                            </div>
-                        }
-                    >
-                        <div className="pi-form-container" data-ws-pi-printable-view="1">
-                            {viewInvoiceError && (
-                                <p
-                                    style={{
-                                        marginBottom: 12,
-                                        padding: '10px 14px',
-                                        borderRadius: 8,
-                                        background: '#FEF2F2',
-                                        border: '1px solid #FECACA',
-                                        color: '#B91C1C',
-                                        fontSize: '0.875rem',
-                                    }}
-                                >
-                                    {viewInvoiceError}
-                                </p>
-                            )}
-                            <div
-                                style={{
-                                    display: 'flex',
-                                    justifyContent: 'flex-end',
-                                    gap: 8,
-                                    marginBottom: 12,
-                                }}
-                            >
-                                <button
-                                    type="button"
-                                    className="btn-pi-cancel"
-                                    onClick={() => printableRef.current?.downloadPdf?.()}
-                                    disabled={viewInvoiceLoading}
-                                >
-                                    Download PDF
-                                </button>
-                            </div>
-                            {viewInvoiceLoading ? (
-                                <ShimmerTextBlock lines={10} />
-                            ) : (
-                                <WorkshopPurchaseInvoiceView
-                                    ref={printableRef}
-                                    compact
-                                    variant="workshop_receive"
-                                    detail={mapWorkshopPurchaseInvoiceForViewDetail(viewInvoiceRow)}
-                                    listRow={{
-                                        id: viewInvoiceRow.id,
-                                        invoice_number:
-                                            mapWorkshopPurchaseInvoiceForViewDetail(viewInvoiceRow).invoiceNumber ??
-                                            viewInvoiceRow.invoice_number,
-                                        invoiceNo:
-                                            mapWorkshopPurchaseInvoiceForViewDetail(viewInvoiceRow).invoiceNumber ??
-                                            viewInvoiceRow.invoice_number,
-                                        date: viewInvoiceRow.date,
-                                        status: viewInvoiceRow.status,
-                                        grand_total: viewInvoiceRow.grand_total,
-                                        vendor_name: viewInvoiceRow.vendor_name ?? viewInvoiceRow.supplier,
-                                        branch_name: viewInvoiceRow.branch_name,
-                                    }}
-                                />
-                            )}
-                            {false && (<>
-                            <div style={{ display: 'none' }}>
-                                <span>
-                                    {viewInvoiceRow.status || '—'}
-                                </span>
-                                <span
-                                    className={`ws-badge ${viewInvoiceRow.payment_status === 'paid' ? 'ws-badge--green' : 'ws-badge--yellow'}`}
-                                >
-                                    {viewInvoiceRow.payment_status}
-                                </span>
-                                <span className={`ws-badge ${viewInvoiceRow.stock_updated ? 'ws-badge--green' : 'ws-badge--yellow'}`}>
-                                    Stock: {viewInvoiceRow.stock_updated ? 'Updated' : 'Pending'}
-                                </span>
-                                {viewUi.amountsTaxInclusive ? (
-                                    <span className="ws-badge ws-badge--yellow" title="Unit prices were entered VAT-inclusive on create">
-                                        Unit prices: VAT-inclusive
-                                    </span>
-                                ) : null}
-                            </div>
-                            <div className="pi-field pi-full-width" style={{ marginBottom: 16 }}>
-                                <label>Receiving branch</label>
-                                <div
-                                    style={{
-                                        padding: '10px 14px',
-                                        border: '1px solid #e2e8f0',
-                                        borderRadius: 10,
-                                        background: '#f8fafc',
-                                    }}
-                                >
-                                    {viewInvoiceRow.branch_name || viewInvoiceRow.branch_id ? (
-                                        <>
-                                            <strong>{viewInvoiceRow.branch_name || '—'}</strong>
-                                            {viewInvoiceRow.branch_id ? (
-                                                <span
-                                                    style={{
-                                                        marginLeft: 10,
-                                                        fontSize: '0.8125rem',
-                                                        color: 'var(--color-text-muted)',
-                                                        fontWeight: 600,
-                                                    }}
-                                                >
-                                                    ID: {viewInvoiceRow.branch_id}
-                                                </span>
-                                            ) : null}
-                                        </>
-                                    ) : (
-                                        <span style={{ color: 'var(--color-text-muted)' }}>—</span>
-                                    )}
-                                </div>
-                                {!(viewInvoiceRow.branch_id || viewInvoiceRow.branch_name) ? (
-                                    <p className="pi-sub-label" style={{ marginTop: 6, color: '#B45309' }}>
-                                        Branch not returned on this invoice yet. Ask backend to include branch (id +
-                                        name) on GET workshop purchase invoice detail so receiving location shows
-                                        here.
-                                    </p>
-                                ) : (
-                                    <p className="pi-sub-label" style={{ marginTop: 6 }}>
-                                        Inventory updates on supplier approval apply to this branch.
-                                    </p>
-                                )}
-                            </div>
-                            <div className="pi-header-grid">
-                                <div className="pi-field">
-                                    <label>Invoice #</label>
-                                    <div
-                                        style={{
-                                            padding: '10px 14px',
-                                            border: '1px solid #e2e8f0',
-                                            borderRadius: 10,
-                                            background: '#f8fafc',
-                                            fontWeight: 700,
-                                            color: '#EA580C',
-                                        }}
-                                    >
-                                        {viewInvoiceRow.invoice_number || viewInvoiceRow.id}
-                                    </div>
-                                </div>
-                                <div className="pi-field">
-                                    <label>Issue date</label>
-                                    <div
-                                        style={{
-                                            padding: '10px 14px',
-                                            border: '1px solid #e2e8f0',
-                                            borderRadius: 10,
-                                            background: '#f8fafc',
-                                        }}
-                                    >
-                                        {viewInvoiceRow.date || '—'}
-                                    </div>
-                                </div>
-                                <div className="pi-field">
-                                    <label>Due date</label>
-                                    <div
-                                        style={{
-                                            padding: '10px 14px',
-                                            border: '1px solid #e2e8f0',
-                                            borderRadius: 10,
-                                            background: '#f8fafc',
-                                        }}
-                                    >
-                                        {viewInvoiceRow.due_date || '—'}
-                                    </div>
-                                </div>
-                                <div className="pi-field">
-                                    <label>Vendor ref</label>
-                                    <div
-                                        style={{
-                                            padding: '10px 14px',
-                                            border: '1px solid #e2e8f0',
-                                            borderRadius: 10,
-                                            background: '#f8fafc',
-                                        }}
-                                    >
-                                        {viewInvoiceRow.vendor_invoice_ref || '—'}
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="pi-field pi-full-width">
-                                <label>Vendor</label>
-                                <div
-                                    style={{
-                                        padding: '10px 14px',
-                                        border: '1px solid #e2e8f0',
-                                        borderRadius: 10,
-                                        background: '#f8fafc',
-                                    }}
-                                >
-                                    {viewInvoiceRow.vendor_name || viewInvoiceRow.supplier || '—'}
-                                </div>
-                            </div>
-                            <div className="pi-field pi-full-width">
-                                <label>Description</label>
-                                <div
-                                    style={{
-                                        padding: '10px 14px',
-                                        border: '1px solid #e2e8f0',
-                                        borderRadius: 10,
-                                        background: '#f8fafc',
-                                        minHeight: 44,
-                                    }}
-                                >
-                                    {viewInvoiceRow.description || '—'}
-                                </div>
-                            </div>
-                            <div className="pi-lines-section ws-pi-lines-section">
-                                <div className="ws-pi-lines-scroll">
-                                    <table className="ws-pi-lines-table">
-                                        <colgroup>
-                                            <col style={{ width: 44 }} />
-                                            <col style={{ width: viewUi.showDesc ? '20%' : '28%' }} />
-                                            <col style={{ width: viewUi.showDesc ? '16%' : '22%' }} />
-                                            {viewUi.showDesc ? <col style={{ width: '14%' }} /> : null}
-                                            <col style={{ width: 72 }} />
-                                            <col style={{ width: 72 }} />
-                                            <col style={{ width: 96 }} />
-                                            {viewUi.showDiscount ? <col style={{ width: 88 }} /> : null}
-                                            <col style={{ width: viewUi.showDiscount ? '9%' : '11%' }} />
-                                            <col style={{ width: 88 }} />
-                                            <col style={{ width: 88 }} />
-                                            <col style={{ width: viewUi.showDiscount ? '9%' : '11%' }} />
-                                        </colgroup>
-                                        <thead>
-                                            <tr>
-                                                <th scope="col" className="ws-pi-th-hash">
-                                                    #
-                                                </th>
-                                                <th scope="col">Item</th>
-                                                <th scope="col">Account</th>
-                                                {viewUi.showDesc ? <th scope="col">Description</th> : null}
-                                                <th scope="col">UOM</th>
-                                                <th scope="col" className="ws-pi-th-num">
-                                                    Qty
-                                                </th>
-                                                <th scope="col" className="ws-pi-th-num">
-                                                    Unit price (ex VAT)
-                                                </th>
-                                                {viewUi.showDiscount ? (
-                                                    <th scope="col" className="ws-pi-th-num">
-                                                        Discount{viewUi.discountIsPercent ? ' %' : ' (SAR)'}
-                                                    </th>
-                                                ) : null}
-                                                <th scope="col" className="ws-pi-th-num">
-                                                    Taxable (ex VAT)
-                                                </th>
-                                                <th scope="col">Tax</th>
-                                                <th scope="col" className="ws-pi-th-num">
-                                                    Tax Amt
-                                                </th>
-                                                <th scope="col" className="ws-pi-th-num">
-                                                    Line total (incl VAT)
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {viewLineRows.length === 0 ? (
-                                                <tr>
-                                                    <td
-                                                        colSpan={
-                                                            10 +
-                                                            (viewUi.showDesc ? 1 : 0) +
-                                                            (viewUi.showDiscount ? 1 : 0)
-                                                        }
-                                                        style={{ padding: 24, textAlign: 'center', color: 'var(--color-text-muted)' }}
-                                                    >
-                                                        No line items on this invoice
-                                                    </td>
-                                                </tr>
-                                            ) : (
-                                                viewLineRows.map((row, idx) => {
-                                                    const fallbackTaxable = roundMoney2(
-                                                        row.unitEx * row.qty - (viewUi.showDiscount ? row.lineDisc : 0),
-                                                    );
-                                                    const displayTaxable =
-                                                        row.taxableFromApi != null ? row.taxableFromApi : Math.max(0, fallbackTaxable);
-                                                    return (
-                                                        <tr key={row.key}>
-                                                            <td className="ws-pi-td-hash">{idx + 1}</td>
-                                                            <td className="ws-pi-td-strong">{row.item}</td>
-                                                            <td style={{ fontSize: '0.8125rem' }}>{row.account}</td>
-                                                            {viewUi.showDesc ? (
-                                                                <td style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                                                                    {row.desc || '—'}
-                                                                </td>
-                                                            ) : null}
-                                                            <td className="ws-pi-td-muted">{row.uom}</td>
-                                                            <td className="ws-pi-td-num">{row.qty}</td>
-                                                            <td className="ws-pi-td-num">SAR {row.unitEx.toFixed(2)}</td>
-                                                            {viewUi.showDiscount ? (
-                                                                <td className="ws-pi-td-num">SAR {row.lineDisc.toFixed(2)}</td>
-                                                            ) : null}
-                                                            <td className="ws-pi-td-num">SAR {displayTaxable.toFixed(2)}</td>
-                                                            <td className="ws-pi-td-tax">{row.taxCode}</td>
-                                                            <td className="ws-pi-td-num">SAR {row.taxAmt.toFixed(2)}</td>
-                                                            <td className="ws-pi-td-num ws-pi-td-strong">SAR {row.totalIncl.toFixed(2)}</td>
-                                                        </tr>
-                                                    );
-                                                })
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
-                            <div className="pi-footer-grid" style={{ marginTop: 16 }}>
-                                <div className="pi-footer-column">
-                                    <div className="pi-field-inline">
-                                        <label>Invoice discount</label>
-                                        <div
-                                            style={{
-                                                padding: '10px 14px',
-                                                border: '1px solid #e2e8f0',
-                                                borderRadius: 10,
-                                                background: '#f8fafc',
-                                            }}
-                                        >
-                                            {viewDiscountLabel}
-                                        </div>
-                                    </div>
-                                    <div className="pi-field pi-full-width">
-                                        <label>Notes</label>
-                                        <div
-                                            style={{
-                                                padding: '10px 14px',
-                                                border: '1px solid #e2e8f0',
-                                                borderRadius: 10,
-                                                background: '#f8fafc',
-                                                whiteSpace: 'pre-wrap',
-                                                minHeight: 80,
-                                            }}
-                                        >
-                                            {viewInvoiceRow.notes || '—'}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="pi-footer-column pi-summary-column">
-                                    <div className="pi-summary-card">
-                                        <div className="pi-summary-row">
-                                            <span>Subtotal (ex VAT):</span>
-                                            <span>
-                                                SAR{' '}
-                                                {viewInvoiceRow.subtotal.toLocaleString(undefined, {
-                                                    minimumFractionDigits: 2,
-                                                    maximumFractionDigits: 2,
-                                                })}
-                                            </span>
-                                        </div>
-                                        <div className="pi-summary-row">
-                                            <span>Total tax ({TAX_LABEL}):</span>
-                                            <span>
-                                                SAR{' '}
-                                                {viewInvoiceRow.vat_amount.toLocaleString(undefined, {
-                                                    minimumFractionDigits: 2,
-                                                    maximumFractionDigits: 2,
-                                                })}
-                                            </span>
-                                        </div>
-                                        <div className="pi-summary-row">
-                                            <span>Freight:</span>
-                                            <span>
-                                                SAR{' '}
-                                                {(viewInvoiceRow.freight_in ?? 0).toLocaleString(undefined, {
-                                                    minimumFractionDigits: 2,
-                                                    maximumFractionDigits: 2,
-                                                })}
-                                            </span>
-                                        </div>
-                                        <div className="pi-summary-row pi-grand-total">
-                                            <span>Grand total:</span>
-                                            <span>
-                                                SAR{' '}
-                                                {viewInvoiceRow.grand_total.toLocaleString(undefined, {
-                                                    minimumFractionDigits: 2,
-                                                    maximumFractionDigits: 2,
-                                                })}
-                                            </span>
-                                        </div>
-                                        <div className="pi-summary-row">
-                                            <span>Paid:</span>
-                                            <span style={{ color: '#059669' }}>
-                                                SAR{' '}
-                                                {viewInvoiceRow.amount_paid.toLocaleString(undefined, {
-                                                    minimumFractionDigits: 2,
-                                                    maximumFractionDigits: 2,
-                                                })}
-                                            </span>
-                                        </div>
-                                        <div className="pi-summary-row">
-                                            <span>Balance due:</span>
-                                            <span style={{ color: '#DC2626', fontWeight: 700 }}>
-                                                SAR{' '}
-                                                {viewInvoiceRow.balance_due.toLocaleString(undefined, {
-                                                    minimumFractionDigits: 2,
-                                                    maximumFractionDigits: 2,
-                                                })}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            </>)}
-                        </div>
-                    </Modal>
-                )}
-            </AnimatePresence>
         </div>
     );
 }

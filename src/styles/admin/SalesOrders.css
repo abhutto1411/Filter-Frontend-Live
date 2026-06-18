@@ -12,7 +12,7 @@
 
 .so-title {
     font-size: 1.25rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #1A1D1F;
     margin-bottom: 4px;
     display: flex;
@@ -31,7 +31,7 @@
     padding: 4px 12px;
     border-radius: 6px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #1A1D1F;
 }
 
@@ -61,7 +61,7 @@
 
 .so-kpi-value {
     font-size: 1.125rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #1A1D1F;
 }
 
@@ -142,7 +142,7 @@
     text-align: left;
     padding: 14px 16px;
     font-size: 0.6875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #6C757D;
     text-transform: uppercase;
     border-bottom: 1px solid #E9ECEF;
@@ -170,7 +170,7 @@
     padding: 4px 10px;
     border-radius: 20px;
     font-size: 0.6875rem;
-    font-weight: 700;
+    font-weight: 600;
     display: inline-flex;
     align-items: center;
     gap: 4px;

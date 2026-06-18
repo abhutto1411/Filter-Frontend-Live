@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Clock, CheckCircle, Users, Wallet, Calendar, AlertCircle } from 'lucide-react';
-import Modal from '../../components/Modal';
+import WorkshopSubScreen from '../../components/workshop/WorkshopSubScreen';
 import { ShimmerTableBodyRows } from '../../components/supplier/Shimmer';
 import WorkshopCommissionRules from '../../components/commissions/WorkshopCommissionRules';
 import { useAuth } from '../../context/AuthContext';
@@ -458,6 +458,105 @@ export default function WorkshopCommissions({ selectedBranchId = 'all', branches
         setPayoutModalOpen(true);
     };
 
+    const closePayoutScreen = () => {
+        if (payoutSubmitting) return;
+        setPayoutModalOpen(false);
+        setPayoutError('');
+    };
+
+    if (payoutModalOpen) {
+        return (
+            <WorkshopSubScreen
+                title="Process Commission Payout"
+                subtitle={`${selectedCount} commission${selectedCount !== 1 ? 's' : ''} selected · SAR ${selectedTotal.toLocaleString()}`}
+                backLabel="Back to Commissions"
+                onBack={closePayoutScreen}
+                backDisabled={payoutSubmitting}
+                size="form"
+                maxWidth="560px"
+                footer={(
+                    <div className="ws-modal-footer" style={{ width: '100%', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                        <button
+                            type="button"
+                            className="ws-btn-secondary"
+                            disabled={payoutSubmitting}
+                            onClick={closePayoutScreen}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            className="ws-btn-confirm"
+                            onClick={confirmPayout}
+                            disabled={!selectedAccountId || payoutSubmitting || accountsLoading}
+                        >
+                            Confirm Payout · SAR {selectedTotal.toLocaleString()}
+                        </button>
+                    </div>
+                )}
+            >
+                <div className="ws-section ws-payout-modal-content" style={{ padding: 20 }}>
+                    {payoutError && (
+                        <div className="ws-alert-banner" style={{ marginBottom: 12 }}>
+                            <AlertCircle size={18} className="text-orange" />
+                            <p style={{ margin: 0 }}>{payoutError}</p>
+                        </div>
+                    )}
+                    <div className="ws-summary-box">
+                        <div className="ws-summary-line">
+                            <span className="ws-text-dim">Commissions selected</span>
+                            <span className="ws-font-bold">{selectedCount}</span>
+                        </div>
+                        <div className="ws-summary-line">
+                            <span className="ws-text-dim">Total payout amount</span>
+                            <h4 className="text-green">SAR {selectedTotal.toLocaleString()}</h4>
+                        </div>
+                    </div>
+
+                    <div className="ws-form-group">
+                        <label className="ws-form-label">Select Cash / Bank Account</label>
+                        <select
+                            className="ws-form-select"
+                            value={selectedAccountId}
+                            onChange={(e) => setSelectedAccountId(e.target.value)}
+                            disabled={accountsLoading}
+                        >
+                            <option value="">{accountsLoading ? 'Loading…' : 'Choose account…'}</option>
+                            {payoutAccounts.map((a) => {
+                                const id = a.id != null ? String(a.id) : '';
+                                const label = a.label ?? a.name ?? id;
+                                return (
+                                    <option key={id} value={id}>
+                                        {label}
+                                    </option>
+                                );
+                            })}
+                        </select>
+                    </div>
+
+                    <div className="ws-form-group">
+                        <label className="ws-form-label">Notes (optional)</label>
+                        <textarea
+                            className="ws-form-select"
+                            style={{ minHeight: 72, resize: 'vertical' }}
+                            value={payoutNotes}
+                            onChange={(e) => setPayoutNotes(e.target.value)}
+                            placeholder="Payout notes"
+                            rows={3}
+                        />
+                    </div>
+
+                    <div className="ws-alert-banner">
+                        <AlertCircle size={18} className="text-orange" />
+                        <p style={{ margin: 0 }}>
+                            Journal entry will be posted: Dr Commission Payable / Cr Cash/Bank
+                        </p>
+                    </div>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
     return (
         <div className="ws-commissions">
             <div
@@ -816,98 +915,6 @@ export default function WorkshopCommissions({ selectedBranchId = 'all', branches
                 </div>
             )}
 
-            {payoutModalOpen && (
-                <Modal
-                    title={
-                        <div className="ws-modal-title">
-                            <div className="ws-modal-icon bg-green-light text-green">
-                                <Wallet size={20} />
-                            </div>
-                            <span>Process Commission Payout</span>
-                        </div>
-                    }
-                    onClose={() => !payoutSubmitting && setPayoutModalOpen(false)}
-                    footer={
-                        <div className="ws-modal-footer">
-                            <button
-                                type="button"
-                                className="ws-btn-secondary"
-                                disabled={payoutSubmitting}
-                                onClick={() => setPayoutModalOpen(false)}
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="button"
-                                className="ws-btn-confirm"
-                                onClick={confirmPayout}
-                                disabled={!selectedAccountId || payoutSubmitting || accountsLoading}
-                            >
-                                Confirm Payout · SAR {selectedTotal.toLocaleString()}
-                            </button>
-                        </div>
-                    }
-                >
-                    <div className="ws-payout-modal-content">
-                        {payoutError && (
-                            <div className="ws-alert-banner" style={{ marginBottom: 12 }}>
-                                <AlertCircle size={18} className="text-orange" />
-                                <p style={{ margin: 0 }}>{payoutError}</p>
-                            </div>
-                        )}
-                        <div className="ws-summary-box">
-                            <div className="ws-summary-line">
-                                <span className="ws-text-dim">Commissions selected</span>
-                                <span className="ws-font-bold">{selectedCount}</span>
-                            </div>
-                            <div className="ws-summary-line">
-                                <span className="ws-text-dim">Total payout amount</span>
-                                <h4 className="text-green">SAR {selectedTotal.toLocaleString()}</h4>
-                            </div>
-                        </div>
-
-                        <div className="ws-form-group">
-                            <label className="ws-form-label">Select Cash / Bank Account</label>
-                            <select
-                                className="ws-form-select"
-                                value={selectedAccountId}
-                                onChange={(e) => setSelectedAccountId(e.target.value)}
-                                disabled={accountsLoading}
-                            >
-                                <option value="">{accountsLoading ? 'Loading…' : 'Choose account…'}</option>
-                                {payoutAccounts.map((a) => {
-                                    const id = a.id != null ? String(a.id) : '';
-                                    const label = a.label ?? a.name ?? id;
-                                    return (
-                                        <option key={id} value={id}>
-                                            {label}
-                                        </option>
-                                    );
-                                })}
-                            </select>
-                        </div>
-
-                        <div className="ws-form-group">
-                            <label className="ws-form-label">Notes (optional)</label>
-                            <textarea
-                                className="ws-form-select"
-                                style={{ minHeight: 72, resize: 'vertical' }}
-                                value={payoutNotes}
-                                onChange={(e) => setPayoutNotes(e.target.value)}
-                                placeholder="Payout notes"
-                                rows={3}
-                            />
-                        </div>
-
-                        <div className="ws-alert-banner">
-                            <AlertCircle size={18} className="text-orange" />
-                            <p style={{ margin: 0 }}>
-                                Journal entry will be posted: Dr Commission Payable / Cr Cash/Bank
-                            </p>
-                        </div>
-                    </div>
-                </Modal>
-            )}
             </>
             )}
         </div>

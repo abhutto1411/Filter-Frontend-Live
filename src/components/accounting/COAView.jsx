@@ -363,7 +363,7 @@ export default function COAView({ readOnly = false }) {
         const w = window.open('', '_blank', 'width=1000,height=800');
         if (!w) return;
         w.document.write(`<!doctype html><html><head><title>${title}</title><style>
-            body { font-family: Arial, sans-serif; margin: 24px; color: #0f172a; }
+            body { font-family: 'Poppins', sans-serif; margin: 24px; color: #0f172a; }
             h1,h2,h3 { margin: 0; }
             table { width: 100%; border-collapse: collapse; margin-top: 12px; }
             th, td { border: 1px solid #e5e7eb; padding: 8px; text-align: left; font-size: 12px; }

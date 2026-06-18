@@ -14,7 +14,7 @@
     --coa-shadow: 0 4px 24px rgba(17, 30, 49, 0.08);
     --coa-shadow-hover: 0 8px 32px rgba(17, 30, 49, 0.12);
 
-    font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Poppins', sans-serif;
     color: var(--coa-ink);
     margin: 0 0 8px;
     padding: 0 0 28px;
@@ -62,7 +62,7 @@
     padding: 5px 11px;
     border-radius: 999px;
     font-size: 0.65rem;
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--coa-ink);
@@ -73,7 +73,7 @@
 .supplier-coa__hero-title {
     margin: 0;
     font-size: clamp(1.35rem, 3vw, 1.65rem);
-    font-weight: 900;
+    font-weight: 800;
     letter-spacing: -0.02em;
     color: var(--coa-ink);
     line-height: 1.15;
@@ -155,7 +155,7 @@
 
 .supplier-coa__kpi-label {
     font-size: 0.62rem;
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: 0.07em;
     text-transform: uppercase;
     color: var(--coa-ink-muted);
@@ -164,7 +164,7 @@
 
 .supplier-coa__kpi-value {
     font-size: 1.05rem;
-    font-weight: 900;
+    font-weight: 800;
     font-variant-numeric: tabular-nums;
     color: var(--coa-ink);
     letter-spacing: -0.02em;
@@ -208,7 +208,7 @@
 .supplier-coa__card-title {
     margin: 0;
     font-size: 0.8125rem;
-    font-weight: 900;
+    font-weight: 800;
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: var(--coa-ink);
@@ -239,7 +239,7 @@
     text-align: left;
     padding: 11px 16px;
     font-size: 0.62rem;
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--coa-ink-muted);
@@ -261,7 +261,7 @@
 .supplier-coa__table td.supplier-coa__td-num {
     text-align: right;
     font-variant-numeric: tabular-nums;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .supplier-coa__table tbody tr:nth-child(even) td {
@@ -293,7 +293,7 @@
     padding: 4px 10px;
     border-radius: 6px;
     font-size: 0.68rem;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: capitalize;
     border: 1px solid transparent;
 }

@@ -54,7 +54,7 @@
 
 .stat-label {
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-text-muted);
     text-transform: uppercase;
     margin-bottom: 8px;
@@ -62,12 +62,12 @@
 
 .stat-value {
     font-size: 1.75rem;
-    font-weight: 900;
+    font-weight: 800;
 }
 
 .stat-trend {
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     color: #10B981;
     margin-top: 8px;
 }
@@ -100,7 +100,7 @@
 
 .table-title {
     font-size: 1.125rem;
-    font-weight: 800;
+    font-weight: 700;
 }
 
 .table-row {
@@ -121,7 +121,7 @@
     padding: 4px 12px;
     border-radius: 99px;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
 }
 
 .status-completed {
@@ -137,7 +137,7 @@
 .form-label {
     display: block;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
     margin-bottom: 8px;
     margin-top: 10px;
@@ -179,7 +179,7 @@
 
 .modal-header-content h3 {
     font-size: 1.35rem;
-    font-weight: 800;
+    font-weight: 700;
 }
 
 .modal-body-content {
@@ -197,7 +197,7 @@
 .btn-secondary {
     padding: 12px 24px;
     border-radius: 12px;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.875rem;
     background: #F3F4F6;
     color: #4B5563;
@@ -213,7 +213,7 @@
 .btn-submit {
     padding: 12px 32px;
     border-radius: 12px;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.875rem;
     background: var(--gradient-gold);
     color: #000;
@@ -294,14 +294,14 @@
 .table-th {
     padding: 16px 32px;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     color: #6B7280;
     text-transform: uppercase;
     letter-spacing: 0.05em;
 }
 
 .cell-main-text {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
 }
 
@@ -313,7 +313,7 @@
 
 .text-warning {
     color: #F59E0B;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .status-warning {
@@ -341,21 +341,21 @@
 
 .mini-label {
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 600;
     color: #6B7280;
     text-transform: uppercase;
 }
 
 .mini-val {
     font-size: 1.25rem;
-    font-weight: 900;
+    font-weight: 800;
 }
 
 .type-badge {
     padding: 4px 10px;
     border-radius: 6px;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     text-transform: uppercase;
 }
 
@@ -393,7 +393,7 @@
 
 .tab-item-small {
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #9CA3AF;
     cursor: pointer;
     position: relative;
@@ -431,7 +431,7 @@
     padding: 12px 16px;
     text-align: left;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     color: #6B7280;
 }
 
@@ -470,7 +470,7 @@
     padding: 6px 16px;
     border-radius: 8px;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     color: #6B7280;
     cursor: pointer;
     display: flex;
@@ -496,7 +496,7 @@
     padding: 10px 20px;
     border-radius: 10px;
     font-size: 12px;
-    font-weight: 800;
+    font-weight: 700;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -545,7 +545,7 @@
 
 .empty-title {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 12px;
 }
 
@@ -559,7 +559,7 @@
 
 .empty-status {
     font-size: 11px;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-primary);
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -598,7 +598,7 @@
 
 .dashboard-title {
     font-size: 1.75rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 4px;
     letter-spacing: -0.02em;
 }
@@ -624,14 +624,14 @@
 
 .dashboard-section-title {
     font-size: 1.25rem;
-    font-weight: 800;
+    font-weight: 700;
     margin-bottom: 20px;
     color: var(--color-text-dark);
 }
 
 .dashboard-section-title-sm {
     font-size: 1rem;
-    font-weight: 800;
+    font-weight: 700;
     margin-bottom: 16px;
     color: var(--color-text-dark);
 }
@@ -678,7 +678,7 @@
 
 .portal-access-title {
     font-size: 1rem;
-    font-weight: 700;
+    font-weight: 600;
     margin-bottom: 4px;
     color: var(--color-text-dark);
 }
@@ -695,7 +695,7 @@
     border: none;
     padding: 0;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-primary);
     cursor: pointer;
     display: inline-flex;
@@ -747,7 +747,7 @@
 
 .dashboard-alert-action {
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #B45309;
 }
 
@@ -783,7 +783,7 @@
 
 .dashboard-stat-label {
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -792,7 +792,7 @@
 
 .dashboard-stat-value {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     color: var(--color-text-dark);
 }
 
@@ -836,7 +836,7 @@
 
 .locker-val {
     font-size: 1.125rem;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-text-dark);
 }
 
@@ -853,7 +853,7 @@
     padding: 10px 16px;
     border-radius: 10px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     background: #F3F4F6;
     color: #374151;
     border: 1px solid #E5E7EB;
@@ -890,7 +890,7 @@
 
 .feature-card-title {
     font-size: 1.125rem;
-    font-weight: 800;
+    font-weight: 700;
     margin-bottom: 4px;
     color: var(--color-text-dark);
 }
@@ -920,14 +920,14 @@
     position: absolute;
     left: 0;
     color: var(--color-primary);
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .feature-card-link {
     background: none;
     border: none;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-primary);
     cursor: pointer;
     padding: 0;
@@ -967,7 +967,7 @@
 
 .dashboard-panel-header h4 {
     font-size: 1rem;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-text-dark);
 }
 
@@ -975,7 +975,7 @@
     background: none;
     border: none;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-primary);
     cursor: pointer;
     padding: 0;
@@ -999,7 +999,7 @@
 }
 
 .recent-order-id {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
     font-size: 0.9375rem;
 }
@@ -1023,7 +1023,7 @@
 
 .pending-approval-type {
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
     color: var(--color-text-muted);
 }
@@ -1036,6 +1036,6 @@
 
 .pending-approval-amount {
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
 }

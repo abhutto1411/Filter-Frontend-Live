@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Plus, RefreshCw } from 'lucide-react';
-import { AnimatePresence } from 'framer-motion';
-import Modal from '../../components/Modal';
+import WorkshopSubScreen from '../../components/workshop/WorkshopSubScreen';
 import { apiFetch } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 
@@ -21,6 +20,7 @@ import {
     getBranchProducts,
     getBranchServices,
     removeBranchDepartment,
+    patchWorkshopDepartmentActive,
     removeBranchCategory,
     removeBranchProduct,
     removeBranchService,
@@ -34,10 +34,6 @@ import {
     submitCatalogProductRequest,
 } from '../../services/workshopCatalogApi';
 import {
-    getWorkshopStaffBranchProducts,
-    getWorkshopStaffBranchServices,
-    getWorkshopStaffProducts,
-    getWorkshopStaffServices,
     unwrapWorkshopBranchListResponse,
     unwrapWorkshopBranchesResponse,
     filterPortalVisibleBranches,
@@ -148,6 +144,7 @@ export default function WorkshopDepartments({ selectedBranchId = 'all', branches
 
     // Per-tab action permissions — used to gate Add/Edit/Delete buttons inside each tab.
     const canCreateDept     = hasPermission('workshop.departments.departments.create');
+    const canEditDept       = hasPermission('workshop.departments.departments.edit');
     const canDeleteDept     = hasPermission('workshop.departments.departments.delete');
     const canCreateProduct  = hasPermission('workshop.departments.products.create');
     const canDeleteProduct  = hasPermission('workshop.departments.products.delete');
@@ -181,6 +178,7 @@ export default function WorkshopDepartments({ selectedBranchId = 'all', branches
     const [isDeptLoading, setIsDeptLoading] = useState(false);
     const [deptError, setDeptError] = useState('');
     const [isSavingDept, setIsSavingDept] = useState(false);
+    const [deptStatusLoadingId, setDeptStatusLoadingId] = useState(null);
     const [isProductsLoading, setIsProductsLoading] = useState(false);
     const [productsError, setProductsError] = useState('');
     const [isSavingProduct, setIsSavingProduct] = useState(false);
@@ -585,46 +583,21 @@ export default function WorkshopDepartments({ selectedBranchId = 'all', branches
         try {
             if (branchScope) {
                 const [prodRes, svcRes] = await Promise.all([
-                    getWorkshopStaffBranchProducts(branchScope).catch(() => null),
-                    getWorkshopStaffBranchServices(branchScope).catch(() => null),
+                    getBranchProducts(branchScope).catch(() => null),
+                    getBranchServices(branchScope).catch(() => null),
                 ]);
-                let flatProd = extractProducts(prodRes).map(buildBranchProductRow);
-                let flatSvc = extractServices(svcRes).map(buildBranchServiceRow);
-                // Same branch as departments/categories (`getBranch*` on workshop-catalog); staff list may be empty or another shape.
-                if (flatProd.length === 0) {
-                    const catP = await getBranchProducts(branchScope).catch(() => null);
-                    flatProd = extractProducts(catP).map(buildBranchProductRow);
-                }
-                if (flatSvc.length === 0) {
-                    const catS = await getBranchServices(branchScope).catch(() => null);
-                    flatSvc = extractServices(catS).map(buildBranchServiceRow);
-                }
+                const flatProd = extractProducts(prodRes).map(buildBranchProductRow);
+                const flatSvc = extractServices(svcRes).map(buildBranchServiceRow);
                 setProducts([...flatProd, ...flatSvc]);
                 return;
             }
 
-            // All-branches view: workshop union — staff list APIs require branchId *or* allBranches=true.
-            let prodRes;
-            let svcRes;
-            try {
-                [prodRes, svcRes] = await Promise.all([
-                    getWorkshopStaffProducts({ allBranches: true }),
-                    getWorkshopStaffServices({ allBranches: true }),
-                ]);
-            } catch {
-                prodRes = null;
-                svcRes = null;
-            }
-            let flatProducts = extractProducts(prodRes).map(buildUnionProductRow);
-            let flatServices = extractServices(svcRes).map(buildUnionServiceRow);
-            if (flatProducts.length === 0 && flatServices.length === 0) {
-                const [p2, s2] = await Promise.all([
+            const [prodRes, svcRes] = await Promise.all([
                 getMyProducts().catch(() => null),
                 getMyServices().catch(() => null),
             ]);
-                flatProducts = extractProducts(p2).map(buildUnionProductRow);
-                flatServices = extractServices(s2).map(buildUnionServiceRow);
-            }
+            const flatProducts = extractProducts(prodRes).map(buildUnionProductRow);
+            const flatServices = extractServices(svcRes).map(buildUnionServiceRow);
             setProducts([...flatProducts, ...flatServices]);
         } catch (error) {
             setProductsError(error.message || 'Failed to load products and services.');
@@ -774,6 +747,7 @@ export default function WorkshopDepartments({ selectedBranchId = 'all', branches
         }
         setSelectedServiceIds(serviceItems.map((s) => String(s.sourceId)));
     };
+
     const openEditProd = (p) => {
         setEditingProd(p);
         setIsProductRequestFlow(false);
@@ -945,6 +919,28 @@ export default function WorkshopDepartments({ selectedBranchId = 'all', branches
         }
     };
 
+    const toggleDepartmentActive = async (dept) => {
+        const masterId = dept.departmentId || dept.masterId || dept.id;
+        const currentlyActive = Boolean(dept.isActive ?? dept.status === 'active');
+        const nextActive = !currentlyActive;
+        const msg = nextActive
+            ? `Reactivate "${dept.name}" for this workshop?\n\nLinked categories, products, and services under this department will also be marked active.`
+            : `Deactivate "${dept.name}" for this workshop?\n\nAll categories, products, and services under this department will be marked inactive and hidden from new sales, purchases, and catalog picks.\n\nPast invoices and historical records stay unchanged — nothing is deleted.`;
+        if (!window.confirm(msg)) return;
+        setDeptStatusLoadingId(String(masterId));
+        setDeptError('');
+        try {
+            await patchWorkshopDepartmentActive(masterId, nextActive);
+            await loadDepartments();
+            await loadCategories();
+            await loadProducts();
+        } catch (error) {
+            setDeptError(error.message || 'Failed to update department status.');
+        } finally {
+            setDeptStatusLoadingId(null);
+        }
+    };
+
     const removeCategoryFromBranch = async (categoryId) => {
         if (!branchScope) return;
         if (!window.confirm(`Remove this category from ${selectedBranchName || 'this branch'}?`)) return;
@@ -1016,6 +1012,351 @@ export default function WorkshopDepartments({ selectedBranchId = 'all', branches
             setIsBulkRemoving(false);
         }
     };
+
+    const closeProdForm = () => {
+        setShowProdForm(false);
+        setIsProductRequestFlow(false);
+    };
+
+    const prodFormTitle = editingProd
+        ? 'Edit Product/Service'
+        : isProductRequestFlow
+          ? 'Request Product'
+          : prodForm.type === 'service'
+            ? 'Request Service'
+            : 'Request Product/Service';
+
+    const prodFormBackLabel =
+        editingProd || prodForm.type === 'service' || activeTab === 'services'
+            ? 'Back to Services'
+            : 'Back to Products';
+
+    if (showRequestForm) {
+        const stockItem = showRequestForm;
+        return (
+            <WorkshopSubScreen
+                title={`Request Stock — ${stockItem.name}`}
+                subtitle="Submit a replenishment request to your supplier or warehouse."
+                backLabel="Back to Products"
+                onBack={() => setShowRequestForm(null)}
+                size="narrow"
+                footer={(
+                    <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', width: '100%' }}>
+                        <button type="button" className="btn-secondary" onClick={() => setShowRequestForm(null)}>Cancel</button>
+                        <button
+                            type="button"
+                            className="btn-submit"
+                            onClick={() => {
+                                alert('Stock request submitted for approval');
+                                setShowRequestForm(null);
+                            }}
+                        >
+                            Submit Request
+                        </button>
+                    </div>
+                )}
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                        <div style={{ background: 'var(--color-bg-muted)', padding: 14, borderRadius: 10 }}>
+                            <p style={{ fontSize: '0.6875rem', fontWeight: 700, color: 'var(--color-text-muted)', margin: '0 0 4px' }}>Current Stock</p>
+                            <p style={{ fontSize: '1.25rem', fontWeight: 900, margin: 0 }}>
+                                {stockItem.stock_qty}{' '}
+                                <span style={{ fontSize: '0.875rem', fontWeight: 500, color: 'var(--color-text-muted)' }}>{stockItem.unit}</span>
+                            </p>
+                            {stockItem.critical_level && stockItem.stock_qty <= stockItem.critical_level ? (
+                                <span className="ws-badge ws-badge--red" style={{ marginTop: 8, display: 'inline-block' }}>⚠ Below critical level</span>
+                            ) : null}
+                        </div>
+                        <div className="ws-field"><label>Supplier / Warehouse</label><select><option>Al-Jazeera Auto Parts</option><option>Gulf Lubricants Co.</option><option>Saudi Tire Trading</option></select></div>
+                        <div className="ws-field"><label>Quantity Requested ({stockItem.unit})</label><input type="number" placeholder={`Enter qty in ${stockItem.unit}`} /></div>
+                        <div className="ws-field"><label>Notes</label><input placeholder="Optional notes..." /></div>
+                    </div>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
+    if (showCategoryForm) {
+        return (
+            <WorkshopSubScreen
+                title="Request Category"
+                subtitle="Submit a new category for super-admin catalog approval."
+                backLabel="Back to Categories"
+                onBack={() => !isSavingCategory && setShowCategoryForm(false)}
+                backDisabled={isSavingCategory}
+                footer={(
+                    <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', width: '100%' }}>
+                        <button type="button" className="btn-secondary" onClick={() => setShowCategoryForm(false)} disabled={isSavingCategory}>Cancel</button>
+                        <button type="button" className="btn-submit" onClick={saveCategory} disabled={isSavingCategory || !categoryForm.name.trim() || !categoryForm.departmentId}>
+                            {isSavingCategory ? 'Saving...' : 'Save'}
+                        </button>
+                    </div>
+                )}
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    <div className="ws-form-grid">
+                        <div className="ws-field" style={{ gridColumn: '1/-1' }}>
+                            <label>Name *</label>
+                            <input value={categoryForm.name} onChange={(e) => setCategoryForm((f) => ({ ...f, name: e.target.value }))} />
+                        </div>
+                        <div className="ws-field">
+                            <label>Type *</label>
+                            <select value={categoryForm.type} onChange={(e) => setCategoryForm((f) => ({ ...f, type: e.target.value }))}>
+                                <option value="product">Product</option>
+                                <option value="service">Service</option>
+                            </select>
+                        </div>
+                        <div className="ws-field">
+                            <label>Department *</label>
+                            <select value={categoryForm.departmentId} onChange={(e) => setCategoryForm((f) => ({ ...f, departmentId: e.target.value }))}>
+                                <option value="">Select Department</option>
+                                {departments.map((department) => (
+                                    <option key={department.id} value={department.id}>{department.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
+    if (showDeptForm) {
+        return (
+            <WorkshopSubScreen
+                title="Request Department"
+                subtitle="Submit a department adoption request for your workshop."
+                backLabel="Back to Departments"
+                onBack={() => !isSavingDept && setShowDeptForm(false)}
+                backDisabled={isSavingDept}
+                footer={(
+                    <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', width: '100%' }}>
+                        <button type="button" className="btn-secondary" onClick={() => setShowDeptForm(false)} disabled={isSavingDept}>Cancel</button>
+                        <button type="button" className="btn-submit" disabled={isSavingDept || !deptForm.name.trim()} onClick={saveDept}>
+                            {isSavingDept ? 'Saving...' : 'Save'}
+                        </button>
+                    </div>
+                )}
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    <div className="ws-form-grid">
+                        <div className="ws-field"><label>Name *</label><input value={deptForm.name} onChange={(e) => setDeptForm((f) => ({ ...f, name: e.target.value }))} /></div>
+                        <div className="ws-field">
+                            <label>Branch</label>
+                            <select
+                                value={deptForm.branch_id}
+                                disabled={!isAllBranches}
+                                onChange={(e) => setDeptForm((f) => ({ ...f, branch_id: e.target.value }))}
+                                style={{ opacity: isAllBranches ? 1 : 0.85 }}
+                            >
+                                {isAllBranches && <option value="">Select Branch</option>}
+                                {scopedBranchesForForms.map((b) => (
+                                    <option key={b.id} value={b.id}>{b.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
+    if (showProdForm) {
+        return (
+            <WorkshopSubScreen
+                title={prodFormTitle}
+                subtitle={
+                    isProductRequestFlow && !editingProd
+                        ? 'Adds a row to the master catalog queue for super-admin approval.'
+                        : 'Update catalog item details, pricing, and stock thresholds.'
+                }
+                backLabel={prodFormBackLabel}
+                size="wide"
+                onBack={() => !isSavingProduct && closeProdForm()}
+                backDisabled={isSavingProduct}
+                footer={(
+                    <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', width: '100%' }}>
+                        <button type="button" className="btn-secondary" onClick={closeProdForm} disabled={isSavingProduct}>Cancel</button>
+                        <button
+                            type="button"
+                            className="btn-submit"
+                            disabled={
+                                isSavingProduct ||
+                                !prodForm.name.trim() ||
+                                (isProductRequestFlow && (!prodForm.master_department_id || !prodForm.master_category_id))
+                            }
+                            onClick={saveProd}
+                        >
+                            {isSavingProduct ? 'Saving...' : 'Save'}
+                        </button>
+                    </div>
+                )}
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    {isProductRequestFlow && !editingProd ? (
+                        <div className="ws-form-grid">
+                            <p style={{ gridColumn: '1 / -1', margin: 0, fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                                Request adds a row to the master catalog queue (super-admin). Departments and categories are loaded from the global master catalog.
+                            </p>
+                            <div className="ws-field" style={{ gridColumn: '1 / -1' }}>
+                                <label>Name *</label>
+                                <input value={prodForm.name} onChange={(e) => setProdForm((f) => ({ ...f, name: e.target.value }))} />
+                            </div>
+                            <div className="ws-field" style={{ gridColumn: '1 / -1' }}>
+                                <label>Arabic name</label>
+                                <input value={prodForm.arabic_name} onChange={(e) => setProdForm((f) => ({ ...f, arabic_name: e.target.value }))} dir="rtl" placeholder="الاسم بالعربية" />
+                            </div>
+                            <div className="ws-field" style={{ gridColumn: '1 / -1' }}>
+                                <label>Brand name</label>
+                                <input value={prodForm.brand_name} onChange={(e) => setProdForm((f) => ({ ...f, brand_name: e.target.value }))} />
+                            </div>
+                            <div className="ws-field">
+                                <label>SKU</label>
+                                <input value={prodForm.sku} onChange={(e) => setProdForm((f) => ({ ...f, sku: e.target.value }))} placeholder="Optional" />
+                            </div>
+                            <div className="ws-field">
+                                <label>Unit *</label>
+                                <select value={prodForm.unit} onChange={(e) => setProdForm((f) => ({ ...f, unit: e.target.value }))}>
+                                    {(uomSelectOptions.length
+                                        ? uomSelectOptions
+                                        : (productUnits || []).map((u) => (typeof u === 'string' ? { value: u, label: u } : normalizeUomOption(u))).filter(Boolean)
+                                    ).map((o) => (
+                                        <option key={o.value} value={o.value}>{o.label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="ws-field" style={{ gridColumn: '1 / -1' }}>
+                                <label>Description</label>
+                                <textarea rows={3} value={prodForm.description} onChange={(e) => setProdForm((f) => ({ ...f, description: e.target.value }))} placeholder="Product description" style={{ width: '100%', resize: 'vertical' }} />
+                            </div>
+                            <div className="ws-field">
+                                <label>Sales price inclusive VAT (expected) *</label>
+                                <input type="number" min={0} step="0.01" value={prodForm.sale_price_incl_vat} onChange={(e) => setProdForm((f) => ({ ...f, sale_price_incl_vat: e.target.value }))} placeholder="0.00" />
+                            </div>
+                            <div className="ws-field" style={{ gridColumn: '1 / -1' }}>
+                                <label>Notes</label>
+                                <textarea rows={2} value={prodForm.notes} onChange={(e) => setProdForm((f) => ({ ...f, notes: e.target.value }))} placeholder="Internal notes for approvers" style={{ width: '100%', resize: 'vertical' }} />
+                            </div>
+                            <div className="ws-field" style={{ gridColumn: '1 / -1' }}>
+                                <label>Department (master) *</label>
+                                <select
+                                    value={prodForm.master_department_id}
+                                    disabled={masterDeptLoading}
+                                    onChange={(e) => setProdForm((f) => ({ ...f, master_department_id: e.target.value, master_category_id: '', category_id: '' }))}
+                                >
+                                    <option value="">{masterDeptLoading ? 'Loading…' : 'Select department'}</option>
+                                    {masterDeptOptions.map((d) => {
+                                        const id = d.id ?? d.departmentId ?? d.masterId;
+                                        return <option key={id} value={id}>{d.name || pickDeptLabel(d)}</option>;
+                                    })}
+                                </select>
+                            </div>
+                            <div className="ws-field" style={{ gridColumn: '1 / -1' }}>
+                                <label>Category (master) *</label>
+                                <select
+                                    value={prodForm.master_category_id}
+                                    disabled={!prodForm.master_department_id || masterCatLoading}
+                                    onChange={(e) => setProdForm((f) => ({ ...f, master_category_id: e.target.value, category_id: e.target.value }))}
+                                >
+                                    <option value="">
+                                        {!prodForm.master_department_id ? 'Select a department first' : masterCatLoading ? 'Loading…' : 'Select category'}
+                                    </option>
+                                    {masterCatOptions.map((c) => {
+                                        const id = c.id ?? c.categoryId ?? c.masterId;
+                                        return <option key={id} value={id}>{c.name || c.categoryName || '—'}</option>;
+                                    })}
+                                </select>
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="ws-form-grid">
+                                <div className="ws-field" style={{ gridColumn: '1 / -1' }}>
+                                    <label>Name *</label>
+                                    <input value={prodForm.name} onChange={(e) => setProdForm((f) => ({ ...f, name: e.target.value }))} />
+                                </div>
+                                <div className="ws-field">
+                                    <label>SKU / Barcode</label>
+                                    <input value={prodForm.sku} onChange={(e) => setProdForm((f) => ({ ...f, sku: e.target.value }))} placeholder="Optional" />
+                                </div>
+                                <div className="ws-field">
+                                    <label>Category</label>
+                                    <select value={prodForm.category_id} onChange={(e) => setProdForm((f) => ({ ...f, category_id: e.target.value }))}>
+                                        <option value="">Select Category</option>
+                                        {productCategories.map((c) => (
+                                            <option key={c.id} value={c.id}>{c.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="ws-field">
+                                    <label>Branch</label>
+                                    <select value={prodForm.branch_id} disabled={!isAllBranches} onChange={(e) => setProdForm((f) => ({ ...f, branch_id: e.target.value }))} style={{ opacity: isAllBranches ? 1 : 0.85 }}>
+                                        {isAllBranches && <option value="">Select Branch</option>}
+                                        {scopedBranchesForForms.map((b) => (
+                                            <option key={b.id} value={b.id}>{b.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="ws-field">
+                                    <label>Department</label>
+                                    <select value={prodForm.department_id} onChange={(e) => setProdForm((f) => ({ ...f, department_id: e.target.value, department_ids: e.target.value ? [e.target.value] : [] }))}>
+                                        <option value="">Select Department</option>
+                                        {departments.map((d) => (
+                                            <option key={d.id} value={d.id}>{d.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="ws-field">
+                                    <label>Type</label>
+                                    <select value={prodForm.type} onChange={(e) => setProdForm((f) => ({ ...f, type: e.target.value }))}>
+                                        <option value="product">Product</option>
+                                        <option value="service">Service</option>
+                                    </select>
+                                </div>
+                                <div className="ws-field">
+                                    <label>Unit</label>
+                                    <select value={prodForm.unit} onChange={(e) => setProdForm((f) => ({ ...f, unit: e.target.value }))}>
+                                        {productUnits.map((u) => (
+                                            <option key={u} value={u}>{u}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div className="ws-field">
+                                    <label>Purchase Price (SAR)</label>
+                                    <input type="number" value={prodForm.purchase_price} onChange={(e) => setProdForm((f) => ({ ...f, purchase_price: e.target.value }))} />
+                                </div>
+                                <div className="ws-field">
+                                    <label>Sale Price (SAR, incl. VAT)</label>
+                                    <input type="number" value={prodForm.sale_price} onChange={(e) => setProdForm((f) => ({ ...f, sale_price: e.target.value }))} />
+                                </div>
+                                <div className="ws-field">
+                                    <label>Current Stock Qty</label>
+                                    <input type="number" value={prodForm.stock_qty} onChange={(e) => setProdForm((f) => ({ ...f, stock_qty: e.target.value }))} />
+                                </div>
+                                <div className="ws-field">
+                                    <label>
+                                        Critical Level{' '}
+                                        <span style={{ fontSize: '0.6875rem', color: '#DC2626' }}>(alert threshold)</span>
+                                    </label>
+                                    <input type="number" value={prodForm.critical_level} onChange={(e) => setProdForm((f) => ({ ...f, critical_level: e.target.value }))} />
+                                </div>
+                                <div className="ws-field">
+                                    <label>Reorder Level</label>
+                                    <input type="number" value={prodForm.reorder_level} onChange={(e) => setProdForm((f) => ({ ...f, reorder_level: e.target.value }))} />
+                                </div>
+                            </div>
+                            {prodForm.critical_level && prodForm.stock_qty <= parseFloat(prodForm.critical_level) && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: 12, marginTop: 16, fontSize: '0.8125rem', color: '#DC2626' }}>
+                                    <AlertTriangle size={16} /> Current stock is at/below critical level — saving will notify all active suppliers.
+                                </div>
+                            )}
+                        </>
+                    )}
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
 
     return (
         <div>
@@ -1107,10 +1448,10 @@ export default function WorkshopDepartments({ selectedBranchId = 'all', branches
                     )}
                     <div className="ws-section">
                         <table className="ws-table">
-                            <thead><tr><th>Name</th><th>Branches</th><th>Status</th>{branchScope && <th>Actions</th>}</tr></thead>
+                            <thead><tr><th>Name</th><th>Branches</th><th>Status</th>{(canEditDept || (branchScope && canDeleteDept)) && <th>Actions</th>}</tr></thead>
                             <tbody>
                                 {departments.length === 0 ? (
-                                    <tr><td colSpan={branchScope ? 4 : 3} style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                                    <tr><td colSpan={(canEditDept || (branchScope && canDeleteDept)) ? 4 : 3} style={{ padding: 40, textAlign: 'center', color: 'var(--color-text-muted)' }}>
                                         {isDeptLoading
                                             ? 'Loading departments...'
                                             : branchScope
@@ -1125,17 +1466,43 @@ export default function WorkshopDepartments({ selectedBranchId = 'all', branches
                                             <td><strong>{d.name}</strong></td>
                                             <td style={{color:'var(--color-text-muted)'}}>{formatRowBranches(d)}</td>
                                             <td><span className={`ws-badge ${isActive ? 'ws-badge--green' : 'ws-badge--gray'}`}>{isActive ? 'active' : 'inactive'}</span></td>
-                                            {branchScope && (
+                                            {(canEditDept || (branchScope && canDeleteDept)) && (
                                                 <td>
-                                                    {canDeleteDept && (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => removeDeptFromBranch(masterId)}
-                                                            style={{ padding: '4px 10px', background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA', borderRadius: 6, fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem' }}
-                                                        >
-                                                            Remove from this branch
-                                                        </button>
-                                                    )}
+                                                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                                        {canEditDept && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => toggleDepartmentActive(d)}
+                                                                disabled={deptStatusLoadingId === String(masterId)}
+                                                                style={{
+                                                                    padding: '4px 10px',
+                                                                    background: isActive ? '#FFFBEB' : '#ECFDF5',
+                                                                    color: isActive ? '#B45309' : '#047857',
+                                                                    border: `1px solid ${isActive ? '#FDE68A' : '#A7F3D0'}`,
+                                                                    borderRadius: 6,
+                                                                    fontWeight: 700,
+                                                                    cursor: deptStatusLoadingId === String(masterId) ? 'not-allowed' : 'pointer',
+                                                                    fontSize: '0.75rem',
+                                                                    opacity: deptStatusLoadingId === String(masterId) ? 0.6 : 1,
+                                                                }}
+                                                            >
+                                                                {deptStatusLoadingId === String(masterId)
+                                                                    ? 'Saving…'
+                                                                    : isActive
+                                                                      ? 'Deactivate'
+                                                                      : 'Activate'}
+                                                            </button>
+                                                        )}
+                                                        {branchScope && canDeleteDept && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => removeDeptFromBranch(masterId)}
+                                                                style={{ padding: '4px 10px', background: '#FEF2F2', color: '#B91C1C', border: '1px solid #FECACA', borderRadius: 6, fontWeight: 700, cursor: 'pointer', fontSize: '0.75rem' }}
+                                                            >
+                                                                Remove from this branch
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </td>
                                             )}
                                         </tr>
@@ -1220,8 +1587,9 @@ export default function WorkshopDepartments({ selectedBranchId = 'all', branches
                                     <tr><td colSpan={branchScope ? 11 : 10} style={{padding:40,textAlign:'center',color:'var(--color-text-muted)'}}>{isProductsLoading ? 'Loading products...' : 'No products found'}</td></tr>
                                 ) : productItems.map(p => {
                                     const isCritical = p.critical_level && p.stock_qty <= p.critical_level;
+                                    const isActive = Boolean(p.isActive ?? p.status === 'active');
                                     return (
-                                        <tr key={p.id} style={{background: isCritical ? '#FEF2F2' : undefined}}>
+                                        <tr key={p.id} style={{background: isCritical ? '#FEF2F2' : undefined, opacity: isActive ? 1 : 0.72}}>
                                             <td>
                                                 <input
                                                     type="checkbox"
@@ -1246,7 +1614,9 @@ export default function WorkshopDepartments({ selectedBranchId = 'all', branches
                                             <td style={{color:'var(--color-text-muted)'}}>{p.critical_level ?? '—'}</td>
                                             <td style={{color:'var(--color-text-muted)'}}>{formatRowBranches(p)}</td>
                                             <td>
-                                                <span className={`ws-badge ${isCritical?'ws-badge--red':'ws-badge--green'}`}>{isCritical ? '⚠ Critical' : 'OK'}</span>
+                                                <span className={`ws-badge ${isActive ? (isCritical ? 'ws-badge--red' : 'ws-badge--green') : 'ws-badge--gray'}`}>
+                                                    {!isActive ? 'inactive' : isCritical ? '⚠ Critical' : 'active'}
+                                                </span>
                                                 {canDeleteProduct && (
                                                     <button
                                                         type="button"
@@ -1315,9 +1685,9 @@ export default function WorkshopDepartments({ selectedBranchId = 'all', branches
                                 <tbody>{serviceItems.length === 0 ? (
                                     <tr><td colSpan={6} style={{padding:40,textAlign:'center',color:'var(--color-text-muted)'}}>{isProductsLoading ? 'Loading services...' : 'No services found'}</td></tr>
                                 ) : serviceItems.map(s => {
-                                    const isActive = s.isActive !== false;
+                                    const isActive = Boolean(s.isActive ?? s.status === 'active');
                                     return (
-                                        <tr key={s.id}>
+                                        <tr key={s.id} style={{ opacity: isActive ? 1 : 0.72 }}>
                                             <td>
                                                 <input
                                                     type="checkbox"
@@ -1357,6 +1727,11 @@ export default function WorkshopDepartments({ selectedBranchId = 'all', branches
                         <button className="btn-portal" onClick={loadCategories} disabled={isCategoriesLoading}>
                             <RefreshCw size={14} /> {isCategoriesLoading ? 'Refreshing...' : 'Refresh'}
                         </button>
+                        {canCreateCategory && (
+                            <button className="btn-portal" onClick={() => setShowCategoryForm(true)}>
+                                <Plus size={14} /> Request Category
+                            </button>
+                        )}
                     </div>
                     {categoriesError && (
                         <div style={{ marginBottom: 16, color: '#B91C1C', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10, padding: 12, fontSize: '0.875rem' }}>
@@ -1366,10 +1741,10 @@ export default function WorkshopDepartments({ selectedBranchId = 'all', branches
                     <div className="ws-section">
                         <div style={{overflowX:'auto'}}>
                             <table className="ws-table">
-                                <thead><tr><th>Name</th><th>Type</th><th>Department</th><th>Branches</th>{branchScope && <th>Actions</th>}</tr></thead>
+                                <thead><tr><th>Name</th><th>Type</th><th>Department</th><th>Branches</th><th>Status</th>{branchScope && <th>Actions</th>}</tr></thead>
                                 <tbody>
                                     {categories.length === 0 ? (
-                                        <tr><td colSpan={branchScope ? 5 : 4} style={{padding:40,textAlign:'center',color:'var(--color-text-muted)'}}>
+                                        <tr><td colSpan={branchScope ? 6 : 5} style={{padding:40,textAlign:'center',color:'var(--color-text-muted)'}}>
                                             {isCategoriesLoading
                                                 ? 'Loading categories...'
                                                 : branchScope
@@ -1378,12 +1753,18 @@ export default function WorkshopDepartments({ selectedBranchId = 'all', branches
                                         </td></tr>
                                     ) : categories.map((category) => {
                                         const masterId = category.categoryId || category.masterId || category.id;
+                                        const isActive = Boolean(category.isActive ?? category.status === 'active');
                                         return (
                                             <tr key={category.id}>
                                                 <td><strong>{category.name}</strong></td>
                                                 <td><span className="ws-badge ws-badge--gray">{category.type || '—'}</span></td>
                                                 <td>{category.departmentName || '—'}</td>
                                                 <td style={{color:'var(--color-text-muted)'}}>{formatRowBranches(category)}</td>
+                                                <td>
+                                                    <span className={`ws-badge ${isActive ? 'ws-badge--green' : 'ws-badge--gray'}`}>
+                                                        {isActive ? 'active' : 'inactive'}
+                                                    </span>
+                                                </td>
                                                 {branchScope && (
                                                     <td>
                                                         <button
@@ -1405,449 +1786,6 @@ export default function WorkshopDepartments({ selectedBranchId = 'all', branches
                 </div>
             )}
 
-            <AnimatePresence>
-                {showDeptForm && <Modal title="Request Department" onClose={()=>setShowDeptForm(false)} footer={<div style={{display:'flex',gap:10,justifyContent:'flex-end'}}><button className="btn-secondary" onClick={()=>setShowDeptForm(false)}>Cancel</button><button className="btn-submit" disabled={isSavingDept || !deptForm.name.trim()} onClick={saveDept}>{isSavingDept ? 'Saving...' : 'Save'}</button></div>}>
-                    <div className="ws-form-grid">
-                        <div className="ws-field"><label>Name *</label><input value={deptForm.name} onChange={e=>setDeptForm(f=>({...f,name:e.target.value}))}/></div>
-                        <div className="ws-field">
-                            <label>Branch</label>
-                            <select
-                                value={deptForm.branch_id}
-                                disabled={!isAllBranches}
-                                onChange={(e) => setDeptForm((f) => ({ ...f, branch_id: e.target.value }))}
-                                style={{ opacity: isAllBranches ? 1 : 0.85 }}
-                            >
-                                {isAllBranches && <option value="">Select Branch</option>}
-                                {scopedBranchesForForms.map((b) => (
-                                    <option key={b.id} value={b.id}>{b.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-                </Modal>}
-                {showProdForm && (
-                    <Modal
-                        title={
-                            editingProd
-                                ? 'Edit Product/Service'
-                                : isProductRequestFlow
-                                  ? 'Request Product'
-                                  : prodForm.type === 'service'
-                                    ? 'Request Service'
-                                    : 'Request Product/Service'
-                        }
-                        onClose={() => {
-                            setShowProdForm(false);
-                            setIsProductRequestFlow(false);
-                        }}
-                        footer={
-                            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                                <button
-                                    type="button"
-                                    className="btn-secondary"
-                                    onClick={() => {
-                                        setShowProdForm(false);
-                                        setIsProductRequestFlow(false);
-                                    }}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    className="btn-submit"
-                                    disabled={
-                                        isSavingProduct ||
-                                        !prodForm.name.trim() ||
-                                        (isProductRequestFlow &&
-                                            (!prodForm.master_department_id || !prodForm.master_category_id))
-                                    }
-                                    onClick={saveProd}
-                                >
-                                    {isSavingProduct ? 'Saving...' : 'Save'}
-                                </button>
-                            </div>
-                        }
-                    >
-                        {isProductRequestFlow && !editingProd ? (
-                        <div className="ws-form-grid">
-                                <p
-                                    style={{
-                                        gridColumn: '1 / -1',
-                                        margin: 0,
-                                        fontSize: '0.8125rem',
-                                        color: 'var(--color-text-muted)',
-                                    }}
-                                >
-                                    Request adds a row to the master catalog queue (super-admin). Departments and
-                                    categories are loaded from the global master catalog.
-                                </p>
-                                <div className="ws-field" style={{ gridColumn: '1 / -1' }}>
-                                    <label>Name *</label>
-                                    <input
-                                        value={prodForm.name}
-                                        onChange={(e) => setProdForm((f) => ({ ...f, name: e.target.value }))}
-                                    />
-                        </div>
-                                <div className="ws-field" style={{ gridColumn: '1 / -1' }}>
-                                    <label>Arabic name</label>
-                                    <input
-                                        value={prodForm.arabic_name}
-                                        onChange={(e) => setProdForm((f) => ({ ...f, arabic_name: e.target.value }))}
-                                        dir="rtl"
-                                        placeholder="الاسم بالعربية"
-                                    />
-                                </div>
-                                <div className="ws-field" style={{ gridColumn: '1 / -1' }}>
-                                    <label>Brand name</label>
-                                    <input
-                                        value={prodForm.brand_name}
-                                        onChange={(e) => setProdForm((f) => ({ ...f, brand_name: e.target.value }))}
-                                    />
-                                </div>
-                                <div className="ws-field">
-                                    <label>SKU</label>
-                                    <input
-                                        value={prodForm.sku}
-                                        onChange={(e) => setProdForm((f) => ({ ...f, sku: e.target.value }))}
-                                        placeholder="Optional"
-                                    />
-                                </div>
-                                <div className="ws-field">
-                                    <label>Unit *</label>
-                                    <select
-                                        value={prodForm.unit}
-                                        onChange={(e) => setProdForm((f) => ({ ...f, unit: e.target.value }))}
-                                    >
-                                        {(uomSelectOptions.length
-                                            ? uomSelectOptions
-                                            : (productUnits || []).map((u) =>
-                                                  typeof u === 'string' ? { value: u, label: u } : normalizeUomOption(u),
-                                              ).filter(Boolean)
-                                        ).map((o) => (
-                                            <option key={o.value} value={o.value}>
-                                                {o.label}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                                <div className="ws-field" style={{ gridColumn: '1 / -1' }}>
-                                    <label>Description</label>
-                                    <textarea
-                                        rows={3}
-                                        value={prodForm.description}
-                                        onChange={(e) => setProdForm((f) => ({ ...f, description: e.target.value }))}
-                                        placeholder="Product description"
-                                        style={{ width: '100%', resize: 'vertical' }}
-                                    />
-                                </div>
-                                <div className="ws-field">
-                                    <label>Sales price inclusive VAT (expected) *</label>
-                                    <input
-                                        type="number"
-                                        min={0}
-                                        step="0.01"
-                                        value={prodForm.sale_price_incl_vat}
-                                        onChange={(e) =>
-                                            setProdForm((f) => ({ ...f, sale_price_incl_vat: e.target.value }))
-                                        }
-                                        placeholder="0.00"
-                                    />
-                                </div>
-                                <div className="ws-field" style={{ gridColumn: '1 / -1' }}>
-                                    <label>Notes</label>
-                                    <textarea
-                                        rows={2}
-                                        value={prodForm.notes}
-                                        onChange={(e) => setProdForm((f) => ({ ...f, notes: e.target.value }))}
-                                        placeholder="Internal notes for approvers"
-                                        style={{ width: '100%', resize: 'vertical' }}
-                                    />
-                                </div>
-                                <div className="ws-field" style={{ gridColumn: '1 / -1' }}>
-                                    <label>Department (master) *</label>
-                                    <select
-                                        value={prodForm.master_department_id}
-                                        disabled={masterDeptLoading}
-                                        onChange={(e) =>
-                                            setProdForm((f) => ({
-                                                ...f,
-                                                master_department_id: e.target.value,
-                                                master_category_id: '',
-                                                category_id: '',
-                                            }))
-                                        }
-                                    >
-                                        <option value="">
-                                            {masterDeptLoading ? 'Loading…' : 'Select department'}
-                                        </option>
-                                        {masterDeptOptions.map((d) => {
-                                            const id = d.id ?? d.departmentId ?? d.masterId;
-                                            return (
-                                                <option key={id} value={id}>
-                                                    {d.name || pickDeptLabel(d)}
-                                                </option>
-                                            );
-                                        })}
-                                    </select>
-                                </div>
-                                <div className="ws-field" style={{ gridColumn: '1 / -1' }}>
-                                    <label>Category (master) *</label>
-                                    <select
-                                        value={prodForm.master_category_id}
-                                        disabled={!prodForm.master_department_id || masterCatLoading}
-                                        onChange={(e) =>
-                                            setProdForm((f) => ({
-                                                ...f,
-                                                master_category_id: e.target.value,
-                                                category_id: e.target.value,
-                                            }))
-                                        }
-                                    >
-                                        <option value="">
-                                            {!prodForm.master_department_id
-                                                ? 'Select a department first'
-                                                : masterCatLoading
-                                                  ? 'Loading…'
-                                                  : 'Select category'}
-                                        </option>
-                                        {masterCatOptions.map((c) => {
-                                            const id = c.id ?? c.categoryId ?? c.masterId;
-                                            return (
-                                                <option key={id} value={id}>
-                                                    {c.name || c.categoryName || '—'}
-                                                </option>
-                                            );
-                                        })}
-                                    </select>
-                                </div>
-                            </div>
-                        ) : (
-                            <>
-                                <div className="ws-form-grid">
-                                    <div className="ws-field" style={{ gridColumn: '1 / -1' }}>
-                                        <label>Name *</label>
-                                        <input
-                                            value={prodForm.name}
-                                            onChange={(e) => setProdForm((f) => ({ ...f, name: e.target.value }))}
-                                        />
-                                    </div>
-                                    <div className="ws-field">
-                                        <label>SKU / Barcode</label>
-                                        <input
-                                            value={prodForm.sku}
-                                            onChange={(e) => setProdForm((f) => ({ ...f, sku: e.target.value }))}
-                                            placeholder="Optional"
-                                        />
-                                    </div>
-                                    <div className="ws-field">
-                                        <label>Category</label>
-                                        <select
-                                            value={prodForm.category_id}
-                                            onChange={(e) =>
-                                                setProdForm((f) => ({ ...f, category_id: e.target.value }))
-                                            }
-                                        >
-                                            <option value="">Select Category</option>
-                                            {productCategories.map((c) => (
-                                                <option key={c.id} value={c.id}>
-                                                    {c.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div className="ws-field">
-                                        <label>Branch</label>
-                                        <select
-                                            value={prodForm.branch_id}
-                                            disabled={!isAllBranches}
-                                            onChange={(e) =>
-                                                setProdForm((f) => ({ ...f, branch_id: e.target.value }))
-                                            }
-                                            style={{ opacity: isAllBranches ? 1 : 0.85 }}
-                                        >
-                                            {isAllBranches && <option value="">Select Branch</option>}
-                                            {scopedBranchesForForms.map((b) => (
-                                                <option key={b.id} value={b.id}>
-                                                    {b.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div className="ws-field">
-                                        <label>Department</label>
-                                        <select
-                                            value={prodForm.department_id}
-                                            onChange={(e) =>
-                                                setProdForm((f) => ({
-                                                    ...f,
-                                                    department_id: e.target.value,
-                                                    department_ids: e.target.value ? [e.target.value] : [],
-                                                }))
-                                            }
-                                        >
-                                            <option value="">Select Department</option>
-                                            {departments.map((d) => (
-                                                <option key={d.id} value={d.id}>
-                                                    {d.name}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div className="ws-field">
-                                        <label>Type</label>
-                                        <select
-                                            value={prodForm.type}
-                                            onChange={(e) => setProdForm((f) => ({ ...f, type: e.target.value }))}
-                                        >
-                                            <option value="product">Product</option>
-                                            <option value="service">Service</option>
-                                        </select>
-                                    </div>
-                                    <div className="ws-field">
-                                        <label>Unit</label>
-                                        <select
-                                            value={prodForm.unit}
-                                            onChange={(e) => setProdForm((f) => ({ ...f, unit: e.target.value }))}
-                                        >
-                                            {productUnits.map((u) => (
-                                                <option key={u} value={u}>
-                                                    {u}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div className="ws-field">
-                                        <label>Purchase Price (SAR)</label>
-                                        <input
-                                            type="number"
-                                            value={prodForm.purchase_price}
-                                            onChange={(e) =>
-                                                setProdForm((f) => ({ ...f, purchase_price: e.target.value }))
-                                            }
-                                        />
-                                    </div>
-                                    <div className="ws-field">
-                                        <label>Sale Price (SAR, incl. VAT)</label>
-                                        <input
-                                            type="number"
-                                            value={prodForm.sale_price}
-                                            onChange={(e) =>
-                                                setProdForm((f) => ({ ...f, sale_price: e.target.value }))
-                                            }
-                                        />
-                                    </div>
-                                    <div className="ws-field">
-                                        <label>Current Stock Qty</label>
-                                        <input
-                                            type="number"
-                                            value={prodForm.stock_qty}
-                                            onChange={(e) =>
-                                                setProdForm((f) => ({ ...f, stock_qty: e.target.value }))
-                                            }
-                                        />
-                                    </div>
-                                    <div className="ws-field">
-                                        <label>
-                                            Critical Level{' '}
-                                            <span style={{ fontSize: '0.6875rem', color: '#DC2626' }}>
-                                                (alert threshold)
-                                            </span>
-                                        </label>
-                                        <input
-                                            type="number"
-                                            value={prodForm.critical_level}
-                                            onChange={(e) =>
-                                                setProdForm((f) => ({ ...f, critical_level: e.target.value }))
-                                            }
-                                        />
-                                    </div>
-                                    <div className="ws-field">
-                                        <label>Reorder Level</label>
-                                        <input
-                                            type="number"
-                                            value={prodForm.reorder_level}
-                                            onChange={(e) =>
-                                                setProdForm((f) => ({ ...f, reorder_level: e.target.value }))
-                                            }
-                                        />
-                                    </div>
-                                </div>
-                                {prodForm.critical_level &&
-                                    prodForm.stock_qty <= parseFloat(prodForm.critical_level) && (
-                                        <div
-                                            style={{
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: 8,
-                                                background: '#FEF2F2',
-                                                border: '1px solid #FECACA',
-                                                borderRadius: 10,
-                                                padding: 12,
-                                                marginTop: 16,
-                                                fontSize: '0.8125rem',
-                                                color: '#DC2626',
-                                            }}
-                                        >
-                                            <AlertTriangle size={16} /> Current stock is at/below critical level —
-                                            saving will notify all active suppliers.
-                            </div>
-                                    )}
-                            </>
-                        )}
-                    </Modal>
-                )}
-                {showRequestForm && (
-                    <Modal title={`Request Stock — ${showRequestForm.name}`} onClose={()=>setShowRequestForm(null)} footer={<div style={{display:'flex',gap:10,justifyContent:'flex-end'}}><button className="btn-secondary" onClick={()=>setShowRequestForm(null)}>Cancel</button><button className="btn-submit" onClick={()=>{ alert('Stock request submitted for approval'); setShowRequestForm(null); }}>Submit Request</button></div>}>
-                        <div style={{display:'flex',flexDirection:'column',gap:14}}>
-                            <div style={{background:'var(--color-bg-muted)',padding:14,borderRadius:10}}>
-                                <p style={{fontSize:'0.6875rem',fontWeight:700,color:'var(--color-text-muted)',margin:'0 0 4px'}}>Current Stock</p>
-                                <p style={{fontSize:'1.25rem',fontWeight:900,margin:0}}>{showRequestForm.stock_qty} <span style={{fontSize:'0.875rem',fontWeight:500,color:'var(--color-text-muted)'}}>{showRequestForm.unit}</span></p>
-                                {showRequestForm.critical_level && showRequestForm.stock_qty <= showRequestForm.critical_level && <span className="ws-badge ws-badge--red" style={{marginTop:8,display:'inline-block'}}>⚠ Below critical level</span>}
-                            </div>
-                            <div className="ws-field"><label>Supplier / Warehouse</label><select><option>Al-Jazeera Auto Parts</option><option>Gulf Lubricants Co.</option><option>Saudi Tire Trading</option></select></div>
-                            <div className="ws-field"><label>Quantity Requested ({showRequestForm.unit})</label><input type="number" placeholder={`Enter qty in ${showRequestForm.unit}`}/></div>
-                            <div className="ws-field"><label>Notes</label><input placeholder="Optional notes..."/></div>
-                        </div>
-                    </Modal>
-                )}
-                {showCategoryForm && (
-                    <Modal
-                        title="Request Category"
-                        onClose={() => setShowCategoryForm(false)}
-                        footer={
-                            <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
-                                <button className="btn-secondary" onClick={() => setShowCategoryForm(false)} disabled={isSavingCategory}>Cancel</button>
-                                <button className="btn-submit" onClick={saveCategory} disabled={isSavingCategory || !categoryForm.name.trim() || !categoryForm.departmentId}>
-                                    {isSavingCategory ? 'Saving...' : 'Save'}
-                                </button>
-                            </div>
-                        }
-                    >
-                        <div className="ws-form-grid">
-                            <div className="ws-field" style={{gridColumn:'1/-1'}}>
-                                <label>Name *</label>
-                                <input value={categoryForm.name} onChange={e => setCategoryForm(f => ({ ...f, name: e.target.value }))} />
-                            </div>
-                            <div className="ws-field">
-                                <label>Type *</label>
-                                <select value={categoryForm.type} onChange={e => setCategoryForm(f => ({ ...f, type: e.target.value }))}>
-                                    <option value="product">Product</option>
-                                    <option value="service">Service</option>
-                                </select>
-                            </div>
-                            <div className="ws-field">
-                                <label>Department *</label>
-                                <select value={categoryForm.departmentId} onChange={e => setCategoryForm(f => ({ ...f, departmentId: e.target.value }))}>
-                                    <option value="">Select Department</option>
-                                    {departments.map((department) => (
-                                        <option key={department.id} value={department.id}>{department.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                        </div>
-                    </Modal>
-                )}
-            </AnimatePresence>
         </div>
     );
 }

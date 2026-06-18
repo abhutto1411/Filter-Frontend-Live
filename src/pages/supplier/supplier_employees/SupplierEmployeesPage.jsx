@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import Modal from '../../../components/Modal';
+import RowActionsMenu from '../../../components/RowActionsMenu';
 import {
     createSupplierStaff,
     listSupplierStaff,
@@ -24,76 +25,17 @@ import {
     formatStaffCreatedAt,
     listRowFromApiStaff,
     mapStaffRow,
-    roleVisualVariant,
     staffAvailabilityUi,
 } from './supplierEmployeesUtils';
 import './StaffEmployeesScreen.css';
 
 const KPI_DEF = [
-    {
-        id: 'warehouse',
-        label: 'Warehouse Incharge',
-        cardClass: 'se-staff-kpi-card--purple',
-        iconClass: 'se-staff-kpi-icon--purple',
-        Icon: Warehouse,
-    },
-    {
-        id: 'order',
-        label: 'Order Processor',
-        cardClass: 'se-staff-kpi-card--blue',
-        iconClass: 'se-staff-kpi-icon--blue',
-        Icon: ClipboardList,
-    },
-    {
-        id: 'driver',
-        label: 'Driver',
-        cardClass: 'se-staff-kpi-card--orange',
-        iconClass: 'se-staff-kpi-icon--orange',
-        Icon: Truck,
-    },
-    {
-        id: 'accountant',
-        label: 'Accountant',
-        cardClass: 'se-staff-kpi-card--green',
-        iconClass: 'se-staff-kpi-icon--green',
-        Icon: Calculator,
-    },
-    {
-        id: 'supervisor',
-        label: 'Supervisor',
-        cardClass: 'se-staff-kpi-card--gray',
-        iconClass: 'se-staff-kpi-icon--gray',
-        Icon: UsersRound,
-    },
+    { id: 'warehouse', label: 'WAREHOUSE INCHARGE', Icon: Warehouse },
+    { id: 'order', label: 'ORDER PROCESSOR', Icon: ClipboardList },
+    { id: 'driver', label: 'DRIVER', Icon: Truck },
+    { id: 'accountant', label: 'ACCOUNTANT', Icon: Calculator },
+    { id: 'supervisor', label: 'SUPERVISOR', Icon: UsersRound },
 ];
-
-function RolePill({ role }) {
-    const v = roleVisualVariant(role);
-    const cls =
-        v === 'purple'
-            ? 'se-role-pill--purple'
-            : v === 'blue'
-              ? 'se-role-pill--blue'
-              : v === 'orange'
-                ? 'se-role-pill--orange'
-                : v === 'green'
-                  ? 'se-role-pill--green'
-                  : 'se-role-pill--slate';
-    return <span className={`se-role-pill ${cls}`}>{role || '—'}</span>;
-}
-
-function AvailabilityPill({ row }) {
-    const { label, tone } = staffAvailabilityUi(row);
-    const cls =
-        tone === 'green'
-            ? 'se-avail-pill--green'
-            : tone === 'amber'
-              ? 'se-avail-pill--amber'
-              : tone === 'gray'
-                ? 'se-avail-pill--gray'
-                : 'se-avail-pill--muted';
-    return <span className={`se-avail-pill ${cls}`}>{label}</span>;
-}
 
 export default function SupplierEmployeesPage() {
     const [list, setList] = useState([]);
@@ -336,8 +278,8 @@ export default function SupplierEmployeesPage() {
         fontWeight: 800,
         fontSize: '0.875rem',
         cursor: saveLoading ? 'wait' : 'pointer',
-        color: '#fff',
-        background: saveLoading ? '#6B7280' : '#4B5563',
+        color: saveLoading ? '#ffffff' : '#111111',
+        background: saveLoading ? '#6B7280' : 'var(--color-primary)',
     };
     const canSubmit =
         String(form.name || '').trim() &&
@@ -360,10 +302,11 @@ export default function SupplierEmployeesPage() {
                         fontWeight: 700,
                         background:
                             toast.type === 'error'
-                                ? '#B91C1C'
+                                ? '#23262D'
                                 : toast.type === 'warning'
-                                  ? '#B45309'
-                                  : '#059669',
+                                  ? '#FCC245'
+                                  : '#23262D',
+                        color: toast.type === 'warning' ? '#23262D' : '#fff',
                         boxShadow: '0 8px 20px rgba(0,0,0,0.12)',
                     }}
                 >
@@ -375,24 +318,13 @@ export default function SupplierEmployeesPage() {
                     <h2 className="ws-page-title">Staff & Roles</h2>
                     <p className="ws-page-sub">Supplier & Warehouse Portal</p>
                 </div>
-                <button type="button" className="se-btn-add-staff" onClick={openAdd}>
+                <button type="button" className="mgr-si-btn-new" onClick={openAdd}>
                     <Plus size={18} strokeWidth={2.5} /> Add Employee / Worker
                 </button>
             </div>
 
             {apiError ? (
-                <div
-                    className="ws-section"
-                    style={{
-                        marginBottom: 16,
-                        padding: 14,
-                        background: '#FEF2F2',
-                        border: '1px solid #FECACA',
-                        borderRadius: 12,
-                        color: '#B91C1C',
-                        fontSize: '0.875rem',
-                    }}
-                >
+                <div className="theme-alert">
                     <strong>Could not load staff:</strong> {apiError}
                     <p style={{ margin: '6px 0 0 0', fontSize: '0.75rem' }}>
                         Supplier scope: <strong>{resolvedSupplierId}</strong>
@@ -409,14 +341,14 @@ export default function SupplierEmployeesPage() {
                 </>
             ) : (
                 <>
-                    <div className="se-staff-kpi-grid">
-                        {KPI_DEF.map(({ id, label, cardClass, iconClass, Icon }) => (
-                            <div key={id} className={`se-staff-kpi-card ${cardClass}`}>
-                                <div style={{ minWidth: 0 }}>
-                                    <p className="se-staff-kpi-label">{label}</p>
-                                    <p className="se-staff-kpi-value">{kpiCounts[id] ?? 0}</p>
+                    <div className="ws-kpi-grid">
+                        {KPI_DEF.map(({ id, label, Icon }) => (
+                            <div key={id} className="ws-kpi-card">
+                                <div>
+                                    <p className="ws-kpi-label">{label}</p>
+                                    <p className="ws-kpi-value">{kpiCounts[id] ?? 0}</p>
                                 </div>
-                                <div className={`se-staff-kpi-icon ${iconClass}`}>
+                                <div className="ws-kpi-icon ws-kpi-icon--dark">
                                     <Icon size={22} strokeWidth={2} />
                                 </div>
                             </div>
@@ -455,15 +387,13 @@ export default function SupplierEmployeesPage() {
                                                 <td>
                                                     <strong>{s.name}</strong>
                                                 </td>
-                                                <td>
-                                                    <RolePill role={s.role} />
-                                                </td>
+                                                <td style={{ fontSize: '0.875rem' }}>{s.role || '—'}</td>
                                                 <td style={{ fontSize: '0.875rem' }}>{s.phone || '—'}</td>
                                                 <td style={{ color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
                                                     {s.vehiclePlate || '—'}
                                                 </td>
-                                                <td>
-                                                    <AvailabilityPill row={s} />
+                                                <td style={{ fontSize: '0.875rem' }}>
+                                                    {staffAvailabilityUi(s).label}
                                                 </td>
                                                 <td>
                                                     <span
@@ -487,30 +417,25 @@ export default function SupplierEmployeesPage() {
                                                     {formatStaffCreatedAt(s.createdAt)}
                                                 </td>
                                                 <td>
-                                                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                                                        <button
-                                                            type="button"
-                                                            className="se-action-outline"
-                                                            onClick={() => openEdit(s)}
-                                                        >
-                                                            <Pencil size={14} style={{ verticalAlign: 'middle', marginRight: 4 }} />
-                                                            Edit
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            className="se-action-outline"
-                                                            disabled={
-                                                                dutyLoadingId === s.id || s.status === 'inactive'
-                                                            }
-                                                            onClick={() => toggleDutyBusy(s)}
-                                                        >
-                                                            {dutyLoadingId === s.id
-                                                                ? '…'
-                                                                : s.dutyStatus === 'busy'
-                                                                  ? 'Mark Available'
-                                                                  : 'Mark Busy'}
-                                                        </button>
-                                                    </div>
+                                                    <RowActionsMenu
+                                                        ariaLabel={`Actions for ${s.name || 'employee'}`}
+                                                        items={[
+                                                            {
+                                                                label: 'Edit',
+                                                                onClick: () => openEdit(s),
+                                                            },
+                                                            {
+                                                                label:
+                                                                    s.dutyStatus === 'busy'
+                                                                        ? 'Mark available'
+                                                                        : 'Mark busy',
+                                                                onClick: () => toggleDutyBusy(s),
+                                                                disabled:
+                                                                    dutyLoadingId === s.id ||
+                                                                    s.status === 'inactive',
+                                                            },
+                                                        ]}
+                                                    />
                                                 </td>
                                             </tr>
                                         ))}

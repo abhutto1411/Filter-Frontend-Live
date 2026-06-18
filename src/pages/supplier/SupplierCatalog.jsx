@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
     CheckCircle2,
     Circle,
-    Globe2,
     Package,
     Plus,
     Search,
@@ -608,6 +607,8 @@ export default function SupplierCatalog() {
                     await updateSupplierProduct(String(supplierProductId), {
                         isActive: true,
                         masterProductId: String(master.id),
+                        productName: master.name,
+                        sku: master.sku || existingMatch?.sku || undefined,
                         warehouseUnit,
                         workshopUnit,
                         conversionFactor,
@@ -637,18 +638,9 @@ export default function SupplierCatalog() {
         <div>
             <div className="ws-page-header">
                 <div>
-                    <h2
-                        className="ws-page-title"
-                        style={{ display: 'flex', alignItems: 'center', gap: 8 }}
-                    >
-                        <Package size={20} style={{ color: '#2563EB' }} /> Product Catalog
-                    </h2>
-                    <p
-                        className="ws-page-sub"
-                        style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}
-                    >
-                        <Globe2 size={14} style={{ color: '#7C3AED' }} /> Branch:{' '}
-                        <strong>{branchLabel}</strong> · {zoneName} · {brandCountForHeader}{' '}
+                    <h2 className="ws-page-title">Product Catalog</h2>
+                    <p className="ws-page-sub">
+                        Branch: <strong>{branchLabel}</strong> · {zoneName} · {brandCountForHeader}{' '}
                         brands · {cardRows.length} products
                     </p>
                 </div>
@@ -708,87 +700,57 @@ export default function SupplierCatalog() {
                 </div>
             ) : null}
 
-            <div
-                role="tablist"
-                aria-label="Catalog sections"
-                style={{
-                    display: 'flex',
-                    gap: 4,
-                    marginBottom: 20,
-                    borderBottom: '2px solid var(--color-border-light, #e2e8f0)',
-                }}
-            >
-                <button
-                    type="button"
-                    role="tab"
-                    aria-selected={catalogTab === 'browse'}
-                    id="catalog-tab-browse"
-                    onClick={() => setCatalogTab('browse')}
-                    style={{
-                        padding: '10px 18px',
-                        fontWeight: 700,
-                        fontSize: '0.875rem',
-                        border: 'none',
-                        background: 'transparent',
-                        cursor: 'pointer',
-                        color:
-                            catalogTab === 'browse'
-                                ? 'var(--color-text-dark)'
-                                : 'var(--color-text-muted)',
-                        borderBottom:
-                            catalogTab === 'browse'
-                                ? '2px solid #2563EB'
-                                : '2px solid transparent',
-                        marginBottom: -2,
-                        borderRadius: '8px 8px 0 0',
-                    }}
-                >
-                    <Package size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-                    Browse catalog
-                </button>
-                <button
-                    type="button"
-                    role="tab"
-                    aria-selected={catalogTab === 'requests'}
-                    id="catalog-tab-requests"
-                    onClick={() => setCatalogTab('requests')}
-                    style={{
-                        padding: '10px 18px',
-                        fontWeight: 700,
-                        fontSize: '0.875rem',
-                        border: 'none',
-                        background: 'transparent',
-                        cursor: 'pointer',
-                        color:
-                            catalogTab === 'requests'
-                                ? 'var(--color-text-dark)'
-                                : 'var(--color-text-muted)',
-                        borderBottom:
-                            catalogTab === 'requests'
-                                ? '2px solid #2563EB'
-                                : '2px solid transparent',
-                        marginBottom: -2,
-                        borderRadius: '8px 8px 0 0',
-                    }}
-                >
-                    <Send size={16} style={{ verticalAlign: 'middle', marginRight: 6 }} />
-                    My Product Requests
-                    {requests.length > 0 ? (
-                        <span
-                            style={{
-                                marginLeft: 8,
-                                fontSize: '0.75rem',
-                                fontWeight: 800,
-                                padding: '2px 8px',
-                                borderRadius: 999,
-                                background: catalogTab === 'requests' ? '#DBEAFE' : '#F1F5F9',
-                                color: '#1D4ED8',
-                            }}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+                <div role="tablist" aria-label="Catalog sections" className="theme-segmented">
+                    <button
+                        type="button"
+                        role="tab"
+                        aria-selected={catalogTab === 'browse'}
+                        id="catalog-tab-browse"
+                        onClick={() => setCatalogTab('browse')}
+                        className={`theme-segmented__btn${
+                            catalogTab === 'browse' ? ' theme-segmented__btn--active' : ''
+                        }`}
+                    >
+                        Browse catalog
+                    </button>
+                    <button
+                        type="button"
+                        role="tab"
+                        aria-selected={catalogTab === 'requests'}
+                        id="catalog-tab-requests"
+                        onClick={() => setCatalogTab('requests')}
+                        className={`theme-segmented__btn${
+                            catalogTab === 'requests' ? ' theme-segmented__btn--active' : ''
+                        }`}
+                    >
+                        My Product Requests
+                        {requests.length > 0 ? ` (${requests.length})` : ''}
+                    </button>
+                </div>
+
+                {catalogTab === 'browse' ? (
+                    <div role="tablist" aria-label="Catalog filter" className="theme-segmented">
+                        <button
+                            type="button"
+                            className={`theme-segmented__btn${
+                                masterFilterTab === 'not_added' ? ' theme-segmented__btn--active' : ''
+                            }`}
+                            onClick={() => setMasterFilterTab('not_added')}
                         >
-                            {requests.length}
-                        </span>
-                    ) : null}
-                </button>
+                            Not Added Products
+                        </button>
+                        <button
+                            type="button"
+                            className={`theme-segmented__btn${
+                                masterFilterTab === 'already_added' ? ' theme-segmented__btn--active' : ''
+                            }`}
+                            onClick={() => setMasterFilterTab('already_added')}
+                        >
+                            Already Added Products
+                        </button>
+                    </div>
+                ) : null}
             </div>
 
             {inventorySuccess ? (
@@ -829,30 +791,6 @@ export default function SupplierCatalog() {
 
             {catalogTab === 'browse' ? (
                 <>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-                        <button
-                            type="button"
-                            className={
-                                masterFilterTab === 'not_added'
-                                    ? 'btn-portal'
-                                    : 'btn-portal-outline'
-                            }
-                            onClick={() => setMasterFilterTab('not_added')}
-                        >
-                            Not Added Products
-                        </button>
-                        <button
-                            type="button"
-                            className={
-                                masterFilterTab === 'already_added'
-                                    ? 'btn-portal'
-                                    : 'btn-portal-outline'
-                            }
-                            onClick={() => setMasterFilterTab('already_added')}
-                        >
-                            Already Added Products
-                        </button>
-                    </div>
                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 20 }}>
                 <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
                     <Search
@@ -1172,7 +1110,23 @@ export default function SupplierCatalog() {
                                             gap: 8,
                                         }}
                                     >
-                                        <div>
+                                        <span
+                                            className={`ws-badge ${inStock ? 'ws-badge--green' : added ? 'ws-badge--gray' : 'ws-badge--red'}`}
+                                            style={{
+                                                fontSize: '0.625rem',
+                                                padding: '2px 6px',
+                                                flexShrink: 0,
+                                            }}
+                                        >
+                                            {added
+                                                ? supplierWhQty > 0
+                                                    ? `${supplierWhQty} in your stock`
+                                                    : 'In your catalog · 0 stock'
+                                                : inStock
+                                                  ? `${item.stock_qty} in stock`
+                                                  : 'Out'}
+                                        </span>
+                                        <div style={{ textAlign: 'right', flexShrink: 0 }}>
                                             <p style={{ fontSize: '0.9375rem', fontWeight: 900, margin: 0, lineHeight: 1.2 }}>
                                                 SAR {(item.sale_price || 0).toLocaleString()}
                                             </p>
@@ -1187,18 +1141,6 @@ export default function SupplierCatalog() {
                                                 per {item.unit} · Min: {item.min_order_qty || 1}
                                             </p>
                                         </div>
-                                        <span
-                                            className={`ws-badge ${inStock ? 'ws-badge--green' : added ? 'ws-badge--gray' : 'ws-badge--red'}`}
-                                            style={{ fontSize: '0.625rem', padding: '2px 6px' }}
-                                        >
-                                            {added
-                                                ? supplierWhQty > 0
-                                                    ? `${supplierWhQty} in your stock`
-                                                    : 'In your catalog · 0 stock'
-                                                : inStock
-                                                  ? `${item.stock_qty} in stock`
-                                                  : 'Out'}
-                                        </span>
                                     </div>
                                 </div>
                             </div>

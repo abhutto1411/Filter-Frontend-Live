@@ -93,9 +93,16 @@ export default function SupplierStorageFacilityBrands() {
             ) : null}
 
             <header className="mgr-si-header">
-                <h2 className="mgr-si-title">
-                    {supplierName ? supplierName : 'Storage Facility'}
-                </h2>
+                <div className="mgr-si-header-top">
+                    <h2 className="mgr-si-title" style={{ margin: 0 }}>
+                        {supplierName ? supplierName : 'Storage Facility'}
+                    </h2>
+                    {isOwner ? (
+                        <button type="button" className="mgr-si-btn-new" onClick={() => setModalOpen(true)}>
+                            <Plus size={16} /> Add brand
+                        </button>
+                    ) : null}
+                </div>
                 <p className="mgr-si-subtitle">
                     {supplierName
                         ? 'Storage brands for this supplier — products, stock, movements, invoices, and accounting.'
@@ -104,14 +111,6 @@ export default function SupplierStorageFacilityBrands() {
             </header>
 
             {err ? <div className="mgr-si-error">{err}</div> : null}
-
-            {isOwner ? (
-                <div style={{ marginBottom: 16 }}>
-                    <button type="button" className="mgr-si-btn-new" onClick={() => setModalOpen(true)}>
-                        <Plus size={16} /> Add brand
-                    </button>
-                </div>
-            ) : null}
 
             <div className="premium-table mgr-si-table-wrap">
                 {loading ? (

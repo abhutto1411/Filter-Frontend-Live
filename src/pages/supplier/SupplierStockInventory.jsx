@@ -10,9 +10,11 @@ import {
     Search,
     TrendingUp,
 } from 'lucide-react';
-import { ShimmerStatStrip, ShimmerTable } from '../../components/supplier/Shimmer';
+import { ShimmerKpiGrid, ShimmerTable } from '../../components/supplier/Shimmer';
 import { AnimatePresence } from 'framer-motion';
 import Modal from '../../components/Modal';
+import RowActionsMenu from '../../components/RowActionsMenu';
+import { useColumnSort, SortableTh } from '../../components/TableSort';
 import {
     fetchAllSupplierProducts,
     getSupplierInventoryStockBalances,
@@ -23,6 +25,23 @@ import {
 import SupplierProductHistoryDrawer from './accounting/SupplierProductHistoryDrawer';
 import StockProductUomEditModal from './StockProductUomEditModal';
 import StockProductPurchasePriceEditModal from './StockProductPurchasePriceEditModal';
+import StockProductCriticalLevelEditModal from './StockProductCriticalLevelEditModal';
+
+function stockRowMatchesSearch(row, searchText) {
+    const q = String(searchText || '').trim().toLowerCase();
+    if (!q) return true;
+    const tokens = q.split(/\s+/).filter(Boolean);
+    const hay = [
+        row?.name,
+        row?.sku,
+        row?.masterProductName,
+        row?.masterProductSku,
+        row?.masterProductArabicName,
+    ]
+        .map((v) => String(v || '').toLowerCase())
+        .join(' ');
+    return tokens.every((t) => hay.includes(t));
+}
 import {
     mapSupplierHistoryToMovementRegister,
     mapSupplierHistoryToTimelineEntries,
@@ -113,29 +132,22 @@ export default function SupplierStockInventory() {
     const [accountingHistoryProduct, setAccountingHistoryProduct] = useState(null);
     const [uomEditProduct, setUomEditProduct] = useState(null);
     const [purchasePriceEditProduct, setPurchasePriceEditProduct] = useState(null);
+    const [criticalLevelEditProduct, setCriticalLevelEditProduct] = useState(null);
 
-    // `stock` is already server-filtered by `search` (name or SKU). Keep a light client filter
-    // as a safety net (e.g. if backend returns broader results).
     const filteredList = useMemo(() => {
         const list = stock || [];
         if (!search.trim()) return list;
-        const q = search.toLowerCase().trim();
-        return list.filter(
-            (s) =>
-                (s.name || '').toLowerCase().includes(q) ||
-                (s.sku || '').toLowerCase().includes(q),
-        );
+        return list.filter((s) => stockRowMatchesSearch(s, search));
     }, [stock, search]);
+
+    /** 3-state column sorting for the two inventory tables. */
+    const stockSort = useColumnSort();
+    const itemsSort = useColumnSort();
 
     const movementProductOptions = useMemo(() => {
         const list = stock || [];
-        const q = movementProductSearch.trim().toLowerCase();
-        if (!q) return list;
-        return list.filter(
-            (s) =>
-                (s.name || '').toLowerCase().includes(q) ||
-                (s.sku || '').toLowerCase().includes(q),
-        );
+        if (!movementProductSearch.trim()) return list;
+        return list.filter((s) => stockRowMatchesSearch(s, movementProductSearch));
     }, [stock, movementProductSearch]);
 
     const selectedMovementProduct = useMemo(() => {
@@ -265,6 +277,9 @@ export default function SupplierStockInventory() {
                       id: item.productId,
                       sku: item.sku || '-',
                       name: item.productName,
+                      masterProductName: item.masterProductName || null,
+                      masterProductSku: item.masterProductSku || null,
+                      masterProductArabicName: item.masterProductArabicName || null,
                       unit: item.workshopUnit || 'pcs',
                       warehouseUnit: item.warehouseUnit || 'Box',
                       conversionFactor: Number(item.conversionFactor) || 1,
@@ -530,217 +545,58 @@ export default function SupplierStockInventory() {
             </div>
 
             {apiError ? (
-                <div
-                    className="ws-section"
-                    style={{
-                        marginBottom: 16,
-                        padding: 14,
-                        background: '#FEF2F2',
-                        border: '1px solid #FECACA',
-                        borderRadius: 12,
-                        color: '#B91C1C',
-                        fontSize: '0.875rem',
-                    }}
-                >
+                <div className="theme-alert">
                     <strong>Could not load stock:</strong> {apiError}
                 </div>
             ) : null}
 
             {loading ? (
-                <ShimmerStatStrip cards={4} />
+                <ShimmerKpiGrid cards={4} />
             ) : (
-                <div
-                    style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-                        gap: 12,
-                        marginBottom: 20,
-                    }}
-                >
-                    <div className="ws-section" style={{ marginBottom: 0, padding: 16, textAlign: 'center' }}>
-                        <p
-                            style={{
-                                fontSize: '0.7rem',
-                                fontWeight: 600,
-                                color: 'var(--color-text-muted)',
-                                margin: 0,
-                                textTransform: 'uppercase',
-                            }}
-                        >
-                            Total SKUs
-                        </p>
-                        <p
-                            style={{
-                                fontSize: '1.5rem',
-                                fontWeight: 800,
-                                color: 'var(--color-text-dark)',
-                                margin: '4px 0 0 0',
-                            }}
-                        >
-                            {totalSKUs}
-                        </p>
-                    </div>
-                    <div
-                        className="ws-section"
-                        style={{
-                            marginBottom: 0,
-                            padding: 16,
-                            textAlign: 'center',
-                            borderLeft: '4px solid #DC2626',
-                        }}
-                    >
-                        <p
-                            style={{
-                                fontSize: '0.7rem',
-                                fontWeight: 600,
-                                color: '#B91C1C',
-                                margin: 0,
-                                textTransform: 'uppercase',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: 4,
-                            }}
-                        >
-                            <AlertTriangle size={14} /> Critical
-                        </p>
-                        <p
-                            style={{
-                                fontSize: '1.5rem',
-                                fontWeight: 800,
-                                color: '#DC2626',
-                                margin: '4px 0 0 0',
-                            }}
-                        >
-                            {criticalCount}
-                        </p>
-                    </div>
-                    <div
-                        className="ws-section"
-                        style={{
-                            marginBottom: 0,
-                            padding: 16,
-                            textAlign: 'center',
-                            background: '#FEF3C7',
-                            border: '1px solid #FDE68A',
-                        }}
-                    >
-                        <p
-                            style={{
-                                fontSize: '0.7rem',
-                                fontWeight: 600,
-                                color: '#B45309',
-                                margin: 0,
-                                textTransform: 'uppercase',
-                            }}
-                        >
-                            Reorder Needed
-                        </p>
-                        <p
-                            style={{
-                                fontSize: '1.5rem',
-                                fontWeight: 800,
-                                color: '#B45309',
-                                margin: '4px 0 0 0',
-                            }}
-                        >
-                            {reorderNeededCount}
-                        </p>
-                    </div>
-                    <div
-                        className="ws-section"
-                        style={{
-                            marginBottom: 0,
-                            padding: 16,
-                            textAlign: 'center',
-                            background: '#EFF6FF',
-                            border: '1px solid #BFDBFE',
-                        }}
-                    >
-                        <p
-                            style={{
-                                fontSize: '0.7rem',
-                                fontWeight: 600,
-                                color: '#1D4ED8',
-                                margin: 0,
-                                textTransform: 'uppercase',
-                            }}
-                        >
-                            Inventory Value
-                        </p>
-                        <p
-                            style={{
-                                fontSize: '1.5rem',
-                                fontWeight: 800,
-                                color: '#1D4ED8',
-                                margin: '4px 0 0 0',
-                            }}
-                        >
-                            SAR {inventoryValue.toLocaleString()}
-                        </p>
-                    </div>
+                <div className="ws-kpi-grid">
+                    {[
+                        { key: 'skus', label: 'TOTAL SKUS', value: totalSKUs, Icon: Package },
+                        { key: 'critical', label: 'CRITICAL', value: criticalCount, Icon: AlertTriangle },
+                        { key: 'reorder', label: 'REORDER NEEDED', value: reorderNeededCount, Icon: TrendingUp },
+                        {
+                            key: 'value',
+                            label: 'INVENTORY VALUE',
+                            value: `SAR ${inventoryValue.toLocaleString()}`,
+                            Icon: FileSpreadsheet,
+                        },
+                    ].map(({ key, label, value, Icon }) => (
+                        <div key={key} className="ws-kpi-card">
+                            <div>
+                                <p className="ws-kpi-label">{label}</p>
+                                <p className="ws-kpi-value">{value}</p>
+                            </div>
+                            <div className="ws-kpi-icon ws-kpi-icon--dark">
+                                <Icon size={22} />
+                            </div>
+                        </div>
+                    ))}
                 </div>
             )}
 
-            <div
-                style={{
-                    display: 'flex',
-                    gap: 0,
-                    borderBottom: '2px solid var(--color-border)',
-                    marginBottom: 16,
-                }}
-            >
+            <div className="theme-segmented" style={{ marginBottom: 16 }}>
                 <button
                     type="button"
                     onClick={() => setActiveTab('inventory')}
-                    style={{
-                        padding: '10px 20px',
-                        fontSize: '0.875rem',
-                        fontWeight: 600,
-                        border: 'none',
-                        borderBottom:
-                            activeTab === 'inventory' ? '2px solid #2563EB' : '2px solid transparent',
-                        marginBottom: -2,
-                        background: 'none',
-                        color: activeTab === 'inventory' ? '#2563EB' : 'var(--color-text-muted)',
-                        cursor: 'pointer',
-                    }}
+                    className={`theme-segmented__btn${activeTab === 'inventory' ? ' theme-segmented__btn--active' : ''}`}
                 >
                     Stock Inventory
                 </button>
                 <button
                     type="button"
                     onClick={() => setActiveTab('items')}
-                    style={{
-                        padding: '10px 20px',
-                        fontSize: '0.875rem',
-                        fontWeight: 600,
-                        border: 'none',
-                        borderBottom:
-                            activeTab === 'items' ? '2px solid #2563EB' : '2px solid transparent',
-                        marginBottom: -2,
-                        background: 'none',
-                        color: activeTab === 'items' ? '#2563EB' : 'var(--color-text-muted)',
-                        cursor: 'pointer',
-                    }}
+                    className={`theme-segmented__btn${activeTab === 'items' ? ' theme-segmented__btn--active' : ''}`}
                 >
                     Inventory items
                 </button>
                 <button
                     type="button"
                     onClick={() => setActiveTab('movements')}
-                    style={{
-                        padding: '10px 20px',
-                        fontSize: '0.875rem',
-                        fontWeight: 600,
-                        border: 'none',
-                        borderBottom:
-                            activeTab === 'movements' ? '2px solid #2563EB' : '2px solid transparent',
-                        marginBottom: -2,
-                        background: 'none',
-                        color: activeTab === 'movements' ? '#2563EB' : 'var(--color-text-muted)',
-                        cursor: 'pointer',
-                    }}
+                    className={`theme-segmented__btn${activeTab === 'movements' ? ' theme-segmented__btn--active' : ''}`}
                 >
                     Stock Movements
                 </button>
@@ -836,15 +692,17 @@ export default function SupplierStockInventory() {
                             <table className="ws-table">
                                 <thead>
                                     <tr>
-                                        <th>Product</th>
-                                        <th>SKU</th>
-                                        <th style={{ textAlign: 'right' }}>Qty (warehouse)</th>
-                                        <th style={{ textAlign: 'right' }}>Qty (workshop)</th>
-                                        <th style={{ textAlign: 'right' }}>Critical</th>
+                                        <SortableTh label="Product" columnKey="product" sortKey={itemsSort.sortKey} sortDir={itemsSort.sortDir} onSort={itemsSort.toggleSort} />
+                                        <SortableTh label="SKU" columnKey="sku" sortKey={itemsSort.sortKey} sortDir={itemsSort.sortDir} onSort={itemsSort.toggleSort} />
+                                        <SortableTh label="Qty (warehouse)" columnKey="qtyWh" align="right" sortKey={itemsSort.sortKey} sortDir={itemsSort.sortDir} onSort={itemsSort.toggleSort} />
+                                        <SortableTh label="Qty (workshop)" columnKey="qtyWs" align="right" sortKey={itemsSort.sortKey} sortDir={itemsSort.sortDir} onSort={itemsSort.toggleSort} />
+                                        <SortableTh label="Critical" columnKey="critical" align="right" sortKey={itemsSort.sortKey} sortDir={itemsSort.sortDir} onSort={itemsSort.toggleSort} />
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {(inventoryItems || [])
+                                    {(() => {
+                                        const itemsRows = (inventoryItems || [])
                                         .filter((p) => {
                                             const q = search.trim().toLowerCase();
                                             if (!q) return true;
@@ -861,8 +719,27 @@ export default function SupplierStockInventory() {
                                             const wh = Number(warehouseQtyByProductId[pid] ?? 0);
                                             const crit = Number(p?.criticalStockAlert ?? 0);
                                             return crit > 0 && wh <= crit;
-                                        })
-                                        .map((p) => {
+                                        });
+                                        return itemsSort
+                                            .sortRows(itemsRows, {
+                                                product: (p) => p?.name || p?.productName || '',
+                                                sku: (p) => p?.sku || '',
+                                                qtyWh: (p) =>
+                                                    Number(warehouseQtyByProductId[String(p?.id)] ?? 0),
+                                                qtyWs: (p) => {
+                                                    const pid = String(p?.id);
+                                                    const uom = productUomByProductId[pid] || {};
+                                                    const cf =
+                                                        Number(
+                                                            uom.conversionFactor ||
+                                                                p?.conversionFactor ||
+                                                                1,
+                                                        ) || 1;
+                                                    return Number(warehouseQtyByProductId[pid] ?? 0) * cf;
+                                                },
+                                                critical: (p) => Number(p?.criticalStockAlert ?? 0),
+                                            })
+                                            .map((p) => {
                                             const pid = String(p?.id);
                                             const uom = productUomByProductId[pid] || {};
                                             const cf =
@@ -890,9 +767,46 @@ export default function SupplierStockInventory() {
                                                             ? fmtQty(Number(p.criticalStockAlert))
                                                             : '—'}
                                                     </td>
+                                                    <td style={{ whiteSpace: 'nowrap' }}>
+                                                        <RowActionsMenu
+                                                            ariaLabel={`Actions for ${p?.name || p?.productName || 'item'}`}
+                                                            items={[
+                                                                {
+                                                                    label: 'Edit critical level',
+                                                                    onClick: () =>
+                                                                        setCriticalLevelEditProduct({
+                                                                            id: p.id,
+                                                                            name:
+                                                                                p?.name ||
+                                                                                p?.productName ||
+                                                                                'Product',
+                                                                            sku: p?.sku || '',
+                                                                            warehouseUnit:
+                                                                                uom.warehouseUnit ||
+                                                                                p?.warehouseUnit ||
+                                                                                'Box',
+                                                                            unit:
+                                                                                uom.workshopUnit ||
+                                                                                p?.workshopUnit ||
+                                                                                'pcs',
+                                                                            conversionFactor: cf,
+                                                                            criticalLevel:
+                                                                                p?.criticalStockAlert != null
+                                                                                    ? Number(p.criticalStockAlert)
+                                                                                    : null,
+                                                                            criticalStockAlert:
+                                                                                p?.criticalStockAlert != null
+                                                                                    ? Number(p.criticalStockAlert)
+                                                                                    : null,
+                                                                        }),
+                                                                },
+                                                            ]}
+                                                        />
+                                                    </td>
                                                 </tr>
                                             );
-                                        })}
+                                        });
+                                    })()}
                                 </tbody>
                             </table>
                         </div>
@@ -1032,45 +946,6 @@ export default function SupplierStockInventory() {
                         ) : null}
                     </div>
 
-                    {criticalItems.length > 0 && (
-                        <div
-                            style={{
-                                marginBottom: 16,
-                                padding: 14,
-                                background: '#FEF2F2',
-                                border: '1px solid #FECACA',
-                                borderRadius: 12,
-                                borderLeft: '4px solid #DC2626',
-                            }}
-                        >
-                            <p
-                                style={{
-                                    fontWeight: 700,
-                                    fontSize: '0.875rem',
-                                    color: '#B91C1C',
-                                    margin: 0,
-                                }}
-                            >
-                                Critical Stock Alert ({criticalItems.length} item
-                                {criticalItems.length !== 1 ? 's' : ''})
-                            </p>
-                            <div style={{ marginTop: 8 }}>
-                                {criticalItems.map((s) => (
-                                    <p
-                                        key={s.id}
-                                        style={{
-                                            fontSize: '0.8125rem',
-                                            color: '#B91C1C',
-                                            margin: '2px 0 0 0',
-                                        }}
-                                    >
-                                        <strong>{s.name}</strong>: {fmtQty(s.qty)} {s.unit}
-                                    </p>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
                     {loading ? (
                         <div className="ws-section">
                             <ShimmerTable rows={10} columns={10} />
@@ -1081,21 +956,35 @@ export default function SupplierStockInventory() {
                                 <table className="ws-table">
                                     <thead>
                                         <tr>
-                                            <th>Product</th>
-                                            <th>SKU</th>
-                                            <th>Unit</th>
-                                            <th>Stock Qty</th>
-                                            <th>Awaiting Workshop</th>
-                                            <th>Critical Level</th>
-                                            <th>Reorder Level</th>
-                                            <th>Purchase Price</th>
-                                            <th>Value</th>
-                                            <th>Status</th>
+                                            <SortableTh label="Product" columnKey="product" sortKey={stockSort.sortKey} sortDir={stockSort.sortDir} onSort={stockSort.toggleSort} />
+                                            <SortableTh label="SKU" columnKey="sku" sortKey={stockSort.sortKey} sortDir={stockSort.sortDir} onSort={stockSort.toggleSort} />
+                                            <SortableTh label="Unit" columnKey="unit" sortKey={stockSort.sortKey} sortDir={stockSort.sortDir} onSort={stockSort.toggleSort} />
+                                            <SortableTh label="Stock Qty" columnKey="stockQty" sortKey={stockSort.sortKey} sortDir={stockSort.sortDir} onSort={stockSort.toggleSort} />
+                                            <SortableTh label="Awaiting Workshop" columnKey="awaiting" sortKey={stockSort.sortKey} sortDir={stockSort.sortDir} onSort={stockSort.toggleSort} />
+                                            <SortableTh label="Critical Level" columnKey="critical" sortKey={stockSort.sortKey} sortDir={stockSort.sortDir} onSort={stockSort.toggleSort} />
+                                            <SortableTh label="Reorder Level" columnKey="reorder" sortKey={stockSort.sortKey} sortDir={stockSort.sortDir} onSort={stockSort.toggleSort} />
+                                            <SortableTh label="Purchase Price" columnKey="price" sortKey={stockSort.sortKey} sortDir={stockSort.sortDir} onSort={stockSort.toggleSort} />
+                                            <SortableTh label="Value" columnKey="value" sortKey={stockSort.sortKey} sortDir={stockSort.sortDir} onSort={stockSort.toggleSort} />
+                                            <SortableTh label="Status" columnKey="status" sortKey={stockSort.sortKey} sortDir={stockSort.sortDir} onSort={stockSort.toggleSort} />
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {filteredList.map((s) => {
+                                        {stockSort
+                                            .sortRows(filteredList, {
+                                                product: (s) => s.name,
+                                                sku: (s) => s.sku,
+                                                unit: (s) => s.warehouseUnit || s.unit,
+                                                stockQty: (s) => Number(s.warehouseQty ?? s.qty ?? 0),
+                                                awaiting: (s) => Number(s.pendingWorkshopReceive ?? 0),
+                                                critical: (s) => Number(s.criticalLevel ?? 0),
+                                                reorder: (s) => Number(s.reorder ?? 0),
+                                                price: (s) => Number(s.price ?? 0),
+                                                value: (s) => Number(warehouseStockLineValueSar(s) ?? 0),
+                                                status: (s) =>
+                                                    s.qty <= (s.criticalLevel ?? 0) ? 'critical' : 'ok',
+                                            })
+                                            .map((s) => {
                                             const value = warehouseStockLineValueSar(s);
                                             const isCritical = s.qty <= (s.criticalLevel ?? 0);
                                             return (
@@ -1111,7 +1000,6 @@ export default function SupplierStockInventory() {
                                                         }
                                                     }}
                                                     style={{
-                                                        background: isCritical ? '#FEF2F2' : undefined,
                                                         cursor: 'pointer',
                                                     }}
                                                     className="ws-inv-row-clickable"
@@ -1203,7 +1091,13 @@ export default function SupplierStockInventory() {
                                                         )}
                                                     </td>
                                                     <td>
-                                                        {s.criticalLevel != null ? fmtQty(s.criticalLevel) : '-'}
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                                            <span>
+                                                                {s.criticalLevel != null
+                                                                    ? fmtQty(s.criticalLevel)
+                                                                    : '-'}
+                                                            </span>
+                                                        </div>
                                                     </td>
                                                     <td>{s.reorder != null ? fmtQty(s.reorder) : '-'}</td>
                                                     <td>
@@ -1223,25 +1117,6 @@ export default function SupplierStockInventory() {
                                                                     From master catalog
                                                                 </span>
                                                             ) : null}
-                                                            <button
-                                                                type="button"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    setPurchasePriceEditProduct(s);
-                                                                }}
-                                                                style={{
-                                                                    padding: '2px 0',
-                                                                    border: 'none',
-                                                                    background: 'transparent',
-                                                                    color: '#2563eb',
-                                                                    fontSize: '0.7rem',
-                                                                    fontWeight: 600,
-                                                                    cursor: 'pointer',
-                                                                    textAlign: 'left',
-                                                                }}
-                                                            >
-                                                                Edit price
-                                                            </button>
                                                         </div>
                                                     </td>
                                                     <td>SAR {value.toLocaleString()}</td>
@@ -1253,123 +1128,45 @@ export default function SupplierStockInventory() {
                                                         </span>
                                                     </td>
                                                     <td style={{ whiteSpace: 'nowrap' }}>
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setUomEditProduct(s);
-                                                            }}
-                                                            style={{
-                                                                padding: '6px 10px',
-                                                                borderRadius: 6,
-                                                                border: '1px solid #e0e7ff',
-                                                                background: '#eef2ff',
-                                                                fontSize: '0.75rem',
-                                                                fontWeight: 600,
-                                                                cursor: 'pointer',
-                                                                display: 'inline-flex',
-                                                                alignItems: 'center',
-                                                                gap: 4,
-                                                            }}
-                                                            title="Edit warehouse / workshop UOM and conversion factor"
-                                                        >
-                                                            <Pencil size={12} /> Edit UOM
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                openAdjust(s);
-                                                            }}
-                                                            style={{
-                                                                marginLeft: 6,
-                                                                padding: '6px 10px',
-                                                                borderRadius: 6,
-                                                                border: '1px solid var(--color-border)',
-                                                                background: '#fff',
-                                                                fontSize: '0.75rem',
-                                                                fontWeight: 600,
-                                                                cursor: 'pointer',
-                                                            }}
-                                                        >
-                                                            Adjust
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                navigateToPurchaseWithProduct(s);
-                                                            }}
-                                                            style={{
-                                                                marginLeft: 6,
-                                                                padding: '6px 10px',
-                                                                borderRadius: 6,
-                                                                border: '1px solid var(--color-border)',
-                                                                background: '#fff',
-                                                                fontSize: '0.75rem',
-                                                                fontWeight: 600,
-                                                                cursor: 'pointer',
-                                                                display: 'inline-flex',
-                                                                alignItems: 'center',
-                                                                gap: 4,
-                                                            }}
-                                                        >
-                                                            <Pencil size={12} /> Adjust via Purchase
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setAccountingHistoryProduct({ id: s.id, name: s.name });
-                                                            }}
-                                                            style={{
-                                                                marginLeft: 6,
-                                                                padding: '6px 10px',
-                                                                borderRadius: 6,
-                                                                border: '1px solid var(--color-border)',
-                                                                background: '#fff',
-                                                                fontSize: '0.75rem',
-                                                                fontWeight: 600,
-                                                                cursor: 'pointer',
-                                                                display: 'inline-flex',
-                                                                alignItems: 'center',
-                                                                gap: 4,
-                                                            }}
-                                                            title="View moving-average inventory history (accounting)"
-                                                        >
-                                                            <History size={12} /> Accounting
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                removeFromStock(s);
-                                                            }}
-                                                            disabled={String(removingId) === String(s.id)}
-                                                            style={{
-                                                                marginLeft: 6,
-                                                                padding: '6px 10px',
-                                                                borderRadius: 6,
-                                                                border: '1px solid #fecaca',
-                                                                background:
-                                                                    String(removingId) === String(s.id)
-                                                                        ? '#fee2e2'
-                                                                        : '#fff',
-                                                                fontSize: '0.75rem',
-                                                                fontWeight: 700,
-                                                                cursor:
-                                                                    String(removingId) === String(s.id)
-                                                                        ? 'not-allowed'
-                                                                        : 'pointer',
-                                                                display: 'inline-flex',
-                                                                alignItems: 'center',
-                                                                gap: 6,
-                                                                color: '#b91c1c',
-                                                            }}
-                                                            title="Remove from your stock list"
-                                                        >
-                                                            Remove
-                                                        </button>
+                                                        <RowActionsMenu
+                                                            ariaLabel={`Actions for ${s.name || 'product'}`}
+                                                            items={[
+                                                                {
+                                                                    label: 'Edit price',
+                                                                    onClick: () => setPurchasePriceEditProduct(s),
+                                                                },
+                                                                {
+                                                                    label: 'Edit critical level',
+                                                                    onClick: () => setCriticalLevelEditProduct(s),
+                                                                },
+                                                                {
+                                                                    label: 'Edit UOM',
+                                                                    onClick: () => setUomEditProduct(s),
+                                                                },
+                                                                {
+                                                                    label: 'Adjust stock',
+                                                                    onClick: () => openAdjust(s),
+                                                                },
+                                                                {
+                                                                    label: 'Adjust via purchase',
+                                                                    onClick: () => navigateToPurchaseWithProduct(s),
+                                                                },
+                                                                {
+                                                                    label: 'Accounting history',
+                                                                    onClick: () =>
+                                                                        setAccountingHistoryProduct({
+                                                                            id: s.id,
+                                                                            name: s.name,
+                                                                        }),
+                                                                },
+                                                                {
+                                                                    label: 'Remove from stock',
+                                                                    onClick: () => removeFromStock(s),
+                                                                    disabled: String(removingId) === String(s.id),
+                                                                    danger: true,
+                                                                },
+                                                            ]}
+                                                        />
                                                     </td>
                                                 </tr>
                                             );
@@ -2527,6 +2324,17 @@ export default function SupplierStockInventory() {
                     product={purchasePriceEditProduct}
                     onClose={() => setPurchasePriceEditProduct(null)}
                     onSaved={() => loadStock({ silent: true })}
+                />
+            ) : null}
+
+            {criticalLevelEditProduct ? (
+                <StockProductCriticalLevelEditModal
+                    product={criticalLevelEditProduct}
+                    onClose={() => setCriticalLevelEditProduct(null)}
+                    onSaved={() => {
+                        loadStock({ silent: true });
+                        if (activeTab === 'items') loadItems();
+                    }}
                 />
             ) : null}
         </div>

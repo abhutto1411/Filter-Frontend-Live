@@ -3,11 +3,10 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
     ChevronDown,
     ChevronRight,
-    Pencil,
     Plus,
-    Trash2,
 } from 'lucide-react';
 import Modal from '../../../components/Modal';
+import RowActionsMenu from '../../../components/RowActionsMenu';
 import {
     createSupplierAccount,
     deleteSupplierAccount,
@@ -826,14 +825,21 @@ export default function SupplierCOAManager() {
                 <td style={{ textAlign: 'right' }}>{Number(rc) > 0 ? money(rc) : '—'}</td>
                 <td style={{ textAlign: 'right', fontWeight: 700 }}>{money(balance)}</td>
                 <td style={{ textAlign: 'right' }}>
-                    <button type="button" style={outlineBtnStyle} onClick={() => setEditing(a)} title="Edit">
-                        <Pencil size={14} />
-                    </button>
-                    {!a.isAutoSeed ? (
-                        <button type="button" style={{ ...dangerBtnStyle, marginLeft: 6 }} onClick={() => handleDelete(a.id)} title="Delete">
-                            <Trash2 size={14} />
-                        </button>
-                    ) : null}
+                    <RowActionsMenu
+                        ariaLabel={`Actions for [${a.code}] ${a.name}`}
+                        items={[
+                            {
+                                label: 'Edit',
+                                onClick: () => setEditing(a),
+                            },
+                            {
+                                label: 'Delete',
+                                onClick: () => handleDelete(a.id),
+                                hidden: Boolean(a.isAutoSeed),
+                                danger: true,
+                            },
+                        ]}
+                    />
                 </td>
             </tr>,
             ...partyRows,

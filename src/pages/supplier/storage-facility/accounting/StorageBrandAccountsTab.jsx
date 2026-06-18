@@ -1,17 +1,16 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { unwrapBrandAccounts } from '../../../../services/storageFacilityAccountingApi';
 import { useStorageFacilityAccountingApi } from '../StorageFacilityPortalContext';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import Modal from '../../../../components/Modal';
+import RowActionsMenu from '../../../../components/RowActionsMenu';
 
 import {
     AcctCard,
     AcctEmpty,
     AcctError,
     AcctLoading,
-    dangerBtnStyle,
     money,
-    outlineBtnStyle,
     primaryBtnStyle,
 } from '../../accounting/SupplierAccountingShared';
 import StorageBrandLedgerView from './StorageBrandLedgerView';
@@ -333,45 +332,29 @@ export default function StorageBrandAccountsTab({
                                             className="sf-account-list-actions"
                                             onClick={(e) => e.stopPropagation()}
                                         >
-                                            <button
-                                                type="button"
-                                                style={outlineBtnStyle}
-                                                title="Edit"
-                                                onClick={() => {
-                                                    setModalOpen(false);
-                                                    setEditing(a);
-                                                }}
-                                            >
-                                                <Pencil size={14} />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                style={{
-                                                    ...outlineBtnStyle,
-                                                    marginLeft: 6,
-                                                }}
-                                                title={
-                                                    a.status === 'active'
-                                                        ? 'Set inactive'
-                                                        : 'Set active'
-                                                }
-                                                onClick={() => toggleStatus(a)}
-                                            >
-                                                {a.status === 'active' ? 'Inactive' : 'Active'}
-                                            </button>
-                                            {canDelete ? (
-                                                <button
-                                                    type="button"
-                                                    style={{
-                                                        ...dangerBtnStyle,
-                                                        marginLeft: 6,
-                                                    }}
-                                                    title="Delete"
-                                                    onClick={() => handleDelete(a)}
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            ) : null}
+                                            <RowActionsMenu
+                                                ariaLabel={`Actions for [${a.code}] ${a.name}`}
+                                                items={[
+                                                    {
+                                                        label: 'Edit',
+                                                        onClick: () => {
+                                                            setModalOpen(false);
+                                                            setEditing(a);
+                                                        },
+                                                    },
+                                                    {
+                                                        label:
+                                                            a.status === 'active' ? 'Inactive' : 'Active',
+                                                        onClick: () => toggleStatus(a),
+                                                    },
+                                                    {
+                                                        label: 'Delete',
+                                                        onClick: () => handleDelete(a),
+                                                        hidden: !canDelete,
+                                                        danger: true,
+                                                    },
+                                                ]}
+                                            />
                                         </div>
                                     </div>
                                 );

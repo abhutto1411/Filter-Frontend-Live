@@ -107,7 +107,7 @@
 
 .pos-side-card-title {
     font-size: 1.125rem;
-    font-weight: 800;
+    font-weight: 700;
 }
 
 .pos-side-card-subtitle {
@@ -133,7 +133,7 @@
     border: 1px solid #E5E7EB;
     border-radius: 12px;
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
     cursor: pointer;
     transition: all 0.2s;
@@ -198,7 +198,7 @@
 
 .pos-welcome-msg h2 {
     font-size: 1.75rem;
-    font-weight: 800;
+    font-weight: 700;
     margin-bottom: 8px;
     color: #FFFFFF;
 }
@@ -218,7 +218,7 @@
     border: 1.5px solid #E2E8F0;
     border-radius: 14px;
     font-size: 14px;
-    font-weight: 800;
+    font-weight: 700;
     color: #1E293B;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
@@ -311,7 +311,7 @@
 
 .pos-form-label {
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
 }
 
@@ -379,7 +379,7 @@
     background: #10B981;
     color: #FFF;
     font-size: 1rem;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
     box-shadow: 0 10px 15px -3px rgba(16, 185, 129, 0.2);
@@ -418,7 +418,7 @@
     padding: 16px 24px;
     text-align: left;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     color: #6B7280;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -436,7 +436,7 @@
     padding: 4px 10px;
     border-radius: 999px;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     background: rgba(34, 197, 94, 0.15);
     color: #16a34a;
 }
@@ -498,7 +498,7 @@
 
 .pos-sub-title {
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 700;
     margin: 0;
 }
 
@@ -529,7 +529,7 @@
     background: transparent;
     border-radius: 8px;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
     cursor: pointer;
     transition: all 0.2s;
@@ -607,7 +607,7 @@
 
 .pos-empty-bookings h3 {
     font-size: 1.125rem;
-    font-weight: 700;
+    font-weight: 600;
     margin-bottom: 8px;
 }
 
@@ -638,7 +638,7 @@
 
 .pos-title {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 4px;
 }
 
@@ -730,7 +730,7 @@
     background: #FFF;
     border-radius: 10px;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
     cursor: pointer;
     white-space: nowrap;
@@ -793,14 +793,14 @@
 
 .pos-order-item-name {
     font-size: 16px;
-    font-weight: 800;
+    font-weight: 700;
     color: #1E293B;
     line-height: 1.3;
 }
 
 .pos-order-item-price {
     font-size: 15px;
-    font-weight: 700;
+    font-weight: 600;
     color: #64748B;
 }
 
@@ -839,7 +839,7 @@
     border: none;
     border-radius: 10px;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -880,7 +880,7 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    font-weight: 800;
+    font-weight: 700;
     font-size: 1rem;
 }
 
@@ -928,7 +928,7 @@
 
 .pos-inv-item-name {
     font-size: 14px;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .pos-inv-item-sub {
@@ -937,7 +937,7 @@
 }
 
 .pos-inv-item-total {
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .pos-invoice-footer {
@@ -970,7 +970,7 @@
     border: 1px solid #E5E7EB;
     border-radius: 8px;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
 }
 
@@ -989,7 +989,7 @@
 
 .pos-invoice-row.grand-total {
     font-size: 1.75rem;
-    font-weight: 900;
+    font-weight: 800;
     color: #111111;
     margin-top: 12px;
     padding-top: 16px;
@@ -1004,7 +1004,7 @@
     border: none;
     border-radius: 14px;
     font-size: 1.125rem;
-    font-weight: 900;
+    font-weight: 800;
     cursor: pointer;
     transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
     margin-top: 12px;
@@ -1049,7 +1049,7 @@
 
 .pos-tech-modal h3 {
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 700;
     margin-bottom: 24px;
 }
 
@@ -1083,12 +1083,12 @@
 }
 
 .pos-tech-name {
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .pos-tech-status {
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     padding: 4px 8px;
     border-radius: 99px;
 }
@@ -1109,7 +1109,7 @@
     background: #F3F4F6;
     border: none;
     border-radius: 12px;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
 }
 
@@ -1148,7 +1148,7 @@
     background: var(--color-pos-gold);
     color: #FFFFFF;
     font-size: 10px;
-    font-weight: 900;
+    font-weight: 800;
     min-width: 22px;
     height: 22px;
     border-radius: 11px;
@@ -1169,7 +1169,7 @@
 
 .premium-catalog-square-box .category-tag {
     font-size: 9px;
-    font-weight: 900;
+    font-weight: 800;
     color: #94A3B8;
     letter-spacing: 0.05em;
     text-transform: uppercase;
@@ -1195,7 +1195,7 @@
 
 .premium-catalog-square-box .pos-order-item-name {
     font-size: 14px;
-    font-weight: 800;
+    font-weight: 700;
     color: #1E293B;
     line-height: 1.25;
 }
@@ -1234,7 +1234,7 @@
 
 .u-currency {
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     color: #94A3B8;
 }
 
@@ -1243,7 +1243,7 @@
     background: transparent;
     border: none;
     font-size: 13px;
-    font-weight: 800;
+    font-weight: 700;
     color: #0F172A;
     text-align: right;
     outline: none;
@@ -1291,7 +1291,7 @@
     border: 1px solid #E2E8F0;
     border-radius: 4px;
     font-size: 13px;
-    font-weight: 800;
+    font-weight: 700;
     color: #0F172A;
     text-align: center;
     outline: none;
@@ -1460,7 +1460,7 @@
 
 .pos-central-card h2 {
     font-size: 2rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #111;
     margin-bottom: 12px;
 }
@@ -1482,7 +1482,7 @@
     border: none;
     border-radius: 16px;
     font-size: 1.125rem;
-    font-weight: 800;
+    font-weight: 700;
     cursor: pointer;
     box-shadow: 0 8px 24px rgba(255, 214, 0, 0.2);
     transition: all 0.2s;
@@ -1556,7 +1556,7 @@
 
 .pos-vehicle-card h2 {
     font-size: 24px;
-    font-weight: 800;
+    font-weight: 700;
     color: #111;
     margin-bottom: 32px;
     text-align: left;
@@ -1578,7 +1578,7 @@
 
 .pos-vehicle-field label {
     font-size: 14px;
-    font-weight: 700;
+    font-weight: 600;
     color: #111;
 }
 
@@ -1607,7 +1607,7 @@
     border: none;
     border-radius: 14px;
     font-size: 16px;
-    font-weight: 800;
+    font-weight: 700;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1677,7 +1677,7 @@
 
 .pos-dept-wizard-content h2 {
     font-size: 24px;
-    font-weight: 800;
+    font-weight: 700;
     color: #111;
     margin-bottom: 8px;
 }
@@ -1766,7 +1766,7 @@
     border: none;
     border-radius: 14px;
     font-size: 16px;
-    font-weight: 800;
+    font-weight: 700;
     cursor: pointer;
     transition: all 0.2s;
     opacity: 0.9;
@@ -1805,7 +1805,7 @@
 
 .pos-draft-totals-card h3 {
     font-size: 13px;
-    font-weight: 800;
+    font-weight: 700;
     color: #475569;
     letter-spacing: 0.05em;
     margin-bottom: 16px;
@@ -1832,7 +1832,7 @@
 
 .pos-draft-dept-item .dept-price {
     font-size: 14px;
-    font-weight: 700;
+    font-weight: 600;
     color: #1E293B;
 }
 
@@ -1898,7 +1898,7 @@
 
 .pos-draft-summary-row .summary-value {
     font-size: 14px;
-    font-weight: 700;
+    font-weight: 600;
     color: #1E293B;
 }
 
@@ -1909,13 +1909,13 @@
 
 .pos-draft-summary-row.total-row .summary-label {
     font-size: 16px;
-    font-weight: 800;
+    font-weight: 700;
     color: #111;
 }
 
 .pos-draft-summary-row.total-row .total-price {
     font-size: 16px;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-pos-gold);
 }
 
@@ -1987,7 +1987,7 @@
     border: none;
     border-radius: 12px;
     font-size: 15px;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
 }
@@ -2015,7 +2015,7 @@
 
 .pos-jobs-overview-header .order-info h1 {
     font-size: 20px;
-    font-weight: 800;
+    font-weight: 700;
     margin: 0 0 4px 0;
     color: #111827;
 }
@@ -2081,7 +2081,7 @@
 
 .pos-job-card-header h3 {
     font-size: 16px;
-    font-weight: 700;
+    font-weight: 600;
     margin: 0;
     color: #111827;
 }
@@ -2175,7 +2175,7 @@
     border-radius: 12px;
     color: #10B981;
     font-size: 14px;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
 }
@@ -2245,7 +2245,7 @@
 
 .pos-job-item-box .item-name {
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     color: #334155;
     flex-grow: 1;
     line-height: 1.4;
@@ -2292,7 +2292,7 @@
 
 .price-control .label, .qty-control .label {
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     color: #94A3B8;
     text-transform: uppercase;
 }
@@ -2301,7 +2301,7 @@
     border: none;
     background: transparent;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     color: #1E293B;
     outline: none;
     padding: 0;
@@ -2364,7 +2364,7 @@
 
 .pos-tech-modal-premium .modal-header h3 {
     font-size: 1.25rem;
-    font-weight: 800;
+    font-weight: 700;
     margin: 0 0 4px 0;
     color: #FFFFFF;
 }
@@ -2419,7 +2419,7 @@
 
 .side-title {
     font-size: 0.75rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #94A3B8;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -2471,7 +2471,7 @@
 }
 
 .tech-chip-info .name {
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.875rem;
     color: #1E293B;
 }
@@ -2514,7 +2514,7 @@
 }
 
 .assigned-tech-row .name {
-    font-weight: 800;
+    font-weight: 700;
     color: #0F172A;
 }
 
@@ -2544,7 +2544,7 @@
 
 .commission-input-wrap .label {
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     color: #94A3B8;
     text-transform: uppercase;
 }
@@ -2565,7 +2565,7 @@
 
 .input-with-currency .currency {
     font-size: 12px;
-    font-weight: 800;
+    font-weight: 700;
     color: #64748B;
     margin-right: 8px;
 }
@@ -2576,7 +2576,7 @@
     border: none;
     background: transparent;
     font-size: 14px;
-    font-weight: 700;
+    font-weight: 600;
     color: #1E293B;
     outline: none;
 }
@@ -2612,7 +2612,7 @@
     padding: 12px 24px;
     border-radius: 12px;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
 }
@@ -2655,7 +2655,7 @@
 
 .pos-job-completed-banner span {
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     color: #166534;
 }
 
@@ -2684,7 +2684,7 @@
     padding: 12px 24px;
     height: 48px;
     border-radius: 12px;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 14px;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -2697,7 +2697,7 @@
     margin-top: 24px;
     background: #DAA51F;
     color: #FFF;
-    font-weight: 700;
+    font-weight: 600;
     box-shadow: 0 4px 12px rgba(218, 165, 31, 0.2);
 }
 
@@ -2745,7 +2745,7 @@
 
 .invoice-wizard-header h3 {
     font-size: 1.25rem;
-    font-weight: 800;
+    font-weight: 700;
     margin: 0;
 }
 
@@ -2773,7 +2773,7 @@
     display: flex;
     justify-content: space-between;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     color: #94A3B8;
     text-transform: uppercase;
 }
@@ -2822,7 +2822,7 @@
 .wizard-info-row .value {
     font-size: 13px;
     color: #1E293B;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .invoice-summary-items {
@@ -2836,7 +2836,7 @@
     background: #F8FAFC;
     padding: 8px 16px;
     font-size: 11px;
-    font-weight: 800;
+    font-weight: 700;
     color: #64748B;
     text-transform: uppercase;
     border-bottom: 1px solid #E2E8F0;
@@ -2855,7 +2855,7 @@
 }
 
 .summary-item-row .price {
-    font-weight: 700;
+    font-weight: 600;
     color: #1E293B;
 }
 
@@ -2873,7 +2873,7 @@
 
 .wizard-input-group label {
     font-size: 12px;
-    font-weight: 700;
+    font-weight: 600;
     color: #475569;
 }
 
@@ -2902,7 +2902,7 @@
 
 .payment-row label {
     font-size: 11px;
-    font-weight: 800;
+    font-weight: 700;
     color: #94A3B8;
     text-transform: uppercase;
     margin-bottom: 4px;
@@ -2938,7 +2938,7 @@
     border: 2px dashed #E2E8F0;
     border-radius: 12px;
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     color: #64748B;
     cursor: pointer;
     transition: all 0.2s ease;
@@ -2959,7 +2959,7 @@
     justify-content: center;
     gap: 10px;
     font-size: 14px;
-    font-weight: 800;
+    font-weight: 700;
 }
 
 .payment-balance-indicator.remaining {
@@ -3029,13 +3029,13 @@
 
 .wizard-total-display .label {
     font-size: 14px;
-    font-weight: 700;
+    font-weight: 600;
     opacity: 0.7;
 }
 
 .wizard-total-display .value {
     font-size: 24px;
-    font-weight: 900;
+    font-weight: 800;
     color: #FFD600;
 }
 

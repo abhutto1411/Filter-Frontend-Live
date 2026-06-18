@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Clock, CheckCircle, X, Eye, RefreshCw, FileText } from 'lucide-react';
-import { AnimatePresence } from 'framer-motion';
-import Modal from '../../components/Modal';
+import WorkshopSubScreen from '../../components/workshop/WorkshopSubScreen';
 import { ShimmerTableBodyRows, ShimmerTextBlock } from '../../components/supplier/Shimmer';
 import WorkshopPurchaseInvoiceView from '../../components/supplier/WorkshopPurchaseInvoiceView';
 import { apiFetch } from '../../services/api';
@@ -351,6 +350,21 @@ export default function WorkshopApprovals({
         };
     }, [viewDialog]);
 
+    const closeRejectDialog = useCallback(() => {
+        setRejectDialog(null);
+        setRejectReason('');
+    }, []);
+
+    const closeSiApproveScreen = useCallback(() => {
+        if (actionLoadingId) return;
+        setSiApproveModal(null);
+        setSiCriticalStock({});
+    }, [actionLoadingId]);
+
+    const closeViewDialog = useCallback(() => {
+        setViewDialog(null);
+    }, []);
+
     const filtered = useMemo(() => {
         return approvals.filter((a) => {
             // Per-type view permission — hide rows the user can't view at all.
@@ -564,6 +578,329 @@ export default function WorkshopApprovals({
     const formatDate = (d) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) : '—');
     const formatDateFull = (d) =>
         d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+    if (rejectDialog) {
+        return (
+            <WorkshopSubScreen
+                title={isSupplierSalesInvoiceRow(rejectDialog) ? 'Reject supplier invoice' : 'Reject approval'}
+                subtitle="Provide a reason — this is stored on the request."
+                backLabel="Back to Approvals"
+                onBack={closeRejectDialog}
+                backDisabled={actionLoadingId !== null}
+                size="narrow"
+                footer={(
+                    <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', width: '100%' }}>
+                        <button
+                            className="btn-secondary"
+                            onClick={closeRejectDialog}
+                            disabled={actionLoadingId !== null}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            className="btn-submit"
+                            style={{ background: '#DC2626' }}
+                            disabled={!rejectReason.trim() || actionLoadingId !== null}
+                            onClick={handleRejectSubmit}
+                        >
+                            {actionLoadingId != null && String(actionLoadingId).startsWith('reject-')
+                                ? 'Rejecting...'
+                                : 'Reject'}
+                        </button>
+                    </div>
+                )}
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    <textarea
+                        placeholder="Reason for rejection..."
+                        value={rejectReason}
+                        onChange={(e) => setRejectReason(e.target.value)}
+                        rows={3}
+                        style={{
+                            width: '100%',
+                            padding: 12,
+                            borderRadius: 8,
+                            border: '1px solid var(--color-border)',
+                            fontSize: '0.875rem',
+                            resize: 'vertical',
+                        }}
+                    />
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
+    if (siApproveModal) {
+        return (
+            <WorkshopSubScreen
+                title="Products will be added to branch inventory"
+                subtitle="Set critical stock for new branch products, then approve."
+                backLabel="Back to Approvals"
+                onBack={closeSiApproveScreen}
+                backDisabled={actionLoadingId !== null}
+                size="wide"
+                footer={(
+                    <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap', width: '100%' }}>
+                        <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={closeSiApproveScreen}
+                            disabled={actionLoadingId !== null}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            className="btn-submit"
+                            onClick={submitSupplierInvoiceApproveFromModal}
+                            disabled={actionLoadingId !== null}
+                        >
+                            {actionLoadingId != null && String(actionLoadingId).startsWith('approve-si-')
+                                ? 'Approving…'
+                                : 'OK — approve & update inventory'}
+                        </button>
+                    </div>
+                )}
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    <div style={{ fontSize: '0.875rem', color: '#334155', lineHeight: 1.5, marginBottom: 14 }}>
+                        {(() => {
+                            const newProds = Array.isArray(siApproveModal.preview?.newProducts)
+                                ? siApproveModal.preview.newProducts
+                                : [];
+                            const unresolved = Array.isArray(siApproveModal.preview?.unresolvedLineNames)
+                                ? siApproveModal.preview.unresolvedLineNames
+                                : [];
+                            const branchNm = siApproveModal.preview?.branchName || 'this branch';
+                            if (newProds.length > 0) {
+                                return (
+                                    <p style={{ margin: '0 0 10px' }}>
+                                        The following products are <strong>not on {branchNm}&apos;s inventory</strong>{' '}
+                                        yet. If you approve, the system will <strong>add them to this branch</strong>{' '}
+                                        and set <strong>opening stock</strong> to the <strong>quantities on this sales invoice</strong>{' '}
+                                        (per product, summed across lines). Set <strong>critical stock</strong> (low-stock
+                                        alert level) for each new branch product below, then confirm.
+                                    </p>
+                                );
+                            }
+                            if (unresolved.length > 0) {
+                                return (
+                                    <p style={{ margin: '0 0 10px' }}>
+                                        Some invoice lines could not be matched to a product in your workshop catalog.
+                                        You can still approve the invoice for accounting, but{' '}
+                                        <strong>inventory may not update</strong> for those lines until they are linked
+                                        to master products.
+                                    </p>
+                                );
+                            }
+                            return (
+                                <p style={{ margin: '0 0 10px' }}>
+                                    Review the details below before approving. Inventory will be updated for this branch
+                                    according to the invoice lines.
+                                </p>
+                            );
+                        })()}
+                        {Array.isArray(siApproveModal.preview?.unresolvedLineNames) &&
+                        siApproveModal.preview.unresolvedLineNames.length > 0 ? (
+                            <div
+                                style={{
+                                    padding: 10,
+                                    borderRadius: 8,
+                                    background: '#FFFBEB',
+                                    border: '1px solid #FDE68A',
+                                    color: '#92400E',
+                                    marginBottom: 12,
+                                    fontSize: '0.8125rem',
+                                }}
+                            >
+                                <strong>Could not match to catalog:</strong>{' '}
+                                {siApproveModal.preview.unresolvedLineNames.join(', ')}. Stock may not apply for
+                                these lines until they are linked to a master product.
+                            </div>
+                        ) : null}
+                        {Array.isArray(siApproveModal.preview?.newProducts) &&
+                        siApproveModal.preview.newProducts.length > 0 ? (
+                            <div style={{ overflowX: 'auto' }}>
+                                <table
+                                    style={{
+                                        width: '100%',
+                                        borderCollapse: 'collapse',
+                                        fontSize: '0.8125rem',
+                                    }}
+                                >
+                                    <thead>
+                                        <tr style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>
+                                            <th style={{ padding: '8px 6px' }}>Product</th>
+                                            <th style={{ padding: '8px 6px', textAlign: 'right' }}>Qty (opening)</th>
+                                            <th style={{ padding: '8px 6px', textAlign: 'right' }}>
+                                                Critical stock
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {siApproveModal.preview.newProducts.map((p) => (
+                                            <tr key={p.productId} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                                                <td style={{ padding: '8px 6px' }}>
+                                                    {p.name}
+                                                    {p.sku ? (
+                                                        <span style={{ color: '#64748b', fontSize: '0.75rem' }}>
+                                                            {' '}
+                                                            ({p.sku})
+                                                        </span>
+                                                    ) : null}
+                                                </td>
+                                                <td style={{ padding: '8px 6px', textAlign: 'right' }}>
+                                                    {p.qty} {p.unit || ''}
+                                                </td>
+                                                <td style={{ padding: '8px 6px', textAlign: 'right' }}>
+                                                    <input
+                                                        type="text"
+                                                        inputMode="decimal"
+                                                        value={siCriticalStock[p.productId] ?? '0'}
+                                                        onChange={(e) =>
+                                                            setSiCriticalStock((prev) => ({
+                                                                ...prev,
+                                                                [p.productId]: e.target.value,
+                                                            }))
+                                                        }
+                                                        style={{
+                                                            width: 88,
+                                                            padding: '6px 8px',
+                                                            borderRadius: 6,
+                                                            border: '1px solid #cbd5e1',
+                                                            textAlign: 'right',
+                                                        }}
+                                                    />
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <p style={{ margin: 0, fontSize: '0.8125rem', color: '#64748b' }}>
+                                {Array.isArray(siApproveModal.preview?.unresolvedLineNames) &&
+                                siApproveModal.preview.unresolvedLineNames.length > 0
+                                    ? 'No new branch catalog products will be created from this invoice; only matched lines can receive stock.'
+                                    : 'No new branch products; approving will increase stock only for products you already carry on this branch.'}
+                            </p>
+                        )}
+                    </div>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
+    if (viewDialog) {
+        const isSupplierView = isSupplierSalesInvoiceRow(viewDialog);
+        return (
+            <WorkshopSubScreen
+                title={isSupplierView ? `Supplier Invoice ${viewDialog.invoiceNo || ''}`.trim() : 'Approval Details'}
+                subtitle={
+                    isSupplierView
+                        ? (viewDialog.supplier?.name || 'Supplier invoice')
+                        : formatRequestKindLabel(viewDialog)
+                }
+                backLabel="Back to Approvals"
+                onBack={closeViewDialog}
+                size={isSupplierView ? 'xl' : 'form'}
+                maxWidth={isSupplierView ? '1100px' : undefined}
+                className={isSupplierView ? 'ws-pi-sub-screen' : ''}
+            >
+                <div className={isSupplierView ? 'modal-content-purchase' : 'ws-section'} style={isSupplierView ? undefined : { padding: 20 }}>
+                    {isSupplierSalesInvoiceRow(viewDialog) ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 0' }}>
+                            <div
+                                style={{
+                                    display: 'flex',
+                                    justifyContent: 'flex-end',
+                                    gap: 8,
+                                }}
+                            >
+                                <button
+                                    type="button"
+                                    className="btn-pi-cancel"
+                                    onClick={() => printableInvoiceRef.current?.downloadPdf?.()}
+                                    disabled={viewInvoiceLoading || !viewInvoiceDetail}
+                                >
+                                    Download PDF
+                                </button>
+                            </div>
+                            {viewInvoiceLoading ? (
+                                <ShimmerTextBlock lines={10} />
+                            ) : viewInvoiceDetail ? (
+                                <WorkshopPurchaseInvoiceView
+                                    ref={printableInvoiceRef}
+                                    compact
+                                    variant="supplier_sales"
+                                    detail={mapSupplierInvoiceToPrintableDetail(viewInvoiceDetail)}
+                                    listRow={{
+                                        id: viewInvoiceDetail.id,
+                                        invoice_number: viewInvoiceDetail.invoiceNo,
+                                        invoiceNo: viewInvoiceDetail.invoiceNo,
+                                        date: viewInvoiceDetail.invoiceDate,
+                                        status: viewInvoiceDetail.status,
+                                        grand_total: viewInvoiceDetail.grandTotal,
+                                        vendor_name: viewInvoiceDetail.supplier?.name,
+                                        branch_name: viewInvoiceDetail.branch?.name,
+                                    }}
+                                />
+                            ) : (
+                                <p style={{ color: 'var(--color-text-muted)' }}>Could not load invoice details.</p>
+                            )}
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 0' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--color-text-muted)' }}>Type</span>
+                                <span className="capitalize">{formatRequestKindLabel(viewDialog)}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--color-text-muted)' }}>Amount</span>
+                                <strong>
+                                    {currency} {(viewDialog.amount || 0).toLocaleString()}
+                                </strong>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--color-text-muted)' }}>Requested by</span>
+                                <span>{viewDialog.cashier?.name || viewDialog.employee?.name || '—'}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--color-text-muted)' }}>Category</span>
+                                <span>{viewDialog.category?.name || '—'}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--color-text-muted)' }}>Branch</span>
+                                <span>{viewDialog.branch?.name || '—'}</span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: 'var(--color-text-muted)' }}>Reason</span>
+                                <span style={{ textAlign: 'right', maxWidth: 220 }}>{viewDialog.reason || '—'}</span>
+                            </div>
+                            {viewDialog.requestedAt && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--color-text-muted)' }}>Requested at</span>
+                                    <span>{formatDateFull(viewDialog.requestedAt)}</span>
+                                </div>
+                            )}
+                            {viewDialog.approvedAt && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--color-text-muted)' }}>Approved at</span>
+                                    <span>{formatDateFull(viewDialog.approvedAt)}</span>
+                                </div>
+                            )}
+                            {viewDialog.rejectionReason && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                    <span style={{ color: 'var(--color-text-muted)' }}>Rejection Reason</span>
+                                    <span style={{ textAlign: 'right', maxWidth: 220 }}>{viewDialog.rejectionReason}</span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
 
     return (
         <div>
@@ -838,317 +1175,6 @@ export default function WorkshopApprovals({
                 </table>
             </div>
 
-            <AnimatePresence>
-                {rejectDialog && (
-                    <Modal
-                        title={
-                            isSupplierSalesInvoiceRow(rejectDialog)
-                                ? 'Reject supplier invoice'
-                                : 'Reject approval'
-                        }
-                        onClose={() => {
-                            setRejectDialog(null);
-                            setRejectReason('');
-                        }}
-                        footer={
-                            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                                <button
-                                    className="btn-secondary"
-                                    onClick={() => {
-                                        setRejectDialog(null);
-                                        setRejectReason('');
-                                    }}
-                                    disabled={actionLoadingId !== null}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    className="btn-submit"
-                                    style={{ background: '#DC2626' }}
-                                    disabled={!rejectReason.trim() || actionLoadingId !== null}
-                                    onClick={handleRejectSubmit}
-                                >
-                                    {actionLoadingId != null && String(actionLoadingId).startsWith('reject-')
-                                        ? 'Rejecting...'
-                                        : 'Reject'}
-                                </button>
-                            </div>
-                        }
-                    >
-                        <textarea
-                            placeholder="Reason for rejection..."
-                            value={rejectReason}
-                            onChange={(e) => setRejectReason(e.target.value)}
-                            rows={3}
-                            style={{
-                                width: '100%',
-                                padding: 12,
-                                borderRadius: 8,
-                                border: '1px solid var(--color-border)',
-                                fontSize: '0.875rem',
-                                resize: 'vertical',
-                            }}
-                        />
-                    </Modal>
-                )}
-                {siApproveModal && (
-                    <Modal
-                        title="Products will be added to branch inventory"
-                        width="560px"
-                        onClose={() => {
-                            if (actionLoadingId) return;
-                            setSiApproveModal(null);
-                            setSiCriticalStock({});
-                        }}
-                        footer={
-                            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                                <button
-                                    type="button"
-                                    className="btn-secondary"
-                                    onClick={() => {
-                                        setSiApproveModal(null);
-                                        setSiCriticalStock({});
-                                    }}
-                                    disabled={actionLoadingId !== null}
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    className="btn-submit"
-                                    onClick={submitSupplierInvoiceApproveFromModal}
-                                    disabled={actionLoadingId !== null}
-                                >
-                                    {actionLoadingId != null && String(actionLoadingId).startsWith('approve-si-')
-                                        ? 'Approving…'
-                                        : 'OK — approve & update inventory'}
-                                </button>
-                            </div>
-                        }
-                    >
-                        <div style={{ fontSize: '0.875rem', color: '#334155', lineHeight: 1.5, marginBottom: 14 }}>
-                            {(() => {
-                                const newProds = Array.isArray(siApproveModal.preview?.newProducts)
-                                    ? siApproveModal.preview.newProducts
-                                    : [];
-                                const unresolved = Array.isArray(siApproveModal.preview?.unresolvedLineNames)
-                                    ? siApproveModal.preview.unresolvedLineNames
-                                    : [];
-                                const branchNm = siApproveModal.preview?.branchName || 'this branch';
-                                if (newProds.length > 0) {
-                                    return (
-                                        <p style={{ margin: '0 0 10px' }}>
-                                            The following products are <strong>not on {branchNm}&apos;s inventory</strong>{' '}
-                                            yet. If you approve, the system will <strong>add them to this branch</strong>{' '}
-                                            and set <strong>opening stock</strong> to the <strong>quantities on this sales invoice</strong>{' '}
-                                            (per product, summed across lines). Set <strong>critical stock</strong> (low-stock
-                                            alert level) for each new branch product below, then confirm.
-                                        </p>
-                                    );
-                                }
-                                if (unresolved.length > 0) {
-                                    return (
-                                        <p style={{ margin: '0 0 10px' }}>
-                                            Some invoice lines could not be matched to a product in your workshop catalog.
-                                            You can still approve the invoice for accounting, but{' '}
-                                            <strong>inventory may not update</strong> for those lines until they are linked
-                                            to master products.
-                                        </p>
-                                    );
-                                }
-                                return (
-                                    <p style={{ margin: '0 0 10px' }}>
-                                        Review the details below before approving. Inventory will be updated for this branch
-                                        according to the invoice lines.
-                                    </p>
-                                );
-                            })()}
-                            {Array.isArray(siApproveModal.preview?.unresolvedLineNames) &&
-                            siApproveModal.preview.unresolvedLineNames.length > 0 ? (
-                                <div
-                                    style={{
-                                        padding: 10,
-                                        borderRadius: 8,
-                                        background: '#FFFBEB',
-                                        border: '1px solid #FDE68A',
-                                        color: '#92400E',
-                                        marginBottom: 12,
-                                        fontSize: '0.8125rem',
-                                    }}
-                                >
-                                    <strong>Could not match to catalog:</strong>{' '}
-                                    {siApproveModal.preview.unresolvedLineNames.join(', ')}. Stock may not apply for
-                                    these lines until they are linked to a master product.
-                                </div>
-                            ) : null}
-                            {Array.isArray(siApproveModal.preview?.newProducts) &&
-                            siApproveModal.preview.newProducts.length > 0 ? (
-                                <div style={{ overflowX: 'auto' }}>
-                                    <table
-                                        style={{
-                                            width: '100%',
-                                            borderCollapse: 'collapse',
-                                            fontSize: '0.8125rem',
-                                        }}
-                                    >
-                                        <thead>
-                                            <tr style={{ textAlign: 'left', borderBottom: '1px solid #e2e8f0' }}>
-                                                <th style={{ padding: '8px 6px' }}>Product</th>
-                                                <th style={{ padding: '8px 6px', textAlign: 'right' }}>Qty (opening)</th>
-                                                <th style={{ padding: '8px 6px', textAlign: 'right' }}>
-                                                    Critical stock
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {siApproveModal.preview.newProducts.map((p) => (
-                                                <tr key={p.productId} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                                    <td style={{ padding: '8px 6px' }}>
-                                                        {p.name}
-                                                        {p.sku ? (
-                                                            <span style={{ color: '#64748b', fontSize: '0.75rem' }}>
-                                                                {' '}
-                                                                ({p.sku})
-                                                            </span>
-                                                        ) : null}
-                                                    </td>
-                                                    <td style={{ padding: '8px 6px', textAlign: 'right' }}>
-                                                        {p.qty} {p.unit || ''}
-                                                    </td>
-                                                    <td style={{ padding: '8px 6px', textAlign: 'right' }}>
-                                                        <input
-                                                            type="text"
-                                                            inputMode="decimal"
-                                                            value={siCriticalStock[p.productId] ?? '0'}
-                                                            onChange={(e) =>
-                                                                setSiCriticalStock((prev) => ({
-                                                                    ...prev,
-                                                                    [p.productId]: e.target.value,
-                                                                }))
-                                                            }
-                                                            style={{
-                                                                width: 88,
-                                                                padding: '6px 8px',
-                                                                borderRadius: 6,
-                                                                border: '1px solid #cbd5e1',
-                                                                textAlign: 'right',
-                                                            }}
-                                                        />
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            ) : (
-                                <p style={{ margin: 0, fontSize: '0.8125rem', color: '#64748b' }}>
-                                    {Array.isArray(siApproveModal.preview?.unresolvedLineNames) &&
-                                    siApproveModal.preview.unresolvedLineNames.length > 0
-                                        ? 'No new branch catalog products will be created from this invoice; only matched lines can receive stock.'
-                                        : 'No new branch products; approving will increase stock only for products you already carry on this branch.'}
-                                </p>
-                            )}
-                        </div>
-                    </Modal>
-                )}
-                {viewDialog && (
-                    <Modal
-                        title={isSupplierSalesInvoiceRow(viewDialog) ? 'Supplier invoice' : 'Approval Details'}
-                        onClose={() => setViewDialog(null)}
-                        width={isSupplierSalesInvoiceRow(viewDialog) ? '1100px' : undefined}
-                    >
-                        {isSupplierSalesInvoiceRow(viewDialog) ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, padding: '4px 0' }}>
-                                <div
-                                    style={{
-                                        display: 'flex',
-                                        justifyContent: 'flex-end',
-                                        gap: 8,
-                                    }}
-                                >
-                                    <button
-                                        type="button"
-                                        className="btn-pi-cancel"
-                                        onClick={() => printableInvoiceRef.current?.downloadPdf?.()}
-                                        disabled={viewInvoiceLoading || !viewInvoiceDetail}
-                                    >
-                                        Download PDF
-                                    </button>
-                                </div>
-                                {viewInvoiceLoading ? (
-                                    <ShimmerTextBlock lines={10} />
-                                ) : viewInvoiceDetail ? (
-                                    <WorkshopPurchaseInvoiceView
-                                        ref={printableInvoiceRef}
-                                        compact
-                                        variant="supplier_sales"
-                                        detail={mapSupplierInvoiceToPrintableDetail(viewInvoiceDetail)}
-                                        listRow={{
-                                            id: viewInvoiceDetail.id,
-                                            invoice_number: viewInvoiceDetail.invoiceNo,
-                                            invoiceNo: viewInvoiceDetail.invoiceNo,
-                                            date: viewInvoiceDetail.invoiceDate,
-                                            status: viewInvoiceDetail.status,
-                                            grand_total: viewInvoiceDetail.grandTotal,
-                                            vendor_name: viewInvoiceDetail.supplier?.name,
-                                            branch_name: viewInvoiceDetail.branch?.name,
-                                        }}
-                                    />
-                                ) : (
-                                    <p style={{ color: 'var(--color-text-muted)' }}>Could not load invoice details.</p>
-                                )}
-                            </div>
-                        ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 0' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: 'var(--color-text-muted)' }}>Type</span>
-                                    <span className="capitalize">{formatRequestKindLabel(viewDialog)}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: 'var(--color-text-muted)' }}>Amount</span>
-                                    <strong>
-                                        {currency} {(viewDialog.amount || 0).toLocaleString()}
-                                    </strong>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: 'var(--color-text-muted)' }}>Requested by</span>
-                                    <span>{viewDialog.cashier?.name || viewDialog.employee?.name || '—'}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: 'var(--color-text-muted)' }}>Category</span>
-                                    <span>{viewDialog.category?.name || '—'}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: 'var(--color-text-muted)' }}>Branch</span>
-                                    <span>{viewDialog.branch?.name || '—'}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                    <span style={{ color: 'var(--color-text-muted)' }}>Reason</span>
-                                    <span style={{ textAlign: 'right', maxWidth: 220 }}>{viewDialog.reason || '—'}</span>
-                                </div>
-                                {viewDialog.requestedAt && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <span style={{ color: 'var(--color-text-muted)' }}>Requested at</span>
-                                        <span>{formatDateFull(viewDialog.requestedAt)}</span>
-                                    </div>
-                                )}
-                                {viewDialog.approvedAt && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <span style={{ color: 'var(--color-text-muted)' }}>Approved at</span>
-                                        <span>{formatDateFull(viewDialog.approvedAt)}</span>
-                                    </div>
-                                )}
-                                {viewDialog.rejectionReason && (
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                        <span style={{ color: 'var(--color-text-muted)' }}>Rejection Reason</span>
-                                        <span style={{ textAlign: 'right', maxWidth: 220 }}>{viewDialog.rejectionReason}</span>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </Modal>
-                )}
-            </AnimatePresence>
         </div>
     );
 }

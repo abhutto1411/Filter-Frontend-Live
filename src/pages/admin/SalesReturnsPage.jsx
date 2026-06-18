@@ -7,6 +7,7 @@ import {
     Eye,
     Printer,
     Search,
+    X,
 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import Modal from '../../components/Modal';
@@ -643,7 +644,17 @@ export default function SalesReturnsPage() {
             {rejectRow ? (
                 <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
                     <div style={{ background: '#fff', borderRadius: 12, padding: 20, width: 'min(420px, 92vw)', boxShadow: '0 20px 40px rgba(0,0,0,0.15)' }}>
-                        <h3 style={{ margin: '0 0 8px', fontSize: '1rem' }}>Reject sales return</h3>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                            <h3 style={{ margin: 0, fontSize: '1rem' }}>Reject sales return</h3>
+                            <button
+                                type="button"
+                                onClick={() => { setRejectRow(null); setRejectReason(''); }}
+                                aria-label="Close"
+                                style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#64748b', padding: 4 }}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
                         <p style={{ margin: '0 0 12px', color: '#64748b', fontSize: '0.8125rem' }}>
                             {rejectRow.returnNo} · {rejectRow.invoice?.invoiceNo ?? 'Invoice'}
                         </p>

@@ -43,6 +43,10 @@ export default function Modal({
     hideCloseButton = false,
     /** When true, backdrop click and header close do nothing (still render close for layout; disabled). */
     disableClose = false,
+    /** When true, clicking the dimmed backdrop calls onClose (off by default). */
+    closeOnBackdropClick = false,
+    /** When true, Escape key calls onClose (off by default). */
+    closeOnEscape = false,
 }) {
     const isLarge = size === 'large' || size === 'viewport';
     useEffect(() => {
@@ -52,7 +56,7 @@ export default function Modal({
     }, []);
 
     useEffect(() => {
-        if (disableClose || !onClose) return undefined;
+        if (!closeOnEscape || disableClose || !onClose) return undefined;
         const onKey = (e) => {
             if (e.key === 'Escape') {
                 e.preventDefault();
@@ -62,7 +66,7 @@ export default function Modal({
         };
         window.addEventListener('keydown', onKey, true);
         return () => window.removeEventListener('keydown', onKey, true);
-    }, [disableClose, onClose]);
+    }, [closeOnEscape, disableClose, onClose]);
 
     const overlayStyleFinal = {
         ...overlayStyle,
@@ -87,7 +91,7 @@ export default function Modal({
         <div
             className={`app-modal-overlay ${className}`.trim()}
             style={overlayStyleFinal}
-            onClick={disableClose ? undefined : onClose}
+            onClick={closeOnBackdropClick && !disableClose ? onClose : undefined}
             role="presentation"
         >
             <div

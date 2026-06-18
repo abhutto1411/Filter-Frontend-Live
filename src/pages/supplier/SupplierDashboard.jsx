@@ -5,7 +5,6 @@ import {
     BarChart3,
     DollarSign,
     Warehouse,
-    AlertTriangle,
     Eye,
     ShoppingCart,
     ChevronRight,
@@ -22,15 +21,15 @@ import {
     normalizeWorkshopSupplierPurchaseInvoiceRow,
     unwrapWorkshopSupplierPurchaseInvoiceList,
 } from '../../services/workshopSupplierPurchaseInvoices';
-import { ShimmerKpiGrid, ShimmerOrderStatusBar, ShimmerListRows } from '../../components/supplier/Shimmer';
+import { ShimmerKpiGrid, ShimmerTable } from '../../components/supplier/Shimmer';
 
 const ORDER_SUMMARY_STAGES = [
-    { id: 'pending_acceptance', label: 'Pending', c: 'ws-badge--yellow' },
-    { id: 'accepted', label: 'Accepted', c: 'ws-badge--blue' },
-    { id: 'processing', label: 'Processing', c: 'ws-badge--cyan' },
-    { id: 'ready_to_dispatch', label: 'Ready to Deliver', c: 'ws-badge--purple' },
-    { id: 'dispatched', label: 'On the Way', c: 'ws-badge--orange' },
-    { id: 'delivered', label: 'Delivered', c: 'ws-badge--green' },
+    { id: 'pending_acceptance', label: 'Pending' },
+    { id: 'accepted', label: 'Accepted' },
+    { id: 'processing', label: 'Processing' },
+    { id: 'ready_to_dispatch', label: 'Ready to Deliver' },
+    { id: 'dispatched', label: 'On the Way' },
+    { id: 'delivered', label: 'Delivered' },
 ];
 
 /** Workshop PI `status` → same pipeline bucket as branch POs (Order Queue). */
@@ -47,9 +46,16 @@ function wpiStatusToPipelineId(status) {
 
 function workshopInvoiceStatusBadge(status) {
     const s = String(status || '').toLowerCase();
-    if (s === 'approved') return 'ws-badge--green';
-    if (s === 'rejected') return 'ws-badge--red';
+    if (s === 'rejected') return 'ws-badge--gray';
+    if (s === 'pending') return 'ws-badge--yellow';
+    if (s === 'delivered' || s === 'approved') return 'ws-badge--green';
     return 'ws-badge--yellow';
+}
+
+function workshopInvoiceStatusLabel(status) {
+    const s = String(status || '').toLowerCase();
+    if (s === 'on_the_way') return 'On the way';
+    return s.replace(/_/g, ' ');
 }
 
 export default function SupplierDashboard({ onTabChange }) {
@@ -120,7 +126,8 @@ export default function SupplierDashboard({ onTabChange }) {
                   name: alert.productName,
                   qty: alert.current,
                   unit: alert.unit,
-                  reorder: alert.critical,
+                  critical: alert.critical,
+                  locationName: alert.locationName,
               }))
             : [];
 
@@ -143,7 +150,7 @@ export default function SupplierDashboard({ onTabChange }) {
             sub: 'Pending acceptance',
             subAction: () => onTabChange('order_queue'),
             icon: Package,
-            c: 'ws-kpi-icon--blue',
+            c: 'ws-kpi-icon--dark',
         },
         {
             key: 'ar',
@@ -152,7 +159,7 @@ export default function SupplierDashboard({ onTabChange }) {
             sub: 'From workshops',
             subAction: () => onTabChange('sales_invoices'),
             icon: FileText,
-            c: 'ws-kpi-icon--yellow',
+            c: 'ws-kpi-icon--dark',
         },
         {
             key: 'ap',
@@ -161,7 +168,7 @@ export default function SupplierDashboard({ onTabChange }) {
             sub: 'To vendors',
             subAction: () => onTabChange('purchase_invoices'),
             icon: BarChart3,
-            c: 'ws-kpi-icon--purple',
+            c: 'ws-kpi-icon--dark',
         },
         {
             key: 'cash',
@@ -170,7 +177,7 @@ export default function SupplierDashboard({ onTabChange }) {
             sub: 'Total balance',
             subAction: () => onTabChange('cash_bank'),
             icon: DollarSign,
-            c: 'ws-kpi-icon--green',
+            c: 'ws-kpi-icon--dark',
         },
     ];
 
@@ -266,41 +273,17 @@ export default function SupplierDashboard({ onTabChange }) {
                 </div>
             </div>
             {apiError ? (
-                <div
-                    className="ws-section"
-                    style={{
-                        marginBottom: 16,
-                        padding: 12,
-                        fontSize: '0.8125rem',
-                        color: '#B91C1C',
-                        border: '1px solid #FECACA',
-                        background: '#FEF2F2',
-                    }}
-                >
+                <div className="theme-alert">
                     <strong>Backend error:</strong> {apiError}
                 </div>
             ) : null}
             {reportsPartialError && !apiError ? (
-                <div
-                    className="ws-section"
-                    style={{
-                        marginBottom: 12,
-                        padding: 10,
-                        fontSize: '0.75rem',
-                        color: '#92400E',
-                        border: '1px solid #FDE68A',
-                        background: '#FFFBEB',
-                        borderRadius: 10,
-                    }}
-                >
+                <div className="theme-callout" style={{ marginBottom: 12 }}>
                     {reportsPartialError} Some totals may show “—” until this succeeds.
                 </div>
             ) : null}
             {loading && !apiError ? (
-                <>
-                    <ShimmerKpiGrid cards={4} />
-                    <ShimmerOrderStatusBar pillCount={ORDER_SUMMARY_STAGES.length} />
-                </>
+                <ShimmerKpiGrid cards={4} />
             ) : (
                 <>
                     <div
@@ -320,17 +303,8 @@ export default function SupplierDashboard({ onTabChange }) {
                                         <button
                                             type="button"
                                             onClick={k.subAction}
-                                            style={{
-                                                fontSize: '0.75rem',
-                                                color: '#2563EB',
-                                                background: 'none',
-                                                border: 'none',
-                                                cursor: 'pointer',
-                                                textDecoration: 'underline',
-                                                marginTop: 4,
-                                                padding: 0,
-                                                fontWeight: 600,
-                                            }}
+                                            className="theme-link-btn"
+                                            style={{ fontSize: '0.8125rem', marginTop: 4 }}
                                         >
                                             {k.sub}
                                         </button>
@@ -357,11 +331,7 @@ export default function SupplierDashboard({ onTabChange }) {
                                 gap: 12,
                             }}
                         >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                                <div className="ws-kpi-icon ws-kpi-icon--blue">
-                                    <Boxes size={22} />
-                                </div>
-                                <div>
+                            <div>
                                     <p style={{ margin: 0, fontWeight: 700, fontSize: '0.9375rem' }}>
                                         Storage Facility
                                     </p>
@@ -370,119 +340,72 @@ export default function SupplierDashboard({ onTabChange }) {
                                         {Number(storageArTotal || 0).toLocaleString()}
                                     </p>
                                 </div>
-                            </div>
                             <button
                                 type="button"
-                                className="mgr-si-btn-new"
+                                className="theme-action-btn theme-action-btn--dark"
                                 onClick={() => onTabChange('storage_facility')}
                             >
                                 Manage storage brands
                             </button>
                         </div>
                     ) : null}
-                    <div className="ws-section" style={{ marginBottom: 16 }}>
-                        <div
-                            style={{
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'space-between',
-                                gap: 12,
-                                padding: '12px 16px',
-                                borderRadius: 12,
-                                background: '#FFFFFF',
-                                border: '1px solid var(--color-border-light)',
-                                overflowX: 'auto',
-                                boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
-                            }}
-                        >
-                            <p
-                                style={{
-                                    fontWeight: 600,
-                                    fontSize: '0.8125rem',
-                                    color: 'var(--color-text-muted)',
-                                    margin: 0,
-                                    whiteSpace: 'nowrap',
-                                }}
-                            >
-                                Order Status Summary
-                            </p>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                                {orderSummary.map((s) => (
-                                    <span
-                                        key={s.label}
-                                        className={`ws-badge ${s.c}`}
-                                        style={{ padding: '6px 12px', whiteSpace: 'nowrap' }}
-                                    >
-                                        {s.label}: <strong>{s.count}</strong>
-                                    </span>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
                 </>
             )}
             {criticalStock.length > 0 && (
-                <div
-                    style={{
-                        marginBottom: 20,
-                        background: '#FEF2F2',
-                        borderRadius: 12,
-                        borderLeft: '4px solid #DC2626',
-                        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-                        overflow: 'hidden',
-                    }}
-                >
+                <div className="ws-section" style={{ marginBottom: 20 }}>
                     <div
                         style={{
                             display: 'flex',
                             alignItems: 'center',
-                            gap: 8,
-                            padding: '14px 16px',
-                            borderBottom: '1px solid rgba(220,38,38,0.12)',
+                            justifyContent: 'space-between',
+                            padding: '16px 20px',
+                            borderBottom: '1px solid var(--color-border-light)',
                         }}
                     >
-                        <AlertTriangle size={18} style={{ color: '#DC2626', flexShrink: 0 }} />
-                        <p style={{ fontWeight: 600, fontSize: '0.875rem', color: '#B91C1C', margin: 0 }}>
+                        <p style={{ fontWeight: 600, fontSize: '1rem', color: '#DC2626', margin: 0 }}>
                             Critical stock alerts ({criticalStock.length})
                         </p>
+                        <button
+                            type="button"
+                            className="theme-link-btn"
+                            style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}
+                            onClick={() => onTabChange('stock')}
+                        >
+                            View inventory <ChevronRight size={14} />
+                        </button>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div>
                         {criticalStock.slice(0, 5).map((p, i) => (
                             <div
                                 key={p.id}
                                 style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    padding: '12px 16px',
-                                    fontSize: '0.8125rem',
+                                    padding: '12px 20px',
                                     borderBottom:
                                         i < Math.min(5, criticalStock.length) - 1
-                                            ? '1px solid rgba(220,38,38,0.1)'
+                                            ? '1px solid var(--color-border-light)'
                                             : 'none',
                                 }}
                             >
-                                <span style={{ color: '#B91C1C' }}>
-                                    {p.name} below critical level ({p.qty} {p.unit} &lt; {p.reorder}{' '}
-                                    {p.unit})
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() => onTabChange('order_queue')}
+                                <p
                                     style={{
-                                        padding: '6px 14px',
-                                        background: '#DC2626',
-                                        color: '#fff',
-                                        border: 'none',
-                                        borderRadius: 8,
-                                        fontSize: '0.8125rem',
-                                        fontWeight: 700,
-                                        cursor: 'pointer',
-                                        flexShrink: 0,
+                                        fontWeight: 600,
+                                        fontSize: '0.875rem',
+                                        margin: 0,
+                                        color: '#23262D',
                                     }}
                                 >
-                                    Order queue
-                                </button>
+                                    {p.name}
+                                </p>
+                                <p
+                                    style={{
+                                        fontSize: '0.75rem',
+                                        color: 'var(--color-text-muted)',
+                                        margin: '4px 0 0 0',
+                                    }}
+                                >
+                                    {Number(p.qty ?? 0).toLocaleString()} {p.unit} on hand · reorder at{' '}
+                                    {Number(p.critical ?? 0).toLocaleString()} {p.unit}
+                                </p>
                             </div>
                         ))}
                     </div>
@@ -500,9 +423,10 @@ export default function SupplierDashboard({ onTabChange }) {
                     Quick actions
                 </p>
                 <div
+                    className="theme-quick-actions"
                     style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))',
+                        display: 'flex',
+                        flexWrap: 'wrap',
                         gap: 8,
                     }}
                 >
@@ -521,7 +445,7 @@ export default function SupplierDashboard({ onTabChange }) {
                             key={a.tab}
                             type="button"
                             onClick={() => onTabChange(a.tab)}
-                            className="btn-portal-outline"
+                            className="btn-portal-outline theme-quick-actions__btn"
                             style={{
                                 justifyContent: 'flex-start',
                                 textAlign: 'left',
@@ -550,97 +474,109 @@ export default function SupplierDashboard({ onTabChange }) {
                         borderBottom: '1px solid var(--color-border-light)',
                     }}
                 >
-                    <p style={{ fontWeight: 700, color: 'var(--color-text-dark)', margin: 0 }}>
+                    <p style={{ fontWeight: 600, fontSize: '1rem', color: 'var(--color-text-dark)', margin: 0 }}>
                         Recent workshop orders
                     </p>
                     <button
                         type="button"
                         onClick={() => onTabChange('workshop_purchase_invoices')}
-                        style={{
-                            fontSize: '0.75rem',
-                            color: '#2563EB',
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 4,
-                        }}
+                        className="theme-link-btn"
+                        style={{ fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: 4 }}
                     >
                         View all <ChevronRight size={14} />
                     </button>
                 </div>
-                <div>
+                <div style={{ overflowX: 'auto' }}>
                     {loading && !apiError ? (
-                        <ShimmerListRows rows={6} />
+                        <ShimmerTable rows={6} columns={9} />
                     ) : apiError ? (
-                        <p style={{ textAlign: 'center', fontSize: '0.875rem', color: '#B91C1C', padding: 32, margin: 0 }}>
+                        <p className="theme-alert" style={{ textAlign: 'center', padding: 32, margin: 0 }}>
                             Unable to load workshop orders ({apiError})
                         </p>
-                    ) : recentWorkshopInvoices.length === 0 ? (
-                        <p
-                            style={{
-                                textAlign: 'center',
-                                fontSize: '0.875rem',
-                                color: 'var(--color-text-muted)',
-                                padding: 32,
-                                margin: 0,
-                            }}
-                        >
-                            No workshop purchase invoices yet. Workshops send these from Purchase Invoices after they
-                            raise stock requests.
-                        </p>
                     ) : (
-                        recentWorkshopInvoices.map((row, i) => (
-                            <div
-                                key={row.id}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    gap: 12,
-                                    padding: '12px 20px',
-                                    borderBottom:
-                                        i < recentWorkshopInvoices.length - 1
-                                            ? '1px solid var(--color-border-light)'
-                                            : 'none',
-                                }}
-                            >
-                                <div style={{ minWidth: 0, flex: 1 }}>
-                                    <p
-                                        style={{
-                                            fontWeight: 600,
-                                            fontSize: '0.875rem',
-                                            margin: 0,
-                                            color: '#EA580C',
-                                        }}
-                                    >
-                                        {row.invoice_number}
-                                    </p>
-                                    <p
-                                        style={{
-                                            fontSize: '0.75rem',
-                                            color: 'var(--color-text-muted)',
-                                            margin: '4px 0 0 0',
-                                            overflow: 'hidden',
-                                            textOverflow: 'ellipsis',
-                                            whiteSpace: 'nowrap',
-                                        }}
-                                        title={row.product_label || ''}
-                                    >
-                                        {row.date || '—'} · {row.product_label || '—'}
-                                    </p>
-                                </div>
-                                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                                    <p style={{ fontWeight: 700, fontSize: '0.875rem', margin: 0 }}>
-                                        {formatCurrency(row.grand_total ?? 0, currency)}
-                                    </p>
-                                    <span className={`ws-badge ${workshopInvoiceStatusBadge(row.status)}`}>
-                                        {row.status}
-                                    </span>
-                                </div>
-                            </div>
-                        ))
+                        <table className="ws-table">
+                            <thead>
+                                <tr>
+                                    <th>Invoice #</th>
+                                    <th>Vendor ref</th>
+                                    <th>Issue date</th>
+                                    <th>Product name</th>
+                                    <th>Quantity</th>
+                                    <th>Unit</th>
+                                    <th>Unit price</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {recentWorkshopInvoices.length === 0 ? (
+                                    <tr>
+                                        <td
+                                            colSpan={9}
+                                            style={{
+                                                textAlign: 'center',
+                                                padding: 32,
+                                                color: 'var(--color-text-muted)',
+                                            }}
+                                        >
+                                            No workshop purchase invoices yet. Workshops send these from Purchase
+                                            Invoices after they raise stock requests.
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    recentWorkshopInvoices.map((r) => (
+                                        <tr key={r.id}>
+                                            <td>
+                                                <strong className="theme-invoice-id">{r.invoice_number}</strong>
+                                            </td>
+                                            <td style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                                                {r.vendor_invoice_ref || '—'}
+                                            </td>
+                                            <td style={{ fontSize: '0.8125rem' }}>{r.date || '—'}</td>
+                                            <td
+                                                style={{
+                                                    fontSize: '0.8125rem',
+                                                    maxWidth: 240,
+                                                    color: 'var(--color-text-muted)',
+                                                    lineHeight: 1.35,
+                                                }}
+                                                title={r.product_label ?? '—'}
+                                            >
+                                                {r.product_label ?? '—'}
+                                            </td>
+                                            <td style={{ fontSize: '0.8125rem' }}>{r.quantity_label ?? '—'}</td>
+                                            <td style={{ fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                                                {r.unit_label ?? '—'}
+                                            </td>
+                                            <td style={{ fontSize: '0.8125rem', whiteSpace: 'nowrap' }}>
+                                                {r.primary_unit_price != null &&
+                                                Number.isFinite(Number(r.primary_unit_price)) ? (
+                                                    <>
+                                                        SAR{' '}
+                                                        {Number(r.primary_unit_price).toLocaleString(undefined, {
+                                                            minimumFractionDigits: 2,
+                                                            maximumFractionDigits: 2,
+                                                        })}
+                                                    </>
+                                                ) : (
+                                                    '—'
+                                                )}
+                                            </td>
+                                            <td>
+                                                <strong>
+                                                    {formatCurrency(r.grand_total ?? 0, currency)}
+                                                </strong>
+                                            </td>
+                                            <td>
+                                                <span className={`ws-badge ${workshopInvoiceStatusBadge(r.status)}`}>
+                                                    {workshopInvoiceStatusLabel(r.status)}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
                     )}
                 </div>
             </div>

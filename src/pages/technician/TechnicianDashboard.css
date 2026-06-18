@@ -28,7 +28,7 @@
 .tech-dash-tab.active {
     background: #fff;
     color: #111827;
-    font-weight: 700;
+    font-weight: 600;
     box-shadow: 0 1px 3px rgba(15,23,42,0.08);
 }
 .tech-dash-badge {
@@ -36,7 +36,7 @@
     background: #EF4444;
     color: #fff;
     font-size: 0.6875rem;
-    font-weight: 800;
+    font-weight: 700;
     padding: 2px 6px;
     border-radius: 999px;
 }

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertTriangle, DollarSign, Plus, Pencil, Trash2 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import Modal from '../../components/Modal';
+import RowActionsMenu from '../../components/RowActionsMenu';
 import {
     createSupplierExpense,
     createSupplierExpenseCategory,
@@ -12,11 +13,11 @@ import {
     updateSupplierExpense,
 } from '../../services/supplierApi';
 import { ShimmerTable } from '../../components/supplier/Shimmer';
-const STATUS_STYLES = {
-    approved: { bg: '#DBEAFE', color: '#1D4ED8' },
-    paid: { bg: '#D1FAE5', color: '#047857' },
-    pending: { bg: '#FEF3C7', color: '#B45309' },
-    rejected: { bg: '#FEE2E2', color: '#B91C1C' },
+const STATUS_BADGE = {
+    approved: 'ws-badge--green',
+    paid: 'ws-badge--green',
+    pending: 'ws-badge--yellow',
+    rejected: 'ws-badge--red',
 };
 
 export default function SupplierExpenses() {
@@ -298,33 +299,27 @@ export default function SupplierExpenses() {
                                     <td><strong>{e.description}</strong></td>
                                     <td>{e.category}</td>
                                     <td>SAR {(e.amount || 0).toLocaleString()}</td>
-                                    <td><span style={{ background: (STATUS_STYLES[e.status] || STATUS_STYLES.pending).bg, color: (STATUS_STYLES[e.status] || STATUS_STYLES.pending).color, padding: '4px 10px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 600 }}>{e.status}</span></td>
+                                    <td><span className={`ws-badge ${STATUS_BADGE[e.status] || STATUS_BADGE.pending}`}>{e.status}</span></td>
                                     <td>
-                                        <div style={{ display: 'flex', gap: 8 }}>
-                                            <button type="button" style={{ padding: '6px 10px', borderRadius: 8, border: '1px solid var(--color-border)', background: '#fff', fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6 }} onClick={() => openEdit(e)}><Pencil size={13} /> Edit</button>
-                                            <button
-                                                type="button"
-                                                style={{
-                                                    padding: '6px 10px',
-                                                    borderRadius: 8,
-                                                    border: '1px solid #FECACA',
-                                                    background: '#FEF2F2',
-                                                    color: '#B91C1C',
-                                                    fontSize: '0.75rem',
-                                                    fontWeight: 600,
-                                                    cursor: e.status === 'pending' ? 'pointer' : 'not-allowed',
-                                                    display: 'flex',
-                                                    alignItems: 'center',
-                                                    gap: 6,
-                                                    opacity: e.status === 'pending' ? 1 : 0.45,
-                                                }}
-                                                disabled={e.status !== 'pending'}
-                                                title={e.status !== 'pending' ? 'Only pending expenses can be deleted' : undefined}
-                                                onClick={() => e.status === 'pending' && openDeleteModal(e)}
-                                            >
-                                                <Trash2 size={13} /> Delete
-                                            </button>
-                                        </div>
+                                        <RowActionsMenu
+                                            ariaLabel={`Actions for ${e.description || 'expense'}`}
+                                            items={[
+                                                {
+                                                    label: 'Edit',
+                                                    onClick: () => openEdit(e),
+                                                },
+                                                {
+                                                    label: 'Delete',
+                                                    onClick: () => openDeleteModal(e),
+                                                    disabled: e.status !== 'pending',
+                                                    danger: true,
+                                                    title:
+                                                        e.status !== 'pending'
+                                                            ? 'Only pending expenses can be deleted'
+                                                            : undefined,
+                                                },
+                                            ]}
+                                        />
                                     </td>
                                 </tr>
                             ))}

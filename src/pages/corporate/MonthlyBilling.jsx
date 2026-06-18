@@ -1442,7 +1442,6 @@ export default function MonthlyBilling({ onTabChange, onWalletBalanceChange }) {
                     aria-modal="true"
                     aria-labelledby="mb-single-title"
                     style={modalBackdrop}
-                    onClick={() => !paySubmitting && setSingleModal(null)}
                 >
                     <div style={modalCard} onClick={(e) => e.stopPropagation()}>
                         <div
@@ -1721,11 +1720,6 @@ export default function MonthlyBilling({ onTabChange, onWalletBalanceChange }) {
                     aria-modal="true"
                     aria-labelledby="mb-bulk-title"
                     style={modalBackdrop}
-                    onClick={() => {
-                        if (paySubmitting) return;
-                        setBulkModal(false);
-                        setResubmittingApprovalId(null);
-                    }}
                 >
                     <div
                         style={{ ...modalCard, maxWidth: 560 }}

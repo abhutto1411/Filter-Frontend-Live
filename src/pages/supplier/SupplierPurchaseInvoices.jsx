@@ -10,12 +10,14 @@ import {
     ChevronDown,
     Trash2,
     BookOpen,
-    Edit,
     Package,
     Loader2,
 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import Modal from '../../components/Modal';
+import RowActionsMenu from '../../components/RowActionsMenu';
+import InlineFormScreen from '../../components/InlineFormScreen';
+import AutoGrowTextarea from '../../components/AutoGrowTextarea';
 import SupplierSuperSupplierPurchasesPanel from './SupplierSuperSupplierPurchasesPanel';
 import '../../styles/admin/AccountingPage.css';
 import {
@@ -337,12 +339,12 @@ function apStatusLabel(apStatus) {
 
 function apStatusBadgeStyle(apStatus) {
     if (apStatus === 'unpaid') {
-        return { background: '#FEE2E2', color: '#B91C1C', border: '1px solid #FECACA' };
+        return { background: '#B91C1C', color: '#ffffff', border: '1px solid #B91C1C' };
     }
     if (apStatus === 'overpaid') {
-        return { background: '#FFEDD5', color: '#C2410C', border: '1px solid #FED7AA' };
+        return { background: '#C2410C', color: '#ffffff', border: '1px solid #C2410C' };
     }
-    return { background: '#DCFCE7', color: '#15803D', border: '1px solid #BBF7D0' };
+    return { background: '#15803D', color: '#ffffff', border: '1px solid #15803D' };
 }
 
 export default function SupplierPurchaseInvoices() {
@@ -397,6 +399,8 @@ export default function SupplierPurchaseInvoices() {
         /** @type {'create' | 'edit'} */ ('create'),
     );
     const [editingSspPurchaseId, setEditingSspPurchaseId] = useState(null);
+    /** Status of the purchase being edited ('draft' | 'posted' | null for new). */
+    const [editingSspPurchaseStatus, setEditingSspPurchaseStatus] = useState(null);
     const [sspPurchaseEditLoading, setSspPurchaseEditLoading] = useState(false);
 
     const [superSuppliers, setSuperSuppliers] = useState([]);
@@ -1259,6 +1263,7 @@ export default function SupplierPurchaseInvoices() {
         setItemPickerFilter('');
         setSspPurchaseModalMode('create');
         setEditingSspPurchaseId(null);
+        setEditingSspPurchaseStatus(null);
         setSspPurchaseEditLoading(false);
     };
 
@@ -1276,6 +1281,9 @@ export default function SupplierPurchaseInvoices() {
                 setCreateError('Could not load purchase for editing.');
                 return;
             }
+            setEditingSspPurchaseStatus(
+                String(p.status || 'posted').trim().toLowerCase(),
+            );
             setIssueDate((p.purchaseDate || '').toString().slice(0, 10));
             setSuperSupplierId(String(p.superSupplierId ?? ''));
             setRefNo(String(p.vendorRef ?? p.referenceNo ?? '').trim());
@@ -1418,7 +1426,8 @@ export default function SupplierPurchaseInvoices() {
         // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot when landing from Stock Inventory
     }, []);
 
-    const handleCreateInvoice = async () => {
+    const handleCreateInvoice = async (saveMode = 'finalize') => {
+        const isDraftSave = saveMode === 'draft';
         setCreateError('');
         if (!superSupplierId) {
             setCreateError('Select a super supplier from the list.');
@@ -1461,12 +1470,21 @@ export default function SupplierPurchaseInvoices() {
             };
         });
 
-        const bad = normalizedLines.find(
-            (l) => !l.productName || !(l.qty > 0) || l.unitPrice < 0,
-        );
-        if (bad) {
-            setCreateError(`Line ${bad.idx + 1}: product name required, qty > 0, and unit price cannot be negative.`);
-            return;
+        if (isDraftSave) {
+            // Drafts only need at least one named line; finalize enforces the rest.
+            const namedLine = normalizedLines.find((l) => l.productName);
+            if (!namedLine) {
+                setCreateError('Add at least one product name to save a draft.');
+                return;
+            }
+        } else {
+            const bad = normalizedLines.find(
+                (l) => !l.productName || !(l.qty > 0) || l.unitPrice < 0,
+            );
+            if (bad) {
+                setCreateError(`Line ${bad.idx + 1}: product name required, qty > 0, and unit price cannot be negative.`);
+                return;
+            }
         }
 
         const vatAmount = roundMoney2(
@@ -1475,7 +1493,7 @@ export default function SupplierPurchaseInvoices() {
         const subtotalExVat = roundMoney2(
             normalizedLines.reduce((s, l) => s + l.qty * l.unitPrice, 0),
         );
-        if (!(subtotalExVat + vatAmount > 0)) {
+        if (!isDraftSave && !(subtotalExVat + vatAmount > 0)) {
             setCreateError('Invoice total must be greater than zero (check quantities and unit prices).');
             return;
         }
@@ -1530,14 +1548,34 @@ export default function SupplierPurchaseInvoices() {
             freightIn: totals.freightIn,
             invoiceDiscount: totals.invoiceDiscount,
             purchaseFormMeta,
+            // Draft = saved privately, no stock/GL. Finalize posts everything.
+            status: isDraftSave ? 'draft' : 'posted',
         };
 
         setCreateSubmitting(true);
         try {
             if (sspPurchaseModalMode === 'edit' && editingSspPurchaseId) {
                 await updateSupplierSuperSupplierPurchase(editingSspPurchaseId, payload);
+                if (isDraftSave) {
+                    // Stay in the editor so the user can keep refining the draft.
+                    setEditingSspPurchaseStatus('draft');
+                    setSspPanelKey((k) => k + 1);
+                    await loadSuperSuppliers();
+                    return;
+                }
             } else {
-                await createSupplierSuperSupplierPurchase(payload);
+                const res = await createSupplierSuperSupplierPurchase(payload);
+                if (isDraftSave) {
+                    const newId = res?.purchase?.id ?? res?.data?.id ?? null;
+                    if (newId) {
+                        setSspPurchaseModalMode('edit');
+                        setEditingSspPurchaseId(String(newId));
+                        setEditingSspPurchaseStatus('draft');
+                    }
+                    setSspPanelKey((k) => k + 1);
+                    await loadSuperSuppliers();
+                    return;
+                }
             }
             setModalOpen(false);
             resetCreateForm();
@@ -1554,6 +1592,8 @@ export default function SupplierPurchaseInvoices() {
 
     return (
         <div className="purchases-view">
+            {!modalOpen && (
+            <>
             {ssListError ? (
                 <div
                     className="ws-section"
@@ -1601,20 +1641,7 @@ export default function SupplierPurchaseInvoices() {
                 </div>
             </header>
 
-            <div
-                role="tablist"
-                aria-label="Purchase sections"
-                style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    gap: 4,
-                    marginBottom: 16,
-                    padding: 4,
-                    background: '#F8FAFC',
-                    borderRadius: 12,
-                    border: '1px solid #E2E8F0',
-                }}
-            >
+            <div role="tablist" aria-label="Purchase sections" className="theme-segmented" style={{ marginBottom: 16 }}>
                 {[
                     { id: 'payables', label: 'Suppliers' },
                     { id: 'super_suppliers', label: 'Super suppliers' },
@@ -1630,17 +1657,7 @@ export default function SupplierPurchaseInvoices() {
                             id={`ap-tab-${t.id}`}
                             aria-controls={`ap-panel-${t.id}`}
                             onClick={() => setApTab(/** @type {ApTabId} */ (t.id))}
-                            style={{
-                                padding: '10px 18px',
-                                borderRadius: 10,
-                                border: active ? '1px solid #CA8A04' : '1px solid transparent',
-                                background: active ? '#FFF9E7' : 'transparent',
-                                color: active ? '#854D0E' : '#475569',
-                                fontWeight: active ? 800 : 600,
-                                fontSize: '0.875rem',
-                                cursor: 'pointer',
-                                transition: 'background 0.15s, color 0.15s',
-                            }}
+                            className={`theme-segmented__btn${active ? ' theme-segmented__btn--active' : ''}`}
                         >
                             {t.label}
                         </button>
@@ -1933,23 +1950,17 @@ export default function SupplierPurchaseInvoices() {
                                                 }}
                                             >
                                                 <label
-                                                    style={{
-                                                        display: 'inline-flex',
-                                                        alignItems: 'center',
-                                                        gap: 8,
-                                                        cursor:
-                                                            ssTogglingId === String(ss.id)
-                                                                ? 'wait'
-                                                                : 'pointer',
-                                                        fontSize: '0.8125rem',
-                                                        opacity:
-                                                            ssTogglingId === String(ss.id) ? 0.6 : 1,
-                                                    }}
+                                                    className={`ws-duty-toggle${
+                                                        ssTogglingId === String(ss.id)
+                                                            ? ' ws-duty-toggle--disabled'
+                                                            : ''
+                                                    }`}
                                                     title={
                                                         ss.isActive
                                                             ? 'Set inactive'
                                                             : 'Set active'
                                                     }
+                                                    onClick={(e) => e.stopPropagation()}
                                                 >
                                                     <input
                                                         type="checkbox"
@@ -1958,37 +1969,33 @@ export default function SupplierPurchaseInvoices() {
                                                         onChange={() =>
                                                             handleToggleSuperSupplierActive(ss)
                                                         }
-                                                        style={{ width: 16, height: 16 }}
+                                                        aria-label={
+                                                            ss.isActive
+                                                                ? 'Set inactive'
+                                                                : 'Set active'
+                                                        }
                                                     />
-                                                    {ss.isActive ? 'Active' : 'Inactive'}
+                                                    <span className="ws-toggle-slider" />
                                                 </label>
-                                                <button
-                                                    type="button"
-                                                    className="btn-pi-cancel"
-                                                    style={{ padding: '6px 12px', fontSize: '0.8125rem' }}
-                                                    onClick={() => openEditSuperSupplier(ss)}
-                                                >
-                                                    <Edit size={14} /> Edit
-                                                </button>
-                                                {canDeleteSuperSupplier(ss) ? (
-                                                <button
-                                                    type="button"
-                                                    className="btn-pi-cancel"
-                                                        style={{
-                                                            padding: '6px 12px',
-                                                            fontSize: '0.8125rem',
-                                                            color: '#B91C1C',
-                                                            borderColor: '#FECACA',
-                                                        }}
-                                                        disabled={ssDeletingId === String(ss.id)}
-                                                        onClick={() => handleDeleteSuperSupplier(ss)}
-                                                    >
-                                                        <Trash2 size={14} />{' '}
-                                                        {ssDeletingId === String(ss.id)
-                                                            ? 'Deleting…'
-                                                            : 'Delete'}
-                                                </button>
-                                                ) : null}
+                                                <RowActionsMenu
+                                                    ariaLabel={`Actions for ${ss.name || 'super supplier'}`}
+                                                    items={[
+                                                        {
+                                                            label: 'Edit',
+                                                            onClick: () => openEditSuperSupplier(ss),
+                                                        },
+                                                        {
+                                                            label:
+                                                                ssDeletingId === String(ss.id)
+                                                                    ? 'Deleting…'
+                                                                    : 'Delete',
+                                                            onClick: () => handleDeleteSuperSupplier(ss),
+                                                            disabled: ssDeletingId === String(ss.id),
+                                                            hidden: !canDeleteSuperSupplier(ss),
+                                                            danger: true,
+                                                        },
+                                                    ]}
+                                                />
                                             </div>
                                         </td>
                                     </tr>
@@ -2015,6 +2022,8 @@ export default function SupplierPurchaseInvoices() {
                     onEditPurchase={openSuperSupplierPurchaseForEdit}
                 />
             </div>
+            </>
+            )}
 
             <AnimatePresence>
                 {addSsOpen && (
@@ -2493,7 +2502,7 @@ export default function SupplierPurchaseInvoices() {
                 )}
 
                 {modalOpen && (
-                    <Modal
+                    <InlineFormScreen
                         title={
                             <div className="pi-modal-title">
                                 <span className="pi-breadcrumb">
@@ -2508,14 +2517,13 @@ export default function SupplierPurchaseInvoices() {
                                 </div>
                             </div>
                         }
-                        onClose={() => {
+                        onBack={() => {
                             if (!createSubmitting && !sspPurchaseEditLoading) {
                                 setModalOpen(false);
                                 resetCreateForm();
                             }
                         }}
-                        width="1350px"
-                        contentClassName="modal-content-purchase"
+                        backLabel="Back to Purchases"
                         footer={
                             <div className="pi-modal-footer">
                                 <div className="pi-footer-left">
@@ -2532,6 +2540,23 @@ export default function SupplierPurchaseInvoices() {
                                     </button>
                                 </div>
                                 <div className="pi-footer-right">
+                                    {(sspPurchaseModalMode === 'create' ||
+                                        editingSspPurchaseStatus === 'draft') && (
+                                        <button
+                                            type="button"
+                                            className="btn-pi-draft"
+                                            disabled={
+                                                createSubmitting ||
+                                                sspPurchaseEditLoading ||
+                                                lineItems.length === 0 ||
+                                                !superSupplierId ||
+                                                (!ssLoading && superSuppliers.length === 0)
+                                            }
+                                            onClick={() => handleCreateInvoice('draft')}
+                                        >
+                                            {createSubmitting ? 'Saving…' : 'Save as Draft'}
+                                        </button>
+                                    )}
                                     <button
                                         type="button"
                                         className="btn-pi-create"
@@ -2542,15 +2567,17 @@ export default function SupplierPurchaseInvoices() {
                                             !superSupplierId ||
                                             (!ssLoading && superSuppliers.length === 0)
                                         }
-                                        onClick={handleCreateInvoice}
+                                        onClick={() => handleCreateInvoice('finalize')}
                                     >
                                         {createSubmitting
                                             ? sspPurchaseModalMode === 'edit'
                                                 ? 'Saving…'
                                                 : 'Creating…'
-                                            : sspPurchaseModalMode === 'edit'
-                                              ? 'Save changes'
-                                              : 'Create Purchase Invoice'}
+                                            : editingSspPurchaseStatus === 'draft'
+                                              ? 'Finalize Invoice'
+                                              : sspPurchaseModalMode === 'edit'
+                                                ? 'Save changes'
+                                                : 'Create Purchase Invoice'}
                                     </button>
                                 </div>
                             </div>
@@ -2747,13 +2774,12 @@ export default function SupplierPurchaseInvoices() {
                                                 <div
                                                     style={{
                                                         display: 'flex',
-                                                        alignItems: 'stretch',
+                                                        alignItems: 'flex-start',
                                                         gap: 4,
                                                         width: '100%',
                                                     }}
                                                 >
-                                                    <input
-                                                        type="text"
+                                                    <AutoGrowTextarea
                                                         className="pi-row-input"
                                                         style={{
                                                             flex: 1,
@@ -3467,7 +3493,7 @@ export default function SupplierPurchaseInvoices() {
                             </div>
                         </div>
                         )}
-                    </Modal>
+                    </InlineFormScreen>
                 )}
             </AnimatePresence>
         </div>

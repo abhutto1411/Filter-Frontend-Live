@@ -14,7 +14,7 @@
 
 .commissions-title {
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 700;
     margin: 0;
     color: #111827;
 }
@@ -56,7 +56,7 @@
 
 .stat-val {
     font-size: 1.5rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #111827;
 }
 
@@ -229,7 +229,7 @@
 
 .summary-label {
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #92400E;
 }
 
@@ -240,7 +240,7 @@
 
 .summary-amount {
     font-size: 1.125rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #92400E;
     margin-top: 4px;
 }
@@ -257,7 +257,7 @@
     border: none;
     padding: 10px 24px;
     border-radius: 10px;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.875rem;
     cursor: pointer;
     transition: all 0.2s;

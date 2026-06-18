@@ -268,14 +268,7 @@ function LogTab({ tab }) {
                                         <td style={{ maxWidth: 200, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.description || '—'}</td>
                                         <td>{j.reference || '—'}</td>
                                         <td>
-                                            <span style={{
-                                                padding: '2px 8px',
-                                                borderRadius: 999,
-                                                fontSize: 11,
-                                                fontWeight: 700,
-                                                background: j.status === 'void' ? '#FEE2E2' : '#DCFCE7',
-                                                color: j.status === 'void' ? '#B91C1C' : '#065F46',
-                                            }}>
+                                            <span className={`ws-badge ${j.status === 'void' ? 'ws-badge--red' : 'ws-badge--green'}`}>
                                                 {j.status}
                                             </span>
                                         </td>

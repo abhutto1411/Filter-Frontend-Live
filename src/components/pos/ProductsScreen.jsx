@@ -46,6 +46,12 @@ const allowsDecimalQty = (p) => {
 
 const isPriceEditable = (p) => p?.isPriceEditable === true || p?.is_price_editable === true;
 
+const getMinEditablePrice = (p) => {
+    const raw = p?.minPriceEditable ?? p?.min_price_editable;
+    const n = parseFloat(raw);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+};
+
 // Respects backend's criticalStockPoint (per-product); falls back to 5 (reference default).
 const getStockStatus = (p) => {
     if (isService(p)) return { label: 'Service', color: '#15803d', bg: '#dcfce7' };
@@ -231,7 +237,15 @@ export default function ProductsScreen() {
         ));
     };
 
-    const setServiceUnitPrice = (productId, value) => {
+    const setLineUnitPrice = (productId, value, product) => {
+        const parsed = parseFloat(value);
+        if (Number.isFinite(parsed) && parsed > 0 && isPriceEditable(product)) {
+            const min = getMinEditablePrice(product);
+            if (parsed < min - 0.005) {
+                alert(`Price cannot be below SAR ${min.toFixed(2)} for this product.`);
+                return;
+            }
+        }
         setCart(prev => prev.map(item =>
             item.product.id === productId
                 ? { ...item, serviceUnitPrice: parseFloat(value) || 0 }
@@ -243,8 +257,8 @@ export default function ProductsScreen() {
     const cartLines = cart.map(item => {
         const p = item.product;
         const { exclVat, inclVat } = parsePrice(p);
-        // Service price override (when isPriceEditable), treat entered value as VAT-inclusive.
-        const overrideIncl = (isService(p) && isPriceEditable(p) && item.serviceUnitPrice > 0)
+        // Price override (when isPriceEditable), treat entered value as VAT-inclusive.
+        const overrideIncl = (isPriceEditable(p) && item.serviceUnitPrice > 0)
             ? r2(item.serviceUnitPrice) : null;
         const effectiveIncl = overrideIncl ?? inclVat;
         const effectiveExcl = overrideIncl ? r2(overrideIncl / (1 + VAT_RATE)) : exclVat;
@@ -579,7 +593,7 @@ export default function ProductsScreen() {
                                         onDec={() => bumpItemQty(p.id, -1)}
                                         onSetQty={(v) => setItemQty(p.id, v)}
                                         onSetDiscount={(v, isPct) => setItemDiscount(p.id, v, isPct)}
-                                        onSetServicePrice={(v) => setServiceUnitPrice(p.id, v)}
+                                        onSetServicePrice={(v) => setLineUnitPrice(p.id, v, p)}
                                         onRemove={() => removeFromCart(p.id)}
                                     />
                                 );
@@ -818,8 +832,8 @@ function CartLine({
     const p = item.product;
     const decimalAllowed = allowsDecimalQty(p);
     const unit = getUnit(p);
-    const serviceFlag = isService(p);
-    const priceEditable = serviceFlag && isPriceEditable(p);
+    const priceEditable = isPriceEditable(p);
+    const minEditablePrice = getMinEditablePrice(p);
 
     return (
         <div style={{ paddingBottom: 12, borderBottom: '1px solid #f1f5f9' }}>
@@ -866,12 +880,18 @@ function CartLine({
                                     <input
                                         type="number"
                                         placeholder="VAT inc."
+                                        min={minEditablePrice}
                                         value={item.serviceUnitPrice ?? ''}
                                         onChange={e => onSetServicePrice(e.target.value)}
                                         style={{ flex: 1, padding: '5px 8px', border: '1.5px solid #e5e7eb', borderRadius: 6, fontSize: '0.72rem', outline: 'none', fontFamily: 'inherit' }}
                                     />
                                     <span style={{ fontSize: '0.65rem', color: '#94a3b8', fontWeight: 700 }}>SAR</span>
                                 </div>
+                            )}
+                            {priceEditable && minEditablePrice > 0 && (
+                                <span style={{ fontSize: '0.65rem', color: '#92400e', fontWeight: 700 }}>
+                                    Minimum: SAR {minEditablePrice.toFixed(2)} (VAT inc.)
+                                </span>
                             )}
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                 <label style={{ fontSize: '0.68rem', fontWeight: 800, color: '#64748b', minWidth: 80 }}>Discount</label>

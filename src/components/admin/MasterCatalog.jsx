@@ -141,11 +141,25 @@ function validateCatalogProductPrices(form, { includePurchase = true } = {}) {
         { label: 'Sale price', value: form.salePrice },
         { label: 'Min corporate price', value: form.minCorpPrice },
         { label: 'Max corporate price', value: form.maxCorpPrice },
+        { label: 'Min editable price', value: form.minPriceEditable },
     ];
     if (includePurchase) {
         fields.unshift({ label: 'Purchase price', value: form.purchasePrice });
     }
     return findFirstNegativeMoneyField(fields);
+}
+
+function validateProductPriceEditableRules(form) {
+    if (!toBoolPriceEditable(form)) return null;
+    const raw = form.minPriceEditable;
+    if (raw === '' || raw == null) {
+        return 'Minimum editable price is required when price editing is enabled';
+    }
+    const min = parseNumberOr(raw, NaN);
+    if (!Number.isFinite(min) || min < 0) {
+        return 'Minimum editable price must be zero or greater';
+    }
+    return null;
 }
 
 function validateCatalogServicePrices(form) {
@@ -166,6 +180,24 @@ const toBoolPriceEditable = (obj) => {
         return s === 'true' || s === '1' || s === 'yes';
     }
     return false;
+};
+
+const catalogItemId = (item) =>
+    item?.id != null ? String(item.id) : '';
+
+const catalogIdsMatch = (a, b) => catalogItemId(a) !== '' && catalogItemId(a) === catalogItemId(b);
+
+const toBoolActive = (obj) => {
+    if (!obj || typeof obj !== 'object') return true;
+    const raw = obj.isActive ?? obj.is_active;
+    if (raw === true || raw === 1) return true;
+    if (raw === false || raw === 0) return false;
+    if (typeof raw === 'string') {
+        const s = raw.trim().toLowerCase();
+        if (s === 'true' || s === '1' || s === 'yes') return true;
+        if (s === 'false' || s === '0' || s === 'no') return false;
+    }
+    return true;
 };
 
 /**
@@ -340,6 +372,7 @@ export default function MasterCatalog() {
     const [bulkServiceImporting, setBulkServiceImporting] = useState(false);
     const [bulkServiceImportResult, setBulkServiceImportResult] = useState(null);
     const [serviceToggleBusyKey, setServiceToggleBusyKey] = useState('');
+    const [productToggleBusyKey, setProductToggleBusyKey] = useState('');
 
     // ── Duplication Review ────────────────────────────────────────
     const [dupGroups, setDupGroups] = useState([]);
@@ -397,6 +430,8 @@ export default function MasterCatalog() {
         imageUrl: '',
         conversionRules: [],
         kmTypeValue: '',
+        isPriceEditable: false,
+        minPriceEditable: '',
     });
 
     const [newDept, setNewDept] = useState({ name: '' });
@@ -444,12 +479,13 @@ export default function MasterCatalog() {
         return matchesSearch && matchesStatus;
     };
     const serviceMatchesFilters = (s) => {
+        const active = toBoolActive(s);
         const matchesSvcStatus =
             serviceStatusFilter === 'All' || serviceStatusFilter === 'Pending'
                 ? true
                 : serviceStatusFilter === 'Rejected'
-                  ? s.isActive === false
-                  : s.isActive !== false;
+                  ? !active
+                  : active;
         if (!matchesSvcStatus) return false;
         if (!searchQuery) return true;
         const q = searchQuery.toLowerCase();
@@ -808,6 +844,11 @@ export default function MasterCatalog() {
                 product.kmTypeValue != null && product.kmTypeValue !== ''
                     ? String(product.kmTypeValue)
                     : '',
+            isPriceEditable: toBoolPriceEditable(product),
+            minPriceEditable:
+                product.minPriceEditable == null && product.min_price_editable == null
+                    ? ''
+                    : String(product.minPriceEditable ?? product.min_price_editable),
         });
         setIsEditModalOpen(true);
     };
@@ -816,6 +857,11 @@ export default function MasterCatalog() {
         const priceErr = validateCatalogProductPrices(newProduct);
         if (priceErr) {
             alert(`${priceErr} cannot be negative.`);
+            return;
+        }
+        const editableErr = validateProductPriceEditableRules(newProduct);
+        if (editableErr) {
+            alert(editableErr);
             return;
         }
         setSaving(true);
@@ -841,6 +887,11 @@ export default function MasterCatalog() {
                 allowDecimalQty: false,
                 minPriceCorporate: parseNumberOr(newProduct.minCorpPrice, 0),
                 maxPriceCorporate: parseNumberOr(newProduct.maxCorpPrice, 0),
+                isPriceEditable: !!newProduct.isPriceEditable,
+                minPriceEditable:
+                    newProduct.isPriceEditable && newProduct.minPriceEditable !== ''
+                        ? parseNumberOr(newProduct.minPriceEditable, 0)
+                        : null,
                 ...kmPayload,
             });
             setIsAddModalOpen(false);
@@ -860,6 +911,8 @@ export default function MasterCatalog() {
                 imageUrl: '',
                 conversionRules: [],
                 kmTypeValue: '',
+                isPriceEditable: false,
+                minPriceEditable: '',
             });
             await refreshCatalog();
         } catch (e) {
@@ -878,6 +931,11 @@ export default function MasterCatalog() {
         const priceErr = validateCatalogProductPrices(editingProduct);
         if (priceErr) {
             alert(`${priceErr} cannot be negative.`);
+            return;
+        }
+        const editableErr = validateProductPriceEditableRules(editingProduct);
+        if (editableErr) {
+            alert(editableErr);
             return;
         }
         setSaving(true);
@@ -914,6 +972,13 @@ export default function MasterCatalog() {
                         : parseNumberOr(editingProduct.maxCorpPrice, 0),
                 isActive: editingProduct.isActive ?? true,
                 allowDecimalQty: !!editingProduct.allowDecimalQty,
+                isPriceEditable: !!editingProduct.isPriceEditable,
+                minPriceEditable:
+                    editingProduct.isPriceEditable &&
+                    editingProduct.minPriceEditable !== '' &&
+                    editingProduct.minPriceEditable != null
+                        ? parseNumberOr(editingProduct.minPriceEditable, 0)
+                        : null,
                 kmTypeValue,
             });
             setIsEditModalOpen(false);
@@ -1043,18 +1108,86 @@ export default function MasterCatalog() {
         }
     };
 
-    const handleToggleServiceField = async (service, field, nextValue) => {
+    const handleToggleProductField = async (product, field, nextValue, extraPayload = {}) => {
+        if (!product?.id) return;
+        const busyKey = `${catalogItemId(product)}:${field}`;
+        const patch = { [field]: nextValue, ...extraPayload };
+        setProductToggleBusyKey(busyKey);
+        try {
+            const updated = await updateProduct(catalogItemId(product), patch);
+            const merged = updated && typeof updated === 'object' ? { ...patch, ...updated } : patch;
+            const applyPatch = (item) =>
+                catalogIdsMatch(item, product) ? { ...item, ...merged } : item;
+            setProducts((prev) => prev.map(applyPatch));
+            setDepartmentProducts((prev) =>
+                prev.map((dept) => ({
+                    ...dept,
+                    products: (dept.products || []).map(applyPatch),
+                })),
+            );
+            setEditingProduct((prev) =>
+                prev && catalogIdsMatch(prev, product) ? { ...prev, ...merged } : prev,
+            );
+            await refreshCatalog();
+            await loadKpis({ silent: true });
+        } catch (e) {
+            alert(e?.message || 'Failed to update product');
+        } finally {
+            setProductToggleBusyKey((current) => (current === busyKey ? '' : current));
+        }
+    };
+
+    const handleToggleProductPriceEditable = async (product, currentlyEditable) => {
+        if (!product?.id) return;
+        if (currentlyEditable) {
+            await handleToggleProductField(product, 'isPriceEditable', false);
+            return;
+        }
+        const raw = window.prompt(
+            'Enter minimum price (SAR, VAT inclusive). Cashier cannot go below this amount:',
+            product.minPriceEditable != null && product.minPriceEditable !== ''
+                ? String(product.minPriceEditable ?? product.min_price_editable ?? '')
+                : '',
+        );
+        if (raw == null) return;
+        const min = parseNumberOr(raw, NaN);
+        if (!Number.isFinite(min) || min < 0) {
+            alert('Minimum price must be zero or greater.');
+            return;
+        }
+        await handleToggleProductField(product, 'isPriceEditable', true, {
+            minPriceEditable: min,
+        });
+    };
+
+    const handleToggleServiceField = async (service, field, nextValue, extraPayload = {}) => {
         if (!service?.id) return;
-        const busyKey = `${service.id}:${field}`;
+        const busyKey = `${catalogItemId(service)}:${field}`;
+        const patch = { [field]: nextValue, ...extraPayload };
         setServiceToggleBusyKey(busyKey);
         try {
-            await updateService(service.id, { [field]: nextValue });
-            setServices((prev) =>
-                prev.map((item) => (item.id === service.id ? { ...item, [field]: nextValue } : item)),
+            const updated = await updateService(catalogItemId(service), patch);
+            const merged = updated && typeof updated === 'object' ? { ...patch, ...updated } : patch;
+            const applyPatch = (item) =>
+                catalogIdsMatch(item, service) ? { ...item, ...merged } : item;
+            setServices((prev) => prev.map(applyPatch));
+            setDepartmentServices((prev) =>
+                prev.map((dept) => ({
+                    ...dept,
+                    services: (dept.services || []).map(applyPatch),
+                })),
             );
             setEditingService((prev) =>
-                prev && prev.id === service.id ? { ...prev, [field]: nextValue } : prev,
+                prev && catalogIdsMatch(prev, service) ? { ...prev, ...merged } : prev,
             );
+            if (field === 'isActive') {
+                if (nextValue === false && serviceStatusFilter === 'Approved') {
+                    setServiceStatusFilter('All');
+                } else if (nextValue === true && serviceStatusFilter === 'Rejected') {
+                    setServiceStatusFilter('All');
+                }
+            }
+            await refreshCatalog();
             await loadKpis({ silent: true });
         } catch (e) {
             alert(e?.message || 'Failed to update service');
@@ -1352,6 +1485,8 @@ export default function MasterCatalog() {
                     {displayedProducts.map((p) => {
                         const createdRaw = p.createdAt ?? p.created_at;
                         const createdLabel = formatCatalogCreatedAt(createdRaw);
+                        const priceEditable = toBoolPriceEditable(p);
+                        const priceBusy = productToggleBusyKey === `${catalogItemId(p)}:isPriceEditable`;
                         return (
                             <div
                                 key={p.id}
@@ -1391,6 +1526,36 @@ export default function MasterCatalog() {
                                             </button>
                                         )}
                                     </div>
+                                    {hasPermission('inventory.master-catalog.products.edit') && (
+                                        <div
+                                            className="mc-sc-toggle-group"
+                                            style={{ justifyContent: 'flex-start', gap: 8, width: '100%', minWidth: 0, marginTop: 10 }}
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            <div className="mc-toggle-label">
+                                                <strong>Price Editable</strong>
+                                                <span className={priceEditable ? 'mc-toggle-state--on' : ''}>
+                                                    {priceBusy
+                                                        ? 'Updating...'
+                                                        : priceEditable
+                                                          ? `Editable · min SAR ${Number(p.minPriceEditable ?? p.min_price_editable ?? 0).toFixed(2)}`
+                                                          : 'Fixed price'}
+                                                </span>
+                                            </div>
+                                            <div
+                                                className={`mc-toggle-switch${priceEditable ? ' active' : ''}`}
+                                                role="button"
+                                                aria-label={`Toggle ${p.name} price editable`}
+                                                aria-pressed={priceEditable}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (priceBusy) return;
+                                                    handleToggleProductPriceEditable(p, priceEditable);
+                                                }}
+                                                style={{ opacity: priceBusy ? 0.65 : 1, pointerEvents: priceBusy ? 'none' : 'auto' }}
+                                            />
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         );
@@ -1982,12 +2147,12 @@ export default function MasterCatalog() {
             ) : (
                 <div className="mc-services-grid">
                     {displayedServices.map((p) => {
-                        const isActive = p.isActive !== false;
+                        const isActive = toBoolActive(p);
                         const priceEditable = toBoolPriceEditable(p);
                         const createdRaw = p.createdAt ?? p.created_at;
                         const createdLabel = formatCatalogCreatedAt(createdRaw);
-                        const activeBusy = serviceToggleBusyKey === `${p.id}:isActive`;
-                        const priceBusy = serviceToggleBusyKey === `${p.id}:isPriceEditable`;
+                        const activeBusy = serviceToggleBusyKey === `${catalogItemId(p)}:isActive`;
+                        const priceBusy = serviceToggleBusyKey === `${catalogItemId(p)}:isPriceEditable`;
                         return (
                             <div
                                 key={p.id}
@@ -2967,6 +3132,55 @@ export default function MasterCatalog() {
                             </div>
 
                             <div
+                                className="mc-toggle-box yellow"
+                                role="button"
+                                tabIndex={0}
+                                onClick={() =>
+                                    setEditingProduct((prev) => ({
+                                        ...prev,
+                                        isPriceEditable: !prev.isPriceEditable,
+                                        minPriceEditable: !prev.isPriceEditable ? prev.minPriceEditable : '',
+                                    }))
+                                }
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        e.preventDefault();
+                                        setEditingProduct((prev) => ({
+                                            ...prev,
+                                            isPriceEditable: !prev.isPriceEditable,
+                                            minPriceEditable: !prev.isPriceEditable ? prev.minPriceEditable : '',
+                                        }));
+                                    }
+                                }}
+                            >
+                                <div className="mc-toggle-info">
+                                    <strong>Price Editable on POS</strong>
+                                    <span>{editingProduct.isPriceEditable ? 'Cashier can set custom price' : 'Fixed catalog price'}</span>
+                                </div>
+                                <div
+                                    className={`mc-toggle-switch small${editingProduct.isPriceEditable ? ' active' : ''}`}
+                                    aria-hidden
+                                />
+                            </div>
+
+                            {editingProduct.isPriceEditable && (
+                                <div className="mc-form-group">
+                                    <label>Minimum editable price (SAR, VAT inclusive) *</label>
+                                    <input
+                                        {...NON_NEGATIVE_MONEY_INPUT_ATTRS}
+                                        placeholder="0.00"
+                                        value={editingProduct.minPriceEditable ?? ''}
+                                        onChange={(e) =>
+                                            setEditingProduct({
+                                                ...editingProduct,
+                                                minPriceEditable: sanitizeNonNegativeMoneyInput(e.target.value),
+                                            })
+                                        }
+                                    />
+                                </div>
+                            )}
+
+                            <div
                                 className="mc-toggle-box blue-toggle"
                                 role="button"
                                 tabIndex={0}
@@ -3195,6 +3409,43 @@ export default function MasterCatalog() {
                                     onChange={(e) => setNewProduct({...newProduct, description: e.target.value})}
                                 />
                             </div>
+
+                            <div className="mc-toggle-box yellow">
+                                <div className="mc-toggle-info">
+                                    <strong>Allow Cashier to Edit Price on POS</strong>
+                                    <span>When ON, cashier can negotiate & set custom price at checkout</span>
+                                </div>
+                                <label>
+                                    <input
+                                        type="checkbox"
+                                        checked={!!newProduct.isPriceEditable}
+                                        onChange={(e) =>
+                                            setNewProduct((prev) => ({
+                                                ...prev,
+                                                isPriceEditable: e.target.checked,
+                                                minPriceEditable: e.target.checked ? prev.minPriceEditable : '',
+                                            }))
+                                        }
+                                    />
+                                </label>
+                            </div>
+
+                            {newProduct.isPriceEditable && (
+                                <div className="mc-form-group">
+                                    <label>Minimum editable price (SAR, VAT inclusive) *</label>
+                                    <input
+                                        {...NON_NEGATIVE_MONEY_INPUT_ATTRS}
+                                        placeholder="0.00"
+                                        value={newProduct.minPriceEditable ?? ''}
+                                        onChange={(e) =>
+                                            setNewProduct({
+                                                ...newProduct,
+                                                minPriceEditable: sanitizeNonNegativeMoneyInput(e.target.value),
+                                            })
+                                        }
+                                    />
+                                </div>
+                            )}
 
                             <div className="mc-toggle-box blue-toggle">
                                 <div className="mc-toggle-info">

@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RotateCcw, RefreshCw, Eye, Printer, ExternalLink, Search, FileText } from 'lucide-react';
-import { AnimatePresence } from 'framer-motion';
-import Modal from '../../components/Modal';
+import WorkshopSubScreen from '../../components/workshop/WorkshopSubScreen';
 import { ShimmerTableBodyRows } from '../../components/supplier/Shimmer';
 import CreditNotePrintView from '../../components/workshop/CreditNotePrintView';
 import { branchScopeParams } from '../../services/workshopStaffApi';
@@ -129,11 +128,105 @@ export default function WorkshopSalesReturns({ selectedBranchId = 'all', branche
         ? `${window.location.origin}/public/pos-invoices/${detail.invoicePublicToken}`
         : null;
 
+    const closeDetail = () => {
+        setDetail(null);
+        setPrintOpen(false);
+    };
+
     if (!canView) {
         return (
             <div style={{ padding: 32 }}>
                 <p>You do not have permission to view sales returns.</p>
             </div>
+        );
+    }
+
+    if (printOpen && detail) {
+        return (
+            <WorkshopSubScreen
+                title={`Credit note ${detail.creditNoteNo || detail.returnNo || ''}`}
+                subtitle={`Invoice ${detail.invoiceNo || '—'} · ${detail.customerName || 'Customer'}`}
+                backLabel="Back to return detail"
+                onBack={() => setPrintOpen(false)}
+                size="xl"
+                maxWidth="900px"
+                footer={(
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, width: '100%' }}>
+                        <button type="button" className="mc-btn-ghost" onClick={() => setPrintOpen(false)}>Close</button>
+                        <button type="button" className="mc-btn-primary" onClick={handlePrint}>
+                            <Printer size={16} /> Print
+                        </button>
+                    </div>
+                )}
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    <CreditNotePrintView ref={printRef} data={detail} />
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
+    if (detail) {
+        return (
+            <WorkshopSubScreen
+                title={`Sales return ${detail.creditNoteNo || detail.returnNo || ''}`}
+                subtitle={`Invoice ${detail.invoiceNo || '—'} · ${detail.customerName || 'Customer'}`}
+                backLabel="Back to Sales Returns"
+                onBack={closeDetail}
+                size="xl"
+                maxWidth="860px"
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    {detailLoading ? (
+                        <p style={{ padding: 24, textAlign: 'center' }}>Loading…</p>
+                    ) : (
+                        <>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16, fontSize: '0.875rem' }}>
+                                <div><strong>Credit note:</strong> {detail.creditNoteNo || detail.returnNo}</div>
+                                <div><strong>Invoice:</strong> {detail.invoiceNo}</div>
+                                <div><strong>Customer:</strong> {detail.customerName} · {detail.customerPhone || '—'}</div>
+                                <div><strong>Vehicle:</strong> {detail.vehicleNumber || '—'}</div>
+                                <div><strong>Cashier:</strong> {detail.cashier?.name || '—'}</div>
+                                <div><strong>Branch:</strong> {detail.branchName}</div>
+                                <div><strong>Return type:</strong> {detail.returnScope === 'full' ? 'Full return' : 'Partial return'}</div>
+                                <div><strong>Date:</strong> {fmtDt(detail.returnDate || detail.createdAt)}</div>
+                            </div>
+
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem', marginBottom: 16 }}>
+                                <thead>
+                                    <tr style={{ background: '#F9FAFB' }}>
+                                        <th style={{ padding: 10, textAlign: 'left' }}>Product / service</th>
+                                        <th style={{ padding: 10, textAlign: 'right' }}>Return qty</th>
+                                        <th style={{ padding: 10, textAlign: 'right' }}>Line total</th>
+                                        <th style={{ padding: 10, textAlign: 'left' }}>Reason</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(detail.items || []).map((it) => (
+                                        <tr key={it.id} style={{ borderTop: '1px solid #eee' }}>
+                                            <td style={{ padding: 10 }}>{it.name}</td>
+                                            <td style={{ padding: 10, textAlign: 'right' }}>{it.qty}{it.originalQty != null ? ` / ${it.originalQty}` : ''}</td>
+                                            <td style={{ padding: 10, textAlign: 'right' }}>SAR {Number(it.lineTotal || 0).toFixed(2)}</td>
+                                            <td style={{ padding: 10 }}>{it.reason || '—'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                                {digitalInvoiceUrl ? (
+                                    <a href={digitalInvoiceUrl} target="_blank" rel="noopener noreferrer" className="mc-btn-ghost" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}>
+                                        <ExternalLink size={16} /> View digital invoice
+                                    </a>
+                                ) : null}
+                                <button type="button" className="mc-btn-primary" onClick={() => setPrintOpen(true)}>
+                                    <Printer size={16} /> View credit note / Print
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
+            </WorkshopSubScreen>
         );
     }
 
@@ -343,76 +436,6 @@ export default function WorkshopSalesReturns({ selectedBranchId = 'all', branche
                 <p style={{ marginTop: 12, fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>Showing {rows.length} of {total}</p>
             ) : null}
 
-            <AnimatePresence>
-                {detail ? (
-                    <Modal onClose={() => { setDetail(null); setPrintOpen(false); }} title="Sales return detail" width="860px">
-                        {detailLoading ? (
-                            <p style={{ padding: 24, textAlign: 'center' }}>Loading…</p>
-                        ) : (
-                            <div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16, fontSize: '0.875rem' }}>
-                                    <div><strong>Credit note:</strong> {detail.creditNoteNo || detail.returnNo}</div>
-                                    <div><strong>Invoice:</strong> {detail.invoiceNo}</div>
-                                    <div><strong>Customer:</strong> {detail.customerName} · {detail.customerPhone || '—'}</div>
-                                    <div><strong>Vehicle:</strong> {detail.vehicleNumber || '—'}</div>
-                                    <div><strong>Cashier:</strong> {detail.cashier?.name || '—'}</div>
-                                    <div><strong>Branch:</strong> {detail.branchName}</div>
-                                    <div><strong>Return type:</strong> {detail.returnScope === 'full' ? 'Full return' : 'Partial return'}</div>
-                                    <div><strong>Date:</strong> {fmtDt(detail.returnDate || detail.createdAt)}</div>
-                                </div>
-
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem', marginBottom: 16 }}>
-                                    <thead>
-                                        <tr style={{ background: '#F9FAFB' }}>
-                                            <th style={{ padding: 10, textAlign: 'left' }}>Product / service</th>
-                                            <th style={{ padding: 10, textAlign: 'right' }}>Return qty</th>
-                                            <th style={{ padding: 10, textAlign: 'right' }}>Line total</th>
-                                            <th style={{ padding: 10, textAlign: 'left' }}>Reason</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {(detail.items || []).map((it) => (
-                                            <tr key={it.id} style={{ borderTop: '1px solid #eee' }}>
-                                                <td style={{ padding: 10 }}>{it.name}</td>
-                                                <td style={{ padding: 10, textAlign: 'right' }}>{it.qty}{it.originalQty != null ? ` / ${it.originalQty}` : ''}</td>
-                                                <td style={{ padding: 10, textAlign: 'right' }}>SAR {Number(it.lineTotal || 0).toFixed(2)}</td>
-                                                <td style={{ padding: 10 }}>{it.reason || '—'}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                                    {digitalInvoiceUrl ? (
-                                        <a href={digitalInvoiceUrl} target="_blank" rel="noopener noreferrer" className="mc-btn-ghost" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}>
-                                            <ExternalLink size={16} /> View digital invoice
-                                        </a>
-                                    ) : null}
-                                    <button type="button" className="mc-btn-primary" onClick={() => setPrintOpen(true)}>
-                                        <Printer size={16} /> View credit note / Print
-                                    </button>
-                                </div>
-                            </div>
-                        )}
-                    </Modal>
-                ) : null}
-            </AnimatePresence>
-
-            <AnimatePresence>
-                {printOpen && detail ? (
-                    <Modal onClose={() => setPrintOpen(false)} title="Credit note" width="900px">
-                        <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
-                            <CreditNotePrintView ref={printRef} data={detail} />
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 16 }}>
-                            <button type="button" className="mc-btn-ghost" onClick={() => setPrintOpen(false)}>Close</button>
-                            <button type="button" className="mc-btn-primary" onClick={handlePrint}>
-                                <Printer size={16} /> Print
-                            </button>
-                        </div>
-                    </Modal>
-                ) : null}
-            </AnimatePresence>
         </div>
     );
 }

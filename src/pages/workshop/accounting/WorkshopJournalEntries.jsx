@@ -46,7 +46,7 @@ function GeneralJournalView() {
                 <head>
                     <title>Journal Voucher - ${je.code}</title>
                     <style>
-                        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; padding: 40px; color: #1e293b; line-height: 1.5; }
+                        body { font-family: 'Poppins', sans-serif; padding: 40px; color: #1e293b; line-height: 1.5; }
                         .voucher-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; border-bottom: 2px solid #f1f5f9; padding-bottom: 20px; }
                         .company-info h1 { margin: 0; font-size: 24px; font-weight: 900; color: #0f172a; }
                         .company-info p { margin: 4px 0; color: #64748b; font-size: 14px; }

@@ -30,7 +30,7 @@
 
 .brand-main-title {
     font-size: 4.5rem;
-    font-weight: 900;
+    font-weight: 800;
     color: #FFFFFF;
     line-height: 1;
     margin-bottom: 24px;
@@ -78,7 +78,7 @@
 .stat-item h4 {
     color: #FFFFFF;
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 700;
 }
 
 .stat-item p {
@@ -117,7 +117,7 @@
 
 .signin-header h2 {
     font-size: 2rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #1a1a1a;
     margin-bottom: 8px;
 }
@@ -246,7 +246,7 @@
     border: none;
     border-radius: 16px;
     font-size: 1rem;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
     display: flex;
@@ -290,7 +290,7 @@
     box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
     cursor: pointer;
     font-size: 0.875rem;
-    font-weight: 800;
+    font-weight: 700;
     text-decoration: none;
     transition: all 0.25s ease;
 }

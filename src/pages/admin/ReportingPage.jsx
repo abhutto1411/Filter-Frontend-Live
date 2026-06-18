@@ -245,7 +245,7 @@ export default function ReportingPage() {
 
             {/* Slide-over Details Panel */}
             {selectedDetails && (
-                <div className="rep-modal-overlay" onClick={() => setSelectedDetails(null)}>
+                <div className="rep-modal-overlay">
                     <div className="rep-details-panel" onClick={(e) => e.stopPropagation()}>
                         <div className="rep-details-header">
                             <div>

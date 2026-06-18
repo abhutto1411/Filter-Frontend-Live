@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useStorageFacilityApi } from './StorageFacilityPortalContext';
 import { Plus } from 'lucide-react';
 
+import RowActionsMenu from '../../../components/RowActionsMenu';
 import StorageFacilityInvoicePrint from './StorageFacilityInvoicePrint';
 import StorageFacilityNewInvoiceModal from './StorageFacilityNewInvoiceModal';
 import { sfInvoiceTypeLabel } from './storageInvoiceScopes';
@@ -106,93 +107,76 @@ export default function StorageFacilityInvoicesTab({
                                         </td>
                                         <td className="table-cell">{inv.status}</td>
                                         <td className="table-cell">
-                                            <button
-                                                type="button"
-                                                className="mgr-si-record-pay"
-                                                style={{ marginRight: 6 }}
-                                                onClick={() => setPrintInvoice(inv)}
-                                            >
-                                                Print
-                                            </button>
-                                            {inv.status === 'posted' &&
-                                            inv.invoiceType === 'withdrawal_to_owner' &&
-                                            inv.needsWarehouseSync ? (
-                                                <button
-                                                    type="button"
-                                                    className="mgr-si-record-pay"
-                                                    style={{ marginRight: 6 }}
-                                                    onClick={async () => {
-                                                        try {
+                                            <RowActionsMenu
+                                                ariaLabel={`Actions for invoice ${inv.invoiceNo || inv.id}`}
+                                                items={[
+                                                    {
+                                                        label: 'Print',
+                                                        onClick: () => setPrintInvoice(inv),
+                                                    },
+                                                    {
+                                                        label: 'Sync accounting',
+                                                        hidden: !(
+                                                            inv.status === 'posted' &&
+                                                            inv.invoiceType === 'withdrawal_to_owner' &&
+                                                            inv.needsWarehouseSync
+                                                        ),
+                                                        onClick: async () => {
+                                                            try {
+                                                                await sfApi.postStorageInvoice(brandId, inv.id);
+                                                                await handleReload();
+                                                                window.alert(
+                                                                    'Warehouse quantities, stock timeline, and brand accounting synced.',
+                                                                );
+                                                            } catch (ex) {
+                                                                window.alert(ex?.message || 'Sync failed');
+                                                            }
+                                                        },
+                                                    },
+                                                    {
+                                                        label: 'Sync GL',
+                                                        hidden: !(
+                                                            inv.status === 'posted' && inv.needsGlSync
+                                                        ),
+                                                        onClick: async () => {
+                                                            try {
+                                                                await sfApi.postStorageInvoice(brandId, inv.id);
+                                                                await handleReload();
+                                                                window.alert(
+                                                                    'Brand GL journal posted for this invoice.',
+                                                                );
+                                                            } catch (ex) {
+                                                                window.alert(ex?.message || 'Sync failed');
+                                                            }
+                                                        },
+                                                    },
+                                                    {
+                                                        label: 'Post',
+                                                        hidden: inv.status !== 'draft',
+                                                        onClick: async () => {
                                                             await sfApi.postStorageInvoice(brandId, inv.id);
                                                             await handleReload();
-                                                            window.alert(
-                                                                'Warehouse quantities, stock timeline, and brand accounting synced.',
+                                                        },
+                                                    },
+                                                    {
+                                                        label: paymentLabel,
+                                                        hidden: !(inv.status === 'posted' && inv.balance > 0),
+                                                        onClick: async () => {
+                                                            const amt = prompt(
+                                                                `${paymentLabel} amount (SAR)`,
+                                                                String(inv.balance),
                                                             );
-                                                        } catch (ex) {
-                                                            window.alert(
-                                                                ex?.message || 'Sync failed',
+                                                            if (!amt) return;
+                                                            await sfApi.recordStorageInvoicePayment(
+                                                                brandId,
+                                                                inv.id,
+                                                                { amount: Number(amt), method: 'cash' },
                                                             );
-                                                        }
-                                                    }}
-                                                >
-                                                    Sync accounting
-                                                </button>
-                                            ) : null}
-                                            {inv.status === 'posted' && inv.needsGlSync ? (
-                                                <button
-                                                    type="button"
-                                                    className="mgr-si-record-pay"
-                                                    style={{ marginRight: 6 }}
-                                                    onClick={async () => {
-                                                        try {
-                                                            await sfApi.postStorageInvoice(brandId, inv.id);
                                                             await handleReload();
-                                                            window.alert(
-                                                                'Brand GL journal posted for this invoice.',
-                                                            );
-                                                        } catch (ex) {
-                                                            window.alert(
-                                                                ex?.message || 'Sync failed',
-                                                            );
-                                                        }
-                                                    }}
-                                                >
-                                                    Sync GL
-                                                </button>
-                                            ) : null}
-                                            {inv.status === 'draft' ? (
-                                                <button
-                                                    type="button"
-                                                    className="mgr-si-record-pay"
-                                                    onClick={async () => {
-                                                        await sfApi.postStorageInvoice(brandId, inv.id);
-                                                        await handleReload();
-                                                    }}
-                                                >
-                                                    Post
-                                                </button>
-                                            ) : null}
-                                            {inv.status === 'posted' && inv.balance > 0 ? (
-                                                <button
-                                                    type="button"
-                                                    className="mgr-si-record-pay"
-                                                    onClick={async () => {
-                                                        const amt = prompt(
-                                                            `${paymentLabel} amount (SAR)`,
-                                                            String(inv.balance),
-                                                        );
-                                                        if (!amt) return;
-                                                        await sfApi.recordStorageInvoicePayment(
-                                                            brandId,
-                                                            inv.id,
-                                                            { amount: Number(amt), method: 'cash' },
-                                                        );
-                                                        await handleReload();
-                                                    }}
-                                                >
-                                                    {paymentLabel}
-                                                </button>
-                                            ) : null}
+                                                        },
+                                                    },
+                                                ]}
+                                            />
                                         </td>
                                     </tr>
                                 ))

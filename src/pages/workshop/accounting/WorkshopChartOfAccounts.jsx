@@ -55,7 +55,7 @@ function ChartOfAccountsView() {
                 <head>
                     <title>Financial Report - Print</title>
                     <style>
-                        body { font-family: 'Inter', system-ui, sans-serif; padding: 40px; color: #111827; }
+                        body { font-family: 'Poppins', sans-serif; padding: 40px; color: #111827; }
                         .report-header-centered { text-align: center; margin-bottom: 40px; }
                         .report-type-label { font-size: 10px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
                         .report-company-name { font-size: 24px; font-weight: 900; margin-bottom: 8px; }

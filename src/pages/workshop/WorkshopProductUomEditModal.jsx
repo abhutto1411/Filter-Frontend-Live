@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, ArrowRightLeft, Package } from 'lucide-react';
-import Modal from '../../components/Modal';
+import WorkshopSubScreen from '../../components/workshop/WorkshopSubScreen';
 import { patchBranchProduct, postBranchBulkProductUom } from '../../services/workshopCatalogApi';
 
 const WAREHOUSE_UNIT_PRESETS = ['Box', 'Carton', 'Dozen', 'Pack', 'Drum', 'Bag', 'liter', 'pcs'];
@@ -151,50 +151,54 @@ export default function WorkshopProductUomEditModal({
               : null;
 
     return (
-        <Modal
+        <WorkshopSubScreen
             title="Edit UOM & conversion"
-            width="560px"
-            onClose={() => !saving && onClose?.()}
-            disableClose={saving}
-        >
-            <form onSubmit={handleSubmit} className="ws-uom-modal-body">
-                <div className="ws-uom-product-card">
-                    <p className="ws-uom-product-name">{product.name}</p>
-                    <p className="ws-uom-product-meta">
-                        {[product.sku, product.departmentName, stockLabel].filter(Boolean).join(' · ')}
-                    </p>
-                </div>
-
-                <p className="ws-uom-notice">
-                    <AlertTriangle size={16} className="ws-uom-notice-icon" aria-hidden />
-                    <span>
-                        Stock quantity is not changed — only how units are labeled and converted
-                        (e.g. Box vs Liter). Use <strong>Manual Adjust</strong> to change quantities.
-                    </span>
-                </p>
-
-                <UomFormFields
-                    warehouseUnit={warehouseUnit}
-                    setWarehouseUnit={setWarehouseUnit}
-                    workshopUnit={workshopUnit}
-                    setWorkshopUnit={setWorkshopUnit}
-                    conversionFactor={conversionFactor}
-                    setConversionFactor={setConversionFactor}
-                    rulePreview={rulePreview}
-                />
-
-                {error ? <p className="ws-uom-error">{error}</p> : null}
-
-                <div className="ws-uom-modal-footer">
+            subtitle="Stock quantity is not changed — only unit labels and conversion rules."
+            backLabel="Back to Inventory"
+            onBack={() => !saving && onClose?.()}
+            backDisabled={saving}
+            footer={(
+                <>
                     <button type="button" className="mc-btn-ghost mc-btn-large" disabled={saving} onClick={onClose}>
                         Cancel
                     </button>
-                    <button type="submit" className="mc-btn-primary mc-btn-large blue-btn" disabled={saving}>
+                    <button type="submit" form="ws-uom-edit-form" className="mc-btn-primary mc-btn-large blue-btn" disabled={saving}>
                         {saving ? 'Saving…' : 'Save rule'}
                     </button>
-                </div>
-            </form>
-        </Modal>
+                </>
+            )}
+        >
+            <div className="ws-section" style={{ padding: 20 }}>
+                <form id="ws-uom-edit-form" onSubmit={handleSubmit} className="ws-uom-modal-body">
+                    <div className="ws-uom-product-card">
+                        <p className="ws-uom-product-name">{product.name}</p>
+                        <p className="ws-uom-product-meta">
+                            {[product.sku, product.departmentName, stockLabel].filter(Boolean).join(' · ')}
+                        </p>
+                    </div>
+
+                    <p className="ws-uom-notice">
+                        <AlertTriangle size={16} className="ws-uom-notice-icon" aria-hidden />
+                        <span>
+                            Stock quantity is not changed — only how units are labeled and converted
+                            (e.g. Box vs Liter). Use <strong>Manual Adjust</strong> to change quantities.
+                        </span>
+                    </p>
+
+                    <UomFormFields
+                        warehouseUnit={warehouseUnit}
+                        setWarehouseUnit={setWarehouseUnit}
+                        workshopUnit={workshopUnit}
+                        setWorkshopUnit={setWorkshopUnit}
+                        conversionFactor={conversionFactor}
+                        setConversionFactor={setConversionFactor}
+                        rulePreview={rulePreview}
+                    />
+
+                    {error ? <p className="ws-uom-error">{error}</p> : null}
+                </form>
+            </div>
+        </WorkshopSubScreen>
     );
 }
 
@@ -258,44 +262,49 @@ export function WorkshopBulkUomModal({ products, branchId, workshopId, onClose, 
     if (!products?.length) return null;
 
     return (
-        <Modal
+        <WorkshopSubScreen
             title={`Set UOM for ${products.length} product${products.length !== 1 ? 's' : ''}`}
-            width="560px"
-            onClose={() => !saving && onClose?.()}
-            disableClose={saving}
-        >
-            <form onSubmit={handleSubmit} className="ws-uom-modal-body">
-                <p className="ws-uom-bulk-summary">
-                    <Package size={15} style={{ verticalAlign: -2, marginRight: 6 }} aria-hidden />
-                    {previewNames}
-                </p>
-
-                <p className="ws-uom-notice">
-                    <ArrowRightLeft size={16} className="ws-uom-notice-icon" aria-hidden />
-                    <span>Same rule applied to every selected product. Quantities stay unchanged.</span>
-                </p>
-
-                <UomFormFields
-                    warehouseUnit={warehouseUnit}
-                    setWarehouseUnit={setWarehouseUnit}
-                    workshopUnit={workshopUnit}
-                    setWorkshopUnit={setWorkshopUnit}
-                    conversionFactor={conversionFactor}
-                    setConversionFactor={setConversionFactor}
-                    rulePreview={rulePreview}
-                />
-
-                {error ? <p className="ws-uom-error">{error}</p> : null}
-
-                <div className="ws-uom-modal-footer">
+            subtitle="Same rule applied to every selected product. Quantities stay unchanged."
+            backLabel="Back to Inventory"
+            onBack={() => !saving && onClose?.()}
+            backDisabled={saving}
+            size="wide"
+            footer={(
+                <>
                     <button type="button" className="mc-btn-ghost mc-btn-large" disabled={saving} onClick={onClose}>
                         Cancel
                     </button>
-                    <button type="submit" className="mc-btn-primary mc-btn-large blue-btn" disabled={saving}>
+                    <button type="submit" form="ws-bulk-uom-form" className="mc-btn-primary mc-btn-large blue-btn" disabled={saving}>
                         {saving ? 'Applying…' : `Apply to ${products.length}`}
                     </button>
-                </div>
-            </form>
-        </Modal>
+                </>
+            )}
+        >
+            <div className="ws-section" style={{ padding: 20 }}>
+                <form id="ws-bulk-uom-form" onSubmit={handleSubmit} className="ws-uom-modal-body">
+                    <p className="ws-uom-bulk-summary">
+                        <Package size={15} style={{ verticalAlign: -2, marginRight: 6 }} aria-hidden />
+                        {previewNames}
+                    </p>
+
+                    <p className="ws-uom-notice">
+                        <ArrowRightLeft size={16} className="ws-uom-notice-icon" aria-hidden />
+                        <span>Same rule applied to every selected product. Quantities stay unchanged.</span>
+                    </p>
+
+                    <UomFormFields
+                        warehouseUnit={warehouseUnit}
+                        setWarehouseUnit={setWarehouseUnit}
+                        workshopUnit={workshopUnit}
+                        setWorkshopUnit={setWorkshopUnit}
+                        conversionFactor={conversionFactor}
+                        setConversionFactor={setConversionFactor}
+                        rulePreview={rulePreview}
+                    />
+
+                    {error ? <p className="ws-uom-error">{error}</p> : null}
+                </form>
+            </div>
+        </WorkshopSubScreen>
     );
 }

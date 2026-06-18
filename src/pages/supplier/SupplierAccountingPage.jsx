@@ -28,7 +28,7 @@ import {
     listSupplierPayments,
     listSupplierSuperSuppliers,
 } from '../../services/supplierApi';
-import { Shimmer, ShimmerLine, ShimmerTable } from '../../components/supplier/Shimmer';
+import { Shimmer, ShimmerKpiGrid, ShimmerLine, ShimmerTable } from '../../components/supplier/Shimmer';
 import '../../styles/admin/AccountingPage.css';
 import './SupplierChartOfAccounts.css';
 
@@ -116,15 +116,7 @@ function SupplierChartOfAccountsShimmer() {
                     <ShimmerLine height={12} width="94%" style={{ marginTop: 10 }} />
                 </div>
 
-                <div className="supplier-coa__kpi-grid">
-                    {Array.from({ length: 6 }).map((_, i) => (
-                        <div key={i} className="supplier-coa__kpi">
-                            <Shimmer className="supplier-coa__kpi-icon" style={{ width: 36, height: 36, marginBottom: 10 }} />
-                            <ShimmerLine height={9} width="88%" style={{ marginBottom: 6 }} />
-                            <ShimmerLine height={20} width="62%" />
-                        </div>
-                    ))}
-                </div>
+                <ShimmerKpiGrid cards={6} />
 
                 <CoaSectionShimmer tableColumns={4} tableRows={3} />
                 <CoaSectionShimmer tableColumns={2} tableRows={2} />
@@ -224,14 +216,16 @@ function SupplierChartOfAccountsTab() {
                     server (up to 100 lines per section).
                 </p>
 
-                <div className="supplier-coa__kpi-grid">
+                <div className="ws-kpi-grid">
                     {kpiItems.map(({ key, label, value, Icon }) => (
-                        <div key={key} className="supplier-coa__kpi">
-                            <div className="supplier-coa__kpi-icon">
-                                <Icon size={18} strokeWidth={2.25} aria-hidden />
+                        <div key={key} className="ws-kpi-card">
+                            <div>
+                                <p className="ws-kpi-label">{label.toUpperCase()}</p>
+                                <p className="ws-kpi-value">{money(currency, value)}</p>
                             </div>
-                            <div className="supplier-coa__kpi-label">{label}</div>
-                            <div className="supplier-coa__kpi-value">{money(currency, value)}</div>
+                            <div className="ws-kpi-icon ws-kpi-icon--dark">
+                                <Icon size={22} strokeWidth={2.25} aria-hidden />
+                            </div>
                         </div>
                     ))}
                 </div>

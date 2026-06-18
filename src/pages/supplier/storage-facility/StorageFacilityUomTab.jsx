@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useStorageFacilityApi } from './StorageFacilityPortalContext';
-import { Link2, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Link2, Plus } from 'lucide-react';
 import Modal from '../../../components/Modal';
+import RowActionsMenu from '../../../components/RowActionsMenu';
 
 import {
     formatStockOnHandDisplay,
@@ -367,23 +368,23 @@ export default function StorageFacilityUomTab({ brandId, products, onReload }) {
                                                 {p.linkedProductCount ?? 0}
                                             </td>
                                             <td className="table-cell">
-                                                <button
-                                                    type="button"
-                                                    className="mgr-si-record-pay"
-                                                    style={{ marginRight: 6 }}
-                                                    onClick={() => openEditProfile(p)}
+                                                <RowActionsMenu
+                                                    ariaLabel={`Actions for ${p.name || 'UOM profile'}`}
                                                     disabled={busy}
-                                                >
-                                                    <Pencil size={12} /> Edit
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="mgr-si-record-pay"
-                                                    onClick={() => handleDeleteProfile(p)}
-                                                    disabled={busy}
-                                                >
-                                                    <Trash2 size={12} /> Delete
-                                                </button>
+                                                    items={[
+                                                        {
+                                                            label: 'Edit',
+                                                            onClick: () => openEditProfile(p),
+                                                            disabled: busy,
+                                                        },
+                                                        {
+                                                            label: 'Delete',
+                                                            onClick: () => handleDeleteProfile(p),
+                                                            disabled: busy,
+                                                            danger: true,
+                                                        },
+                                                    ]}
+                                                />
                                             </td>
                                         </tr>
                                     ))

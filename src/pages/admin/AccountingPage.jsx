@@ -74,7 +74,7 @@ function ChartOfAccountsView() {
                 <head>
                     <title>Financial Report - Print</title>
                     <style>
-                        body { font-family: 'Inter', system-ui, sans-serif; padding: 40px; color: #111827; }
+                        body { font-family: 'Poppins', sans-serif; padding: 40px; color: #111827; }
                         .report-header-centered { text-align: center; margin-bottom: 40px; }
                         .report-type-label { font-size: 10px; font-weight: 700; color: #9CA3AF; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
                         .report-company-name { font-size: 24px; font-weight: 900; margin-bottom: 8px; }
@@ -2134,7 +2134,7 @@ function GeneralJournalView() {
                 <head>
                     <title>Journal Voucher - ${je.code}</title>
                     <style>
-                        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; padding: 40px; color: #1e293b; line-height: 1.5; }
+                        body { font-family: 'Poppins', sans-serif; padding: 40px; color: #1e293b; line-height: 1.5; }
                         .voucher-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; border-bottom: 2px solid #f1f5f9; padding-bottom: 20px; }
                         .company-info h1 { margin: 0; font-size: 24px; font-weight: 900; color: #0f172a; }
                         .company-info p { margin: 4px 0; color: #64748b; font-size: 14px; }

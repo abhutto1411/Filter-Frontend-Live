@@ -7,6 +7,38 @@ import ProductLineCombobox from './ProductLineCombobox';
 import SearchableEntityCombobox from './SearchableEntityCombobox';
 import StorageFacilityVatTotals, { fmtSar } from './StorageFacilityVatTotals';
 import { computeStorageTotals, unitAmountForApi } from './storageFacilityTotals';
+import { productEffectiveUom, normUomKey } from './storageFacilityUomUtils';
+
+/** Units the qty can be entered in for a product (warehouse pack + stock unit). */
+function productUnitOptions(product) {
+    if (!product) return [];
+    const eff = productEffectiveUom(product);
+    const wh = String(eff.warehouseUnit || '').trim();
+    const ws = String(eff.workshopUnit || '').trim();
+    const cf = Number(eff.conversionFactor) || 1;
+    const opts = [];
+    const seen = new Set();
+    const push = (unit, label) => {
+        const key = normUomKey(unit);
+        if (!unit || seen.has(key)) return;
+        seen.add(key);
+        opts.push({ unit, label });
+    };
+    const isSplit = wh && ws && normUomKey(wh) !== normUomKey(ws) && cf > 1;
+    if (isSplit) {
+        push(wh, `${wh} (1 ${wh} = ${cf} ${ws})`);
+        push(ws, ws);
+    } else {
+        push(wh || ws || product.unit || 'pcs', wh || ws || product.unit || 'pcs');
+    }
+    return opts;
+}
+
+/** Default entry unit for a product — warehouse pack (e.g. Box) when it splits. */
+function defaultUnitForProduct(product) {
+    const opts = productUnitOptions(product);
+    return opts[0]?.unit || product?.unit || 'pcs';
+}
 
 const ADJUSTMENT_REASONS = [
     { value: '', label: 'Select reason…' },
@@ -18,13 +50,15 @@ const ADJUSTMENT_REASONS = [
     { value: 'other', label: 'Other' },
 ];
 
-const LINE_GRID = '36px minmax(140px, 1.5fr) 72px 96px 36px';
+const LINE_GRID = '36px minmax(140px, 1.4fr) minmax(110px, 0.8fr) 72px 96px 36px';
 
 function newLine() {
     return {
         key: `ln-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         storageProductId: '',
         search: '',
+        unit: '',
+        uomProfileId: '',
         qty: '',
         unitCost: '',
     };
@@ -63,6 +97,8 @@ export default function RecordBulkStockMovementModal({
             if (p) {
                 first.storageProductId = String(p.id);
                 first.search = p.name || '';
+                first.unit = defaultUnitForProduct(p);
+                first.uomProfileId = p.uomProfileId ? String(p.uomProfileId) : '';
             }
         }
         return [first, newLine(), newLine()];
@@ -255,14 +291,26 @@ export default function RecordBulkStockMovementModal({
                 adjustmentReason:
                     movementType === 'ADJUSTMENT' ? resolvedAdjustmentReason : undefined,
                 notes: noteParts.length ? noteParts.join('\n') : undefined,
-                lines: validLines.map((ln) => ({
-                    storageProductId: ln.storageProductId,
-                    qty: Number(ln.qty),
-                    unitCost:
-                        ln.unitCost !== ''
-                            ? unitAmountForApi(ln.unitCost, amountsTaxInclusive)
-                            : undefined,
-                })),
+                lines: validLines.map((ln) => {
+                    const selProduct = products.find(
+                        (x) => String(x.id) === String(ln.storageProductId),
+                    );
+                    const unit = ln.unit || defaultUnitForProduct(selProduct);
+                    return {
+                        storageProductId: ln.storageProductId,
+                        qty: Number(ln.qty),
+                        unit: unit || undefined,
+                        uomProfileId:
+                            ln.uomProfileId ||
+                            (selProduct?.uomProfileId
+                                ? String(selProduct.uomProfileId)
+                                : undefined),
+                        unitCost:
+                            ln.unitCost !== ''
+                                ? unitAmountForApi(ln.unitCost, amountsTaxInclusive)
+                                : undefined,
+                    };
+                }),
             });
             if (res?.isStockSale && res?.invoiceNo) {
                 window.alert(
@@ -503,6 +551,7 @@ export default function RecordBulkStockMovementModal({
                     >
                         <div>#</div>
                         <div>Product</div>
+                        <div>Unit</div>
                         <div>Qty</div>
                         {showUnitPrice ? <div>{unitPriceLabel}</div> : <div />}
                         <div />
@@ -533,10 +582,43 @@ export default function RecordBulkStockMovementModal({
                                     updateLine(ln.key, {
                                         storageProductId: String(p.id),
                                         search: p.name || '',
+                                        unit: defaultUnitForProduct(p),
+                                        uomProfileId: p.uomProfileId
+                                            ? String(p.uomProfileId)
+                                            : '',
                                     })
                                 }
                                 onTabAdvance={() => qtyRefs.current[rowIndex]?.focus()}
                             />
+                            {(() => {
+                                const selProduct = products.find(
+                                    (x) => String(x.id) === String(ln.storageProductId),
+                                );
+                                const unitOpts = productUnitOptions(selProduct);
+                                if (unitOpts.length <= 1) {
+                                    return (
+                                        <div className="sf-pi-unit-static">
+                                            {unitOpts[0]?.unit || selProduct?.unit || '—'}
+                                        </div>
+                                    );
+                                }
+                                return (
+                                    <select
+                                        className="sf-pi-cell-input"
+                                        value={ln.unit || unitOpts[0].unit}
+                                        onChange={(e) =>
+                                            updateLine(ln.key, { unit: e.target.value })
+                                        }
+                                        title="Unit this quantity is entered in"
+                                    >
+                                        {unitOpts.map((o) => (
+                                            <option key={o.unit} value={o.unit}>
+                                                {o.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                );
+                            })()}
                             <input
                                 ref={(el) => {
                                     qtyRefs.current[rowIndex] = el;

@@ -283,15 +283,31 @@ export default function DemoInvoicesPage() {
 
             {viewRow && (
                 viewRow.loading ? (
-                    <div style={modalBackdrop} onClick={() => setViewRow(null)}>
-                        <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, padding: 40, textAlign: 'center', color: '#64748b' }}>
-                            <Loader2 size={20} className="spin" /> Loading…
+                    <div style={modalBackdrop}>
+                        <div style={{ ...modalCard, padding: 0, width: 'min(420px, 100%)' }}>
+                            <div style={modalHeader}>
+                                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>Loading invoice</h3>
+                                <button type="button" onClick={() => setViewRow(null)} style={modalCloseBtn} aria-label="Close">
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <div style={{ padding: 40, textAlign: 'center', color: '#64748b' }}>
+                                <Loader2 size={20} className="spin" /> Loading…
+                            </div>
                         </div>
                     </div>
                 ) : viewRow.error ? (
-                    <div style={modalBackdrop} onClick={() => setViewRow(null)}>
-                        <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, padding: 22 }}>
-                            <p style={{ color: '#b91c1c', margin: 0 }}>{viewRow.error}</p>
+                    <div style={modalBackdrop}>
+                        <div style={{ ...modalCard, padding: 0, width: 'min(420px, 100%)' }}>
+                            <div style={modalHeader}>
+                                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>Invoice error</h3>
+                                <button type="button" onClick={() => setViewRow(null)} style={modalCloseBtn} aria-label="Close">
+                                    <X size={18} />
+                                </button>
+                            </div>
+                            <div style={{ padding: 22 }}>
+                                <p style={{ color: '#b91c1c', margin: 0 }}>{viewRow.error}</p>
+                            </div>
                         </div>
                     </div>
                 ) : (
@@ -546,7 +562,7 @@ function DemoInvoiceModal({ editId, workshopOptions, onClose, onSaved }) {
     };
 
     return (
-        <div role="dialog" aria-modal="true" style={modalBackdrop} onClick={onClose}>
+        <div role="dialog" aria-modal="true" style={modalBackdrop}>
             <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 'min(1000px, 100%)' }}>
                 <div style={modalHeader}>
                     <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>
@@ -845,7 +861,7 @@ function ItemPicker({ kind, items, departments, query, setQuery, deptId, setDept
     }, [items, query, deptId]);
 
     return (
-        <div style={{ ...modalBackdrop, zIndex: 200 }} onClick={onClose}>
+        <div style={{ ...modalBackdrop, zIndex: 200 }}>
             <div onClick={(e) => e.stopPropagation()} style={{ ...modalCard, width: 'min(700px, 100%)', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
                 <div style={modalHeader}>
                     <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, textTransform: 'capitalize' }}>

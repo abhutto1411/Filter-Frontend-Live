@@ -391,7 +391,16 @@ export default function SupplierWorkshopAlerts() {
                             </span>
                         </div>
                         <div style={{ overflowX: 'auto', padding: '0 20px 16px', boxSizing: 'border-box' }}>
-                            <table className="ws-table">
+                            <table className="ws-table ws-table--divided">
+                                <colgroup>
+                                    <col style={{ width: '14%' }} />
+                                    <col style={{ width: '30%' }} />
+                                    <col style={{ width: '10%' }} />
+                                    <col style={{ width: '11%' }} />
+                                    <col style={{ width: '11%' }} />
+                                    <col style={{ width: '12%' }} />
+                                    <col style={{ width: '12%' }} />
+                                </colgroup>
                                 <thead>
                                     <tr>
                                         <th>Branch</th>
@@ -431,12 +440,14 @@ export default function SupplierWorkshopAlerts() {
                                             <td style={{ textAlign: 'right' }}>
                                                 <button
                                                     type="button"
-                                                    className="ws-btn-approve"
+                                                    className="mgr-si-btn-new"
                                                     style={{
                                                         display: 'inline-flex',
                                                         alignItems: 'center',
                                                         gap: 6,
                                                         whiteSpace: 'nowrap',
+                                                        padding: '8px 14px',
+                                                        fontSize: '0.8125rem',
                                                     }}
                                                     onClick={() => openSalesInvoiceForAlert(a)}
                                                 >

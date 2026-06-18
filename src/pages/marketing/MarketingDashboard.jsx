@@ -323,7 +323,7 @@ export const MarketingDashboard = () => {
             background: #F3F4F6;
             padding: 18px;
             box-sizing: border-box;
-            font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-family: 'Poppins', sans-serif;
             color: #111827;
           }
 

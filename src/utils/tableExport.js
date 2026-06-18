@@ -58,7 +58,7 @@ export function exportRowsToPdf({ title, subtitle, headers, rows, filenameBase }
     const html = `<!DOCTYPE html>
 <html dir="auto"><head><meta charset="utf-8"><title>${escapeHtml(docTitle)}</title>
 <style>
-  body { font-family: 'Segoe UI', Tahoma, 'Arial', sans-serif; margin: 18px; color: #0f172a; }
+  body { font-family: 'Poppins', sans-serif; margin: 18px; color: #0f172a; }
   h1 { font-size: 18px; margin: 0 0 4px; }
   .sub { font-size: 12px; color: #64748b; margin: 0 0 14px; }
   table { width: 100%; border-collapse: collapse; font-size: 11px; }

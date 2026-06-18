@@ -60,7 +60,7 @@ export default function PublicSspVerifyPage() {
                 minHeight: '100vh',
                 background: 'linear-gradient(165deg, #f8fafc 0%, #e2e8f0 45%, #f1f5f9 100%)',
                 padding: '24px 16px 48px',
-                fontFamily: 'system-ui, sans-serif',
+                fontFamily: "'Poppins', sans-serif",
                 color: '#0f172a',
             }}
         >

@@ -209,7 +209,7 @@ export default function CorporateBillingSection() {
                 <head>
                     <title>Corporate Billing — ${selectedAccount?.name ?? ''}</title>
                     <style>
-                        body { font-family: Arial, sans-serif; padding: 32px; color: #111827; }
+                        body { font-family: 'Poppins', sans-serif; padding: 32px; color: #111827; }
                         h1 { font-size: 22px; margin: 0 0 4px 0; }
                         .sub { font-size: 13px; color: #6B7280; margin-bottom: 20px; }
                         .kpi-line { font-size: 13px; margin: 6px 0; font-weight: 600; }

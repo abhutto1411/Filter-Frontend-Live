@@ -597,7 +597,6 @@ function VehicleUsageView() {
                         justifyContent: 'center',
                         padding: 16,
                     }}
-                    onClick={(e) => e.target === e.currentTarget && closeDetail()}
                 >
                     <div
                         className="ws-section"

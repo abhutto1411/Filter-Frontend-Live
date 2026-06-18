@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useStorageFacilityApi } from './StorageFacilityPortalContext';
-import { BarChart2, Pencil, Plus, Trash2, UserCircle } from 'lucide-react';
+import { Plus, UserCircle } from 'lucide-react';
 import Modal from '../../../components/Modal';
+import RowActionsMenu from '../../../components/RowActionsMenu';
 import { ShimmerTable } from '../../../components/supplier/Shimmer';
 
 import StorageFacilitySalesRepPerformancePanel from './StorageFacilitySalesRepPerformancePanel';
@@ -158,30 +159,24 @@ export default function StorageFacilitySalesRepsTab({ brandId }) {
                                         <td>{r.mobile || '—'}</td>
                                         <td>{r.email || '—'}</td>
                                         <td>
-                                            <button
-                                                type="button"
-                                                className="mgr-si-record-pay"
-                                                style={{ marginRight: 6 }}
-                                                onClick={() => viewPerformance(r.id)}
-                                            >
-                                                <BarChart2 size={12} /> View performance
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="mgr-si-record-pay"
-                                                style={{ marginRight: 6 }}
-                                                onClick={() => openEdit(r)}
-                                            >
-                                                <Pencil size={12} /> Edit
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="mgr-si-record-pay"
-                                                style={{ color: '#b91c1c' }}
-                                                onClick={() => remove(r)}
-                                            >
-                                                <Trash2 size={12} />
-                                            </button>
+                                            <RowActionsMenu
+                                                ariaLabel={`Actions for ${r.name || 'sales rep'}`}
+                                                items={[
+                                                    {
+                                                        label: 'View performance',
+                                                        onClick: () => viewPerformance(r.id),
+                                                    },
+                                                    {
+                                                        label: 'Edit',
+                                                        onClick: () => openEdit(r),
+                                                    },
+                                                    {
+                                                        label: 'Delete',
+                                                        onClick: () => remove(r),
+                                                        danger: true,
+                                                    },
+                                                ]}
+                                            />
                                         </td>
                                     </tr>
                                 ))}

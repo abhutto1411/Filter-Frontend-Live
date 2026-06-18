@@ -1,6 +1,6 @@
 .master-catalog-container {
     padding: 20px 0;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Poppins', sans-serif;
 }
 
 /* Header Section */
@@ -13,7 +13,7 @@
 
 .mc-title {
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #111827;
     margin: 0;
 }
@@ -98,7 +98,7 @@
 
 .mc-card-label {
     font-size: 0.7rem;
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: 0.05em;
     text-transform: uppercase;
     opacity: 0.8;
@@ -106,7 +106,7 @@
 
 .mc-card-value {
     font-size: 1.75rem;
-    font-weight: 800;
+    font-weight: 700;
     margin-top: 8px;
     line-height: 1.1;
 }
@@ -144,7 +144,7 @@
     border-radius: 8px;
     padding: 4px 10px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
 }
 
@@ -395,7 +395,7 @@
 
 .mc-pc-name {
     font-size: 1rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #111827;
     margin: 0 0 4px;
 }
@@ -440,7 +440,7 @@
 
 .mc-pc-price {
     font-size: 1rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #059669;
 }
 
@@ -522,7 +522,7 @@
 .mc-form-group label {
     display: block;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #374151;
     margin-bottom: 6px;
     letter-spacing: 0.02em;
@@ -591,7 +591,7 @@
     align-items: center;
     margin: 16px 0 8px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #374151;
 }
 
@@ -693,7 +693,7 @@
 }
 
 .mc-merge-row span { color: #64748B; width: 110px; }
-.mc-merge-row strong { font-weight: 700; }
+.mc-merge-row strong { font-weight: 600; }
 
 .mc-merge-row.removed strong { color: #B91C1C; }
 .mc-merge-row.kept strong { color: #065F46; }
@@ -800,7 +800,7 @@
 
 .mc-section-header {
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #111827;
     margin-bottom: 12px;
 }
@@ -860,7 +860,7 @@
     color: #991B1B;
     border-radius: 6px;
     font-size: 0.6875rem;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .mc-duplicates-list {
@@ -874,7 +874,7 @@
     background: #FEF2F2;
     padding: 12px 16px;
     color: #991B1B;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.8125rem;
     display: flex;
     align-items: center;
@@ -910,7 +910,7 @@
     color: #EF4444;
     padding: 2px 6px;
     border-radius: 4px;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.625rem;
 }
 
@@ -990,7 +990,7 @@
     color: #EF4444;
     padding: 4px 8px;
     border-radius: 6px;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.6875rem;
 }
 
@@ -1049,7 +1049,7 @@
 .mc-ss-card.green { background: #059669; }
 .mc-ss-card.blue { background: #2563EB; }
 
-.mc-ss-value { font-size: 2rem; font-weight: 800; line-height: 1; margin-bottom: 4px; }
+.mc-ss-value { font-size: 2rem; font-weight: 700; line-height: 1; margin-bottom: 4px; }
 .mc-ss-label { font-size: 0.8125rem; opacity: 0.9; font-weight: 500; }
 
 .mc-services-grid {
@@ -1097,13 +1097,13 @@
     justify-content: center;
 }
 
-.mc-sc-name { font-size: 0.875rem; font-weight: 700; color: #111827; margin-bottom: 2px; }
+.mc-sc-name { font-size: 0.875rem; font-weight: 600; color: #111827; margin-bottom: 2px; }
 .mc-sc-sub { font-size: 0.75rem; color: #6B7280; margin-bottom: 8px; }
 
 .mc-sc-price {
     margin-top: 8px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #059669;
 }
 
@@ -1299,7 +1299,7 @@
 
 .mc-dept-name {
     font-size: 1rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #111827;
     margin-bottom: 4px;
 }
@@ -1410,7 +1410,7 @@
 
 .mc-pr-kpi-value {
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 700;
     line-height: 1;
 }
 
@@ -1598,7 +1598,7 @@
     background: #FEE2E2;
     color: #991B1B;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     padding: 2px 8px;
     border-radius: 999px;
 }

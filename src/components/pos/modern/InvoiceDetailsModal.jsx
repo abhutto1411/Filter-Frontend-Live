@@ -34,7 +34,7 @@ export default function InvoiceDetailsModal({
   const isCorporate = footerVariant === 'corporate';
 
   const modal = (
-    <div className="modal-overlay-modern invoice-modal-root" onClick={onClose}>
+    <div className="modal-overlay-modern invoice-modal-root">
       <div
         className="invoice-modal-card"
         onClick={(e) => e.stopPropagation()}

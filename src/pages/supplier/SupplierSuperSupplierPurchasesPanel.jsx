@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { RefreshCw, Eye, Pencil, Plus, ShoppingCart, Building2 } from 'lucide-react';
+import { RefreshCw, Plus, ShoppingCart, Building2 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import Modal from '../../components/Modal';
+import RowActionsMenu from '../../components/RowActionsMenu';
 import '../../styles/admin/AccountingPage.css';
 import {
     listSupplierSuperSupplierPurchases,
@@ -475,45 +476,21 @@ export default function SupplierSuperSupplierPurchasesPanel({
                                         <span className={`ws-badge ${statusTone(r.status)}`}>{r.status ?? 'posted'}</span>
                                     </td>
                                     <td>
-                                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                                            <button
-                                                type="button"
-                                                title="View"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    openView(r);
-                                                }}
-                                                style={{
-                                                    padding: 6,
-                                                    borderRadius: 6,
-                                                    border: 'none',
-                                                    background: '#F3F4F6',
-                                                    cursor: 'pointer',
-                                                }}
-                                            >
-                                                <Eye size={14} />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                title="Edit purchase & lines"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    openEdit(r);
-                                                }}
-                                                disabled={saving}
-                                                style={{
-                                                    padding: 6,
-                                                    borderRadius: 6,
-                                                    border: 'none',
-                                                    background: '#E0E7FF',
-                                                    color: '#4338CA',
-                                                    cursor: saving ? 'not-allowed' : 'pointer',
-                                                    opacity: saving ? 0.6 : 1,
-                                                }}
-                                            >
-                                                <Pencil size={14} />
-                                            </button>
-                                        </div>
+                                        <RowActionsMenu
+                                            ariaLabel={`Actions for purchase ${r.invoice_number || r.id}`}
+                                            disabled={saving}
+                                            items={[
+                                                {
+                                                    label: 'View',
+                                                    onClick: () => openView(r),
+                                                },
+                                                {
+                                                    label: 'Edit purchase & lines',
+                                                    onClick: () => openEdit(r),
+                                                    disabled: saving,
+                                                },
+                                            ]}
+                                        />
                                     </td>
                                 </tr>
                             ))

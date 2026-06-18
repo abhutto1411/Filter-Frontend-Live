@@ -548,9 +548,6 @@ export default function WorkshopLayout() {
                         disabled={!!userBranchLock}
                         title={userBranchLock ? 'You are scoped to a single branch by your role' : undefined}
                         style={{
-                            background: 'rgba(0,0,0,0.06)',
-                            border: '1px solid rgba(0,0,0,0.1)',
-                            color: '#000000',
                             opacity: userBranchLock ? 0.85 : 1,
                             cursor: userBranchLock ? 'not-allowed' : 'pointer',
                         }}
@@ -581,11 +578,11 @@ export default function WorkshopLayout() {
                                         }
                                     }}
                                 >
-                                    <item.icon size={18} color="#000000"/>
+                                    <item.icon size={18} stroke="currentColor" />
                                     <span>{item.label}</span>
                                     {hasSub && (
                                         <span style={{ marginLeft: 'auto', opacity: 0.5 }}>
-                                            {isOpen ? <ChevronDown size={14} color="#000000"/> : <ChevronRight size={14} color="#000000"/>}
+                                            {isOpen ? <ChevronDown size={14} stroke="currentColor" /> : <ChevronRight size={14} stroke="currentColor" />}
                                         </span>
                                     )}
                                     {item.badge && pendingApprovals > 0 && !hasSub && <span className="ws-nav-badge">{pendingApprovals}</span>}
@@ -606,11 +603,7 @@ export default function WorkshopLayout() {
                                                         onClick={() => handleTabChange(sub.id)}
                                                         style={{
                                                             padding: '10px 12px',
-                                                            // Bumped from 0.8125rem — sub-items felt like "small print"
-                                                            // and were hard to read; now matches parent nav button.
                                                             fontSize: '0.875rem',
-                                                            background: 'transparent',
-                                                            color: '#000000',
                                                             textDecoration: activeTab === sub.id ? 'underline' : 'none',
                                                             border: 'none',
                                                             borderRadius: '6px',

@@ -63,7 +63,7 @@
 .form-label {
     display: block;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
     margin-bottom: 8px;
     margin-top: 10px;
@@ -101,7 +101,7 @@
 
 .tab-item-small {
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #9CA3AF;
     cursor: pointer;
     position: relative;
@@ -139,7 +139,7 @@
     padding: 12px 16px;
     text-align: left;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     color: #6B7280;
 }
 
@@ -179,7 +179,7 @@
     padding: 6px 16px;
     border-radius: 8px;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     color: #6B7280;
     cursor: pointer;
     display: inline-flex;
@@ -200,7 +200,7 @@
     padding: 10px 20px;
     border-radius: 10px;
     font-size: 12px;
-    font-weight: 800;
+    font-weight: 700;
     cursor: pointer;
     display: inline-flex;
     align-items: center;
@@ -229,7 +229,7 @@
 
 .placeholder-content h3 {
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 700;
     margin-bottom: 16px;
 }
 
@@ -250,14 +250,19 @@
 }
 
 .cash-bank-title {
-    font-size: 1.5rem;
-    font-weight: 900;
-    margin-bottom: 8px;
+    margin: 0 0 6px;
+    font-size: 1.875rem;
+    font-weight: 600;
+    color: #111827;
+    letter-spacing: -0.02em;
 }
 
 .cash-bank-desc {
-    font-size: 0.9375rem;
-    color: var(--color-text-muted);
+    margin: 0;
+    max-width: 920px;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    color: #64748b;
 }
 
 .cash-bank-stats {
@@ -297,7 +302,7 @@
 
 .cash-bank-stat-label {
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
     text-transform: uppercase;
     margin-bottom: 4px;
@@ -305,7 +310,7 @@
 
 .cash-bank-stat-value {
     font-size: 1.25rem;
-    font-weight: 900;
+    font-weight: 800;
     color: var(--color-text-dark);
 }
 
@@ -351,7 +356,7 @@
     color: #000;
     padding: 10px 24px;
     border-radius: 12px;
-    font-weight: 700;
+    font-weight: 600;
     border: none;
     cursor: pointer;
     display: inline-flex;
@@ -367,7 +372,7 @@
 }
 
 .cash-bank-table .cell-main-text {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
 }
 
@@ -375,7 +380,7 @@
     padding: 4px 12px;
     border-radius: 99px;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
 }
 
 .cash-bank-table .status-completed {
@@ -409,7 +414,7 @@
 
 .coa-title {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 4px;
 }
 
@@ -470,14 +475,14 @@
 
 .coa-stat-label {
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
     text-transform: uppercase;
 }
 
 .coa-stat-val {
     font-size: 1.125rem;
-    font-weight: 900;
+    font-weight: 800;
     color: var(--color-text-dark);
 }
 
@@ -501,7 +506,7 @@
     color: #000;
     padding: 10px 24px;
     border-radius: 12px;
-    font-weight: 700;
+    font-weight: 600;
     border: none;
     cursor: pointer;
     display: inline-flex;
@@ -517,7 +522,7 @@
 
 .coa-section-title {
     font-size: 0.9375rem;
-    font-weight: 800;
+    font-weight: 700;
     margin-bottom: 12px;
     color: var(--color-text-dark);
 }
@@ -536,7 +541,7 @@
 .coa-table .table-th {
     padding: 14px 20px;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     color: #6B7280;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -558,7 +563,7 @@
 }
 
 .coa-table .cell-main-text {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
 }
 
@@ -583,7 +588,7 @@
 
 .ledger-title {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 4px;
 }
 
@@ -609,7 +614,7 @@
     color: #000;
     padding: 10px 24px;
     border-radius: 12px;
-    font-weight: 700;
+    font-weight: 600;
     border: none;
     cursor: pointer;
 }
@@ -628,7 +633,7 @@
 .ledger-table .table-th {
     padding: 16px 24px;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     color: #6B7280;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -719,7 +724,7 @@
 
 .expenses-title {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 4px;
 }
 
@@ -740,7 +745,7 @@
     padding: 10px 20px;
     border-radius: 10px;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -760,7 +765,7 @@
     padding: 10px 24px;
     border-radius: 10px;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -788,7 +793,7 @@
 .exp-stat-label {
     display: block;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
     margin-bottom: 8px;
 }
@@ -796,7 +801,7 @@
 .exp-stat-value {
     display: block;
     font-size: 1.25rem;
-    font-weight: 900;
+    font-weight: 800;
     color: var(--color-text-dark);
 }
 
@@ -825,7 +830,7 @@
     border: 1px solid #E5E7EB;
     border-radius: 12px;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
     cursor: pointer;
     transition: all 0.2s;
@@ -850,7 +855,7 @@
 
 .report-type-label {
     font-size: 0.6875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #9CA3AF;
     text-transform: uppercase;
     letter-spacing: 0.1em;
@@ -859,14 +864,14 @@
 
 .report-company-name {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     color: #111827;
     margin-bottom: 8px;
 }
 
 .report-title {
     font-size: 1.125rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #374151;
     margin-bottom: 8px;
 }
@@ -887,7 +892,7 @@
     padding: 12px 0;
     text-align: left;
     font-size: 0.6875rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #9CA3AF;
     text-transform: uppercase;
     border-bottom: 1px solid #F3F4F6;
@@ -908,7 +913,7 @@
 }
 
 .cell-name-premium {
-    font-weight: 700;
+    font-weight: 600;
     color: #1D4ED8 !important;
     /* Blue for clickable feeling */
 }
@@ -928,13 +933,13 @@
 }
 
 .cell-totals-label {
-    font-weight: 900;
+    font-weight: 800;
     font-size: 0.8125rem;
 }
 
 .cell-amount-total {
     text-align: right;
-    font-weight: 900;
+    font-weight: 800;
     font-size: 0.8125rem;
 }
 
@@ -952,7 +957,7 @@
     padding: 8px 16px;
     border-radius: 8px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #DC2626;
 }
 
@@ -979,7 +984,7 @@
 
 .pnl-section-title {
     font-size: 0.6875rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #9CA3AF;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -1003,7 +1008,7 @@
     padding: 12px 16px;
     border-radius: 8px;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     border-top: 1px solid #F3F4F6;
 }
 
@@ -1023,7 +1028,7 @@
     justify-content: space-between;
     padding: 20px 24px;
     border-radius: 12px;
-    font-weight: 900;
+    font-weight: 800;
 }
 
 .gross-profit-bg {
@@ -1048,7 +1053,7 @@
     /* Very dark navy/black */
     color: #10B981;
     /* Emeral green for profitability */
-    font-weight: 900;
+    font-weight: 800;
     box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
 }
 
@@ -1083,14 +1088,14 @@
 
 .report-company-name-mini {
     font-size: 1.25rem;
-    font-weight: 900;
+    font-weight: 800;
     color: #111827;
     margin-bottom: 4px;
 }
 
 .report-title-mini {
     font-size: 1rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #374151;
     margin-bottom: 4px;
 }
@@ -1122,7 +1127,7 @@
 }
 
 .bs-account-val {
-    font-weight: 700;
+    font-weight: 600;
     color: #111827;
 }
 
@@ -1135,7 +1140,7 @@
     justify-content: space-between;
     padding: 16px 20px;
     border-radius: 12px;
-    font-weight: 900;
+    font-weight: 800;
     margin-top: 12px;
 }
 
@@ -1184,7 +1189,7 @@
     padding: 10px;
     border-radius: 8px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #059669;
 }
 
@@ -1253,7 +1258,7 @@
     padding: 6px 16px;
     border-radius: 6px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #6B7280;
     border: none;
     background: none;
@@ -1287,7 +1292,7 @@
 
 .journal-title {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 4px;
 }
 
@@ -1341,7 +1346,7 @@
 .jr-stat-label {
     display: block;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
     margin-bottom: 4px;
 }
@@ -1349,7 +1354,7 @@
 .jr-stat-value {
     display: block;
     font-size: 1.25rem;
-    font-weight: 900;
+    font-weight: 800;
     color: var(--color-text-dark);
 }
 
@@ -1422,7 +1427,7 @@
     padding: 4px 12px;
     border-radius: 8px;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     border: 1px solid #E5E7EB;
 }
 
@@ -1432,7 +1437,7 @@
     padding: 2px 10px;
     border-radius: 6px;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .badge-status-posted {
@@ -1441,7 +1446,7 @@
     padding: 4px 12px;
     border-radius: 8px;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     border: 1px solid #FEF3C7;
 }
 
@@ -1484,7 +1489,7 @@
 }
 
 .font-bold {
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .color-muted {
@@ -1502,7 +1507,7 @@
 
 .payments-title {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 4px;
 }
 
@@ -1532,7 +1537,7 @@
 .pay-stat-label {
     display: block;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
     margin-bottom: 8px;
 }
@@ -1540,7 +1545,7 @@
 .pay-stat-value {
     display: block;
     font-size: 1.25rem;
-    font-weight: 900;
+    font-weight: 800;
     color: var(--color-text-dark);
 }
 
@@ -1622,7 +1627,7 @@
     padding: 6px 16px;
     border-radius: 6px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #6B7280;
     border: none;
     background: none;
@@ -1644,7 +1649,7 @@
     border: 1px solid #E5E7EB;
     border-radius: 8px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #374151;
     cursor: pointer;
 }
@@ -1698,7 +1703,7 @@
 
 .trans-entry-title {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 4px;
 }
 
@@ -1749,7 +1754,7 @@
     padding: 8px 16px;
     border-radius: 8px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     border: none;
     background: none;
     color: #6B7280;
@@ -1788,7 +1793,7 @@
     padding: 12px 16px;
     text-align: left;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     color: #6B7280;
     text-transform: uppercase;
 }
@@ -1817,7 +1822,7 @@
     background: #EEF2FF;
     border-color: #E0E7FF;
     color: #4F46E5;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .btn-row-delete {
@@ -1854,7 +1859,7 @@
     padding: 10px 24px;
     border-radius: 8px;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -1873,7 +1878,7 @@
 
 .recent-trans-title {
     font-size: 1rem;
-    font-weight: 800;
+    font-weight: 700;
     margin-bottom: 16px;
 }
 
@@ -1895,7 +1900,7 @@
 
 .journal-id-badge {
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #4F46E5;
     margin-bottom: 12px;
     display: flex;
@@ -1937,7 +1942,7 @@
 
 .totals-label {
     text-align: right;
-    font-weight: 800;
+    font-weight: 700;
     color: #374151;
     text-transform: uppercase;
     font-size: 0.75rem;
@@ -1945,7 +1950,7 @@
 }
 
 .total-value {
-    font-weight: 800;
+    font-weight: 700;
     color: #059669;
     font-size: 0.8125rem;
 }
@@ -1954,7 +1959,7 @@
     background: #F0FDFA !important;
     border: 1px solid #CCFBF1 !important;
     color: #0D9488 !important;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 /* Recent Journal Entry Item */
@@ -1976,7 +1981,7 @@
 
 .je-code {
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
 }
 
@@ -1994,13 +1999,13 @@
 
 .je-amount {
     font-size: 0.875rem;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-text-dark);
 }
 
 .je-posted-badge {
     font-size: 0.6875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #6B7280;
     background: #F3F4F6;
     padding: 2px 8px;
@@ -2018,7 +2023,7 @@
 
 .receipts-title {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 4px;
 }
 
@@ -2048,14 +2053,14 @@
 .receipt-stat-label {
     display: block;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
     margin-bottom: 8px;
 }
 
 .receipt-stat-value {
     font-size: 1.25rem;
-    font-weight: 900;
+    font-weight: 800;
     color: var(--color-text-dark);
 }
 
@@ -2139,7 +2144,7 @@
     padding: 6px 14px;
     border-radius: 8px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #64748B;
     border: none;
     background: none;
@@ -2166,7 +2171,7 @@
     border: 1px solid #E5E7EB;
     border-radius: 10px;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #334155;
     cursor: pointer;
 }
@@ -2207,7 +2212,7 @@
 
 .je-field-label {
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #94A3B8;
     text-transform: uppercase;
     letter-spacing: 0.025em;
@@ -2233,7 +2238,7 @@
 
 .je-section-title {
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #475569;
     margin-bottom: 16px;
 }
@@ -2255,7 +2260,7 @@
     background: #F8FAFC;
     text-align: left;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #64748B;
     border-bottom: 1px solid #E2E8F0;
 }
@@ -2268,7 +2273,7 @@
 
 .je-totals-row td {
     background: #F8FAFC;
-    font-weight: 900;
+    font-weight: 800;
     font-size: 0.9375rem;
     border-top: 1px solid #E2E8F0;
     border-bottom: none;
@@ -2290,7 +2295,7 @@
     padding: 10px 20px;
     border-radius: 10px;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
 }
@@ -2349,7 +2354,7 @@
 
 .pi-b-active {
     color: #1e293b;
-    font-weight: 800;
+    font-weight: 700;
 }
 
 .pi-title-main {
@@ -2357,7 +2362,7 @@
     align-items: center;
     gap: 12px;
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #1e293b;
 }
 
@@ -2532,7 +2537,7 @@
     background: #f8fafc;
     padding: 12px 16px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #64748b;
     text-transform: uppercase;
     border-bottom: 1px solid #e2e8f0;
@@ -2650,7 +2655,7 @@
 
 .pi-item-name {
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #c2410c;
     white-space: normal;
     word-break: break-word;
@@ -2682,7 +2687,7 @@
 
 .pi-price-val {
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #6366f1;
     /* Indigo matching screenshot feeling */
 }
@@ -2702,7 +2707,7 @@
     border-radius: 8px;
     background: #ffffff;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #1e293b;
     cursor: pointer;
 }
@@ -2809,7 +2814,7 @@
     margin-top: 16px;
     padding-top: 16px;
     border-top: 2px solid #e2e8f0;
-    font-weight: 800;
+    font-weight: 700;
     color: #0f172a;
     font-size: 1.25rem;
 }
@@ -2852,7 +2857,7 @@
     border: 1px solid #e2e8f0;
     border-radius: 10px;
     font-size: 0.9375rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #475569;
     background: #ffffff;
 }
@@ -2862,7 +2867,7 @@
     border: none;
     border-radius: 10px;
     font-size: 0.9375rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #ffffff;
     background: #0f172a;
     box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2);
@@ -2886,7 +2891,7 @@
 
 .adv-title {
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #0f172a;
     margin-bottom: 4px;
 }
@@ -2908,7 +2913,7 @@
     padding: 8px 16px;
     border-radius: 10px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
     background: #ffffff;
@@ -3004,7 +3009,7 @@
 
 .adv-stat-value {
     font-size: 1.25rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #0f172a;
 }
 
@@ -3028,7 +3033,7 @@
 .adv-pill {
     padding: 6px 16px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     border-radius: 8px;
     border: none;
     background: transparent;
@@ -3086,7 +3091,7 @@
     border: 1px solid #e2e8f0;
     border-radius: 8px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #64748b;
     cursor: pointer;
     transition: all 0.2s;
@@ -3117,7 +3122,7 @@
     align-items: center;
     gap: 12px;
     font-size: 1.25rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #0f172a;
 }
 
@@ -3146,7 +3151,7 @@
 
 .ps-field label {
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #334155;
 }
 
@@ -3229,7 +3234,7 @@
 
 .ps-entry-title {
     font-size: 0.8125rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #1e40af;
     margin-bottom: 8px;
 }
@@ -3263,7 +3268,7 @@
     border: none;
     border-radius: 10px;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #475569;
     cursor: pointer;
 }
@@ -3274,7 +3279,7 @@
     border: none;
     border-radius: 10px;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #0f172a;
     cursor: pointer;
     box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
@@ -3334,7 +3339,7 @@
     background: #f8fafc;
     border-radius: 8px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.025em;
@@ -3518,7 +3523,7 @@
     border: 1px dashed #cbd5e1;
     border-radius: 10px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #64748b;
     cursor: pointer;
     transition: all 0.2s;
@@ -3550,7 +3555,7 @@
 }
 
 .net-salary-val {
-    font-weight: 700;
+    font-weight: 600;
     color: #10b981;
     font-size: 0.875rem;
 }
@@ -3579,7 +3584,7 @@
     padding-top: 10px;
     border-top: 1px dashed #e2e8f0;
     font-size: 0.9375rem;
-    font-weight: 800;
+    font-weight: 700;
 }
 
 .summary-row .val {
@@ -3637,7 +3642,7 @@
 
 .tax-title {
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #111827;
     margin: 0 0 4px 0;
 }
@@ -3655,7 +3660,7 @@
     padding: 10px 24px;
     border-radius: 12px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     border: none;
     cursor: pointer;
     background: #111827;
@@ -3733,7 +3738,7 @@
 
 .tax-card-title {
     font-size: 0.9375rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #111827;
     margin: 0 0 2px 0;
 }
@@ -3746,7 +3751,7 @@
 
 .tax-preview-heading {
     font-size: 0.9375rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #fff;
     margin: 0 0 2px 0;
 }
@@ -3777,7 +3782,7 @@
 
 .tax-field-label {
     font-size: 0.6875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #9CA3AF;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -3813,7 +3818,7 @@
     border: none;
     border-radius: 10px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     transition: background 0.2s;
 }
@@ -3839,7 +3844,7 @@
 
 .tax-preview-label {
     font-size: 0.6875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #9CA3AF;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -3867,7 +3872,7 @@
 
 .tax-preview-grand-label {
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: #fff;
@@ -3875,7 +3880,7 @@
 
 .tax-preview-grand-val {
     font-size: 1.375rem;
-    font-weight: 900;
+    font-weight: 800;
     color: #34D399;
     font-family: 'Courier New', monospace;
 }
@@ -3908,7 +3913,7 @@
     color: #2563EB;
     border-radius: 999px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .tax-delete-btn {
@@ -3951,7 +3956,7 @@
 .premium-table .table-th {
     padding: 14px 20px;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     color: #6B7280;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -3975,7 +3980,7 @@
 }
 
 .premium-table .cell-main-text {
-    font-weight: 700;
+    font-weight: 600;
     color: #111827;
 }
 
@@ -4020,7 +4025,7 @@
 .cash-stat-label {
     display: block;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #6B7280;
     text-transform: uppercase;
     margin-bottom: 4px;
@@ -4028,7 +4033,7 @@
 
 .cash-stat-value {
     font-size: 1.25rem;
-    font-weight: 900;
+    font-weight: 800;
     color: #111827;
 }
 
@@ -4048,7 +4053,7 @@
     padding: 8px 16px;
     border-radius: 8px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     background: #F3F4F6;
     color: #6B7280;
     border: none;
@@ -4100,7 +4105,7 @@
 .p-stat-label {
     display: block;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #6B7280;
     text-transform: uppercase;
     margin-bottom: 8px;
@@ -4108,7 +4113,7 @@
 
 .p-stat-value {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     color: #111827;
 }
 
@@ -4135,7 +4140,7 @@
 .pi-lines-table th {
     text-align: left;
     font-size: 11px;
-    font-weight: 800;
+    font-weight: 700;
     color: #9CA3AF;
     text-transform: uppercase;
     padding: 12px;
@@ -4185,7 +4190,7 @@
     margin-top: 8px;
     padding-top: 16px;
     border-top: 1px solid #E5E7EB;
-    font-weight: 900;
+    font-weight: 800;
     font-size: 1.125rem;
     color: #111827;
 }
@@ -4196,7 +4201,7 @@
     border: none;
     padding: 14px 32px;
     border-radius: 12px;
-    font-weight: 800;
+    font-weight: 700;
     font-size: 0.9375rem;
     cursor: pointer;
     box-shadow: 0 4px 12px rgba(0,0,0,0.1);
@@ -4230,7 +4235,7 @@
 .adv-stat-label {
     display: block;
     font-size: 11px;
-    font-weight: 700;
+    font-weight: 600;
     color: #9CA3AF;
     text-transform: uppercase;
     margin-bottom: 4px;
@@ -4238,7 +4243,7 @@
 
 .adv-stat-val {
     font-size: 1.25rem;
-    font-weight: 900;
+    font-weight: 800;
     color: #111827;
 }
 
@@ -4281,8 +4286,8 @@
 
 .mgr-si-title {
     margin: 0 0 6px;
-    font-size: 1.75rem;
-    font-weight: 700;
+    font-size: 1.875rem;
+    font-weight: 600;
     color: #111827;
     letter-spacing: -0.02em;
 }
@@ -4290,7 +4295,7 @@
 .mgr-si-subtitle {
     margin: 0;
     max-width: 920px;
-    font-size: 0.8125rem;
+    font-size: 0.875rem;
     line-height: 1.5;
     color: #64748b;
 }
@@ -4305,7 +4310,7 @@
     background: #2563eb;
     color: #fff;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     cursor: pointer;
     box-shadow: 0 1px 2px rgba(37, 99, 235, 0.25);
 }
@@ -4429,7 +4434,7 @@
     border: none;
     padding: 0;
     font: inherit;
-    font-weight: 700;
+    font-weight: 600;
     color: #2563eb;
     cursor: pointer;
     text-align: left;
@@ -4454,13 +4459,13 @@
 
 .mgr-si-cell-amount {
     white-space: nowrap;
-    font-weight: 700;
+    font-weight: 600;
     color: #111827;
 }
 
 .mgr-si-cell-balance {
     white-space: nowrap;
-    font-weight: 700;
+    font-weight: 600;
     color: #2563eb;
 }
 
@@ -4478,7 +4483,7 @@
     border: none;
     background: none;
     font-size: 0.6875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #2563eb;
     cursor: pointer;
     text-decoration: underline;
@@ -4489,7 +4494,7 @@
     padding: 4px 10px;
     border-radius: 4px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     line-height: 1.2;
     white-space: nowrap;
 }
@@ -4580,7 +4585,7 @@
     padding: 2px 10px;
     border-radius: 999px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .mgr-sf-ar-status--paid {
@@ -4613,7 +4618,7 @@
 .mgr-sf-ar-section-title {
     margin: 20px 0 10px;
     font-size: 0.9375rem;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .mgr-sf-product-actions {
@@ -4686,7 +4691,7 @@
 }
 
 .sf-movement-picker-name {
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.875rem;
 }
 
@@ -4706,7 +4711,7 @@
 
 .sf-movement-selected-label {
     font-size: 0.7rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #166534;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -4720,7 +4725,7 @@
 
 .sf-movement-selected-balance {
     font-size: 1.125rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #14532d;
     margin-top: 6px;
 }
@@ -4743,7 +4748,7 @@
 
 .sf-movement-export-label {
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -4762,7 +4767,7 @@
 .sf-movement-modal-title {
     margin: 0;
     font-size: 1.125rem;
-    font-weight: 800;
+    font-weight: 700;
 }
 
 .sf-movement-modal-sub {
@@ -4786,7 +4791,7 @@
 
 .sf-movement-legend {
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #64748b;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -4824,7 +4829,7 @@
 
 .sf-movement-type-label {
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .sf-movement-type-hint {
@@ -4920,7 +4925,7 @@
     padding: 10px 12px;
     background: #f8fafc;
     font-size: 0.6875rem;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: #64748b;
@@ -5040,7 +5045,7 @@
 .sf-loc-badge {
     display: inline-block;
     font-size: 0.625rem;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
     padding: 2px 6px;
     border-radius: 4px;
@@ -5318,7 +5323,7 @@
 
 .sf-permissions-picker-title {
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #334155;
 }
 
@@ -5378,7 +5383,7 @@
 
 .sf-brand-tab-row-label {
     font-size: 0.6875rem;
-    font-weight: 800;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: #1d4ed8;
@@ -5405,7 +5410,7 @@
 .sf-brand-tab--active {
     border-color: #cbd5e1;
     background: #fff;
-    font-weight: 700;
+    font-weight: 600;
     color: #0f172a;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
@@ -5453,7 +5458,7 @@
     flex-direction: column;
     gap: 4px;
     font-size: 0.6875rem;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: #64748b;
@@ -5515,7 +5520,7 @@
 .sf-pl-section-title {
     margin: 0 0 10px;
     font-size: 0.75rem;
-    font-weight: 800;
+    font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: #475569;
@@ -5558,7 +5563,7 @@
     margin-top: 10px;
     padding-top: 10px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #0f172a;
 }
 
@@ -5577,7 +5582,7 @@
     padding: 16px 0 4px;
     border-top: 2px solid #0f172a;
     font-size: 1rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #0f172a;
 }
 
@@ -5617,7 +5622,7 @@
     border-radius: 8px;
     background: #e0f2fe;
     color: #0369a1;
-    font-weight: 800;
+    font-weight: 700;
     font-size: 12px;
     white-space: nowrap;
 }
@@ -5632,7 +5637,7 @@
 
 .sf-hub-footer-total {
     font-size: 13px;
-    font-weight: 700;
+    font-weight: 600;
     color: #475569;
 }
 
@@ -5645,7 +5650,7 @@
 .sf-hub-last-saved {
     margin: 12px 0 0;
     color: #047857;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 13px;
 }
 
@@ -5656,7 +5661,7 @@
 .sf-hub-recent h4 {
     margin: 0 0 8px;
     font-size: 14px;
-    font-weight: 800;
+    font-weight: 700;
     color: #0f172a;
 }
 
@@ -5699,7 +5704,7 @@
 .sf-link-catalog-label {
     display: block;
     font-size: 0.6875rem;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: #64748b;
@@ -5747,7 +5752,7 @@
 .sf-brand-accounting-title {
     margin: 0;
     font-size: 1.375rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #0f172a;
 }
 
@@ -5801,7 +5806,7 @@
     border: none;
     border-radius: 10px;
     background: transparent;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 13px;
     color: #64748b;
     cursor: pointer;
@@ -6068,6 +6073,22 @@
     box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.12);
 }
 
+.sf-pi-unit-static {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    font-size: 0.875rem;
+    color: #475569;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+    box-sizing: border-box;
+    min-height: 40px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .sf-pi-line-data-row .sf-bulk-combobox-wrap,
 .sf-pi-line-data-row .pi-search-box-wrapper {
     min-width: 0;
@@ -6143,7 +6164,7 @@
 
 .sf-inv-lines-panel-title {
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #334155;
     margin: 0 0 12px;
     letter-spacing: 0.01em;
@@ -6159,7 +6180,7 @@
 
 .sf-inv-col-label {
     font-size: 0.6875rem;
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: 0.06em;
     text-transform: uppercase;
     color: #94a3b8;
@@ -6351,5 +6372,68 @@
 .mgr-si-pagination-meta {
     font-size: 0.8125rem;
     color: #64748b;
+}
+
+/* ===== Inline full-screen form (replaces the invoice modal/popup) ===== */
+.inline-form-screen {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.inline-form-screen__topbar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+    flex-wrap: wrap;
+}
+
+.inline-form-screen__back {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #ffffff;
+    color: #334155;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.inline-form-screen__back:hover {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+}
+
+.inline-form-screen__title {
+    flex: 1;
+    min-width: 0;
+}
+
+.inline-form-screen__body {
+    padding: 20px;
+    overflow: visible;
+}
+
+.inline-form-screen__footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    padding: 14px 20px;
+    border-top: 1px solid #e2e8f0;
+    background: #ffffff;
+    box-shadow: 0 -2px 8px rgba(15, 23, 42, 0.05);
 }
 

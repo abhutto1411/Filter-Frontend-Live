@@ -6,6 +6,7 @@ import {
     ChevronDown,
     ChevronUp,
     FileText,
+    X,
 } from 'lucide-react';
 import { apiFetch } from '../../services/api';
 import '../../styles/admin/CustomersPage.css';
@@ -203,7 +204,7 @@ export default function BillGenerated({ onWalletBalanceChange }) {
         printWindow.document.write(`
             <!DOCTYPE html><html><head><title>${bill.billNo}</title>
             <style>
-                body{font-family:Arial,sans-serif;padding:32px;color:#111827}
+                body{font-family: 'Poppins', sans-serif;padding:32px;color:#111827}
                 h1{font-size:22px;margin:0 0 4px}
                 .sub{font-size:13px;color:#6B7280;margin-bottom:16px}
                 .kpi{font-size:13px;margin:6px 0;font-weight:600}
@@ -442,7 +443,6 @@ export default function BillGenerated({ onWalletBalanceChange }) {
                         zIndex: 1000,
                         padding: 16,
                     }}
-                    onClick={() => !paySubmitting && setPayOpen(false)}
                 >
                     <div
                         style={{
@@ -454,7 +454,26 @@ export default function BillGenerated({ onWalletBalanceChange }) {
                         }}
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem' }}>Pay full bill</h3>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                            <h3 style={{ margin: 0, fontSize: '1.1rem' }}>Pay full bill</h3>
+                            <button
+                                type="button"
+                                aria-label="Close"
+                                disabled={paySubmitting}
+                                onClick={() => setPayOpen(false)}
+                                style={{
+                                    border: 'none',
+                                    background: '#f1f5f9',
+                                    borderRadius: 10,
+                                    padding: 8,
+                                    cursor: paySubmitting ? 'not-allowed' : 'pointer',
+                                    lineHeight: 0,
+                                    flexShrink: 0,
+                                }}
+                            >
+                                <X size={18} />
+                            </button>
+                        </div>
                         <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '0.875rem' }}>
                             {payBill.billNo} · Balance <strong>{num(payBill.kpis?.balance)}</strong>
                         </p>

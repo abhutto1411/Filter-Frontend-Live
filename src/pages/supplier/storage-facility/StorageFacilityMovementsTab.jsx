@@ -10,7 +10,7 @@ import {
     Search,
     TrendingUp,
 } from 'lucide-react';
-import { ShimmerStatStrip, ShimmerTable } from '../../../components/supplier/Shimmer';
+import { ShimmerKpiGrid, ShimmerTable } from '../../../components/supplier/Shimmer';
 
 import RecordBulkStockMovementModal from './RecordBulkStockMovementModal';
 import {
@@ -257,7 +257,7 @@ export default function StorageFacilityMovementsTab({
     if (loading && movements.length === 0) {
         return (
             <div className="ws-section">
-                <ShimmerStatStrip cards={4} />
+                <ShimmerKpiGrid cards={4} />
                 <ShimmerTable rows={10} columns={7} />
             </div>
         );
@@ -267,14 +267,7 @@ export default function StorageFacilityMovementsTab({
         <div>
             {err ? <div className="mgr-si-error" style={{ marginBottom: 12 }}>{err}</div> : null}
 
-            <div
-                className="ws-kpi-grid"
-                style={{
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
-                    marginBottom: 16,
-                    gap: 12,
-                }}
-            >
+            <div className="ws-kpi-grid">
                 <div className="ws-kpi-card">
                     <div>
                         <p className="ws-kpi-label">MOVEMENTS</p>
@@ -283,31 +276,27 @@ export default function StorageFacilityMovementsTab({
                             {movementProductId ? 'This product' : 'All products'}
                         </p>
                     </div>
-                    <div className="ws-kpi-icon ws-kpi-icon--blue">
+                    <div className="ws-kpi-icon ws-kpi-icon--dark">
                         <TrendingUp size={22} />
                     </div>
                 </div>
                 <div className="ws-kpi-card">
                     <div>
                         <p className="ws-kpi-label">STOCK IN</p>
-                        <p className="ws-kpi-value" style={{ color: '#15803d' }}>
-                            {fmtQty(kpis.stockIn)}
-                        </p>
+                        <p className="ws-kpi-value">{fmtQty(kpis.stockIn)}</p>
                         <p className="ws-kpi-sub">Total received (filtered)</p>
                     </div>
-                    <div className="ws-kpi-icon ws-kpi-icon--green">
+                    <div className="ws-kpi-icon ws-kpi-icon--dark">
                         <ArrowDownCircle size={22} />
                     </div>
                 </div>
                 <div className="ws-kpi-card">
                     <div>
                         <p className="ws-kpi-label">STOCK OUT</p>
-                        <p className="ws-kpi-value" style={{ color: '#b45309' }}>
-                            {fmtQty(kpis.stockOut)}
-                        </p>
+                        <p className="ws-kpi-value">{fmtQty(kpis.stockOut)}</p>
                         <p className="ws-kpi-sub">Total issued (filtered)</p>
                     </div>
-                    <div className="ws-kpi-icon ws-kpi-icon--yellow">
+                    <div className="ws-kpi-icon ws-kpi-icon--dark">
                         <ArrowUpCircle size={22} />
                     </div>
                 </div>
@@ -317,7 +306,7 @@ export default function StorageFacilityMovementsTab({
                         <p className="ws-kpi-value">{kpis.productCount || products.length}</p>
                         <p className="ws-kpi-sub">With movement history</p>
                     </div>
-                    <div className="ws-kpi-icon ws-kpi-icon--purple">
+                    <div className="ws-kpi-icon ws-kpi-icon--dark">
                         <Package size={22} />
                     </div>
                 </div>

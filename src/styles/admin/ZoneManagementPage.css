@@ -14,7 +14,7 @@
 
 .zone-title {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 8px;
 }
 
@@ -29,7 +29,7 @@
     color: #000;
     padding: 10px 24px;
     border-radius: 12px;
-    font-weight: 700;
+    font-weight: 600;
     border: none;
     cursor: pointer;
     display: inline-flex;
@@ -66,7 +66,7 @@
 
 .zone-stat-label {
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -75,7 +75,7 @@
 
 .zone-stat-value {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     color: var(--color-text-dark);
 }
 
@@ -103,7 +103,7 @@
 
 .zone-card-name {
     font-size: 1.25rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 4px;
     color: var(--color-text-dark);
 }
@@ -118,7 +118,7 @@
     padding: 4px 12px;
     border-radius: 99px;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     text-transform: uppercase;
 }
 
@@ -159,7 +159,7 @@
     padding: 8px 16px;
     border-radius: 10px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     border: none;
     cursor: pointer;
     transition: all 0.2s;
@@ -201,7 +201,7 @@
 
 .zone-section-title {
     font-size: 1rem;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-text-dark);
 }
 
@@ -224,7 +224,7 @@
     padding: 14px 24px;
     text-align: left;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     color: #6B7280;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -237,7 +237,7 @@
 }
 
 .zone-table .cell-main {
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
 }
 
@@ -287,7 +287,7 @@
 }
 
 .zone-info-text strong {
-    font-weight: 800;
+    font-weight: 700;
 }
 
 .form-row {
@@ -299,7 +299,7 @@
 
 .regions-header {
     font-size: 0.875rem;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-text-dark);
     margin-bottom: 12px;
 }
@@ -336,7 +336,7 @@
 
 .region-name {
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
 }
 
@@ -351,7 +351,7 @@
     border-radius: 8px;
     padding: 4px 12px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #374151;
     cursor: pointer;
     white-space: nowrap;
@@ -367,7 +367,7 @@
 
 .custom-city-label {
     font-size: 0.875rem;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-text-dark);
     margin-bottom: 12px;
 }
@@ -383,7 +383,7 @@
     border-radius: 8px;
     padding: 10px 20px;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #374151;
     cursor: pointer;
 }
@@ -402,7 +402,7 @@
 
 .selected-cities-title {
     font-size: 0.875rem;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-text-dark);
     margin-bottom: 12px;
 }
@@ -424,7 +424,7 @@
     padding: 6px 12px;
     border-radius: 99px;
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -484,7 +484,7 @@
     color: #374151;
     padding: 10px 24px;
     border-radius: 10px;
-    font-weight: 700;
+    font-weight: 600;
     border: none;
     cursor: pointer;
 }
@@ -494,7 +494,7 @@
     color: #FFFFFF;
     padding: 10px 24px;
     border-radius: 10px;
-    font-weight: 700;
+    font-weight: 600;
     border: none;
     cursor: pointer;
 }
@@ -514,7 +514,7 @@
 .view-detail-item label {
     display: block;
     font-size: 0.75rem;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-text-muted);
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -523,7 +523,7 @@
 
 .view-detail-item p {
     font-size: 0.9375rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-dark);
 }
 

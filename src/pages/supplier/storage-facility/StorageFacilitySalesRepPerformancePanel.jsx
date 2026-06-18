@@ -9,7 +9,7 @@ import {
     TrendingUp,
 } from 'lucide-react';
 import Modal from '../../../components/Modal';
-import { ShimmerStatStrip, ShimmerTable } from '../../../components/supplier/Shimmer';
+import { ShimmerKpiGrid, ShimmerTable } from '../../../components/supplier/Shimmer';
 
 
 function fmtSar(n) {
@@ -29,12 +29,12 @@ function todayISO() {
 }
 
 const STATUS_STYLES = {
-    exceeded: { bg: '#dcfce7', color: '#15803d', label: 'Target met' },
-    on_track: { bg: '#dbeafe', color: '#1d4ed8', label: 'On track' },
-    at_risk: { bg: '#fef3c7', color: '#b45309', label: 'At risk' },
-    critical: { bg: '#fee2e2', color: '#b91c1c', label: 'Critical' },
-    no_activity: { bg: '#f1f5f9', color: '#64748b', label: 'No sales' },
-    no_target: { bg: '#f8fafc', color: '#475569', label: 'No target set' },
+    exceeded: { bg: '#15803D', color: '#ffffff', label: 'Target met' },
+    on_track: { bg: '#1D4ED8', color: '#ffffff', label: 'On track' },
+    at_risk: { bg: '#B45309', color: '#ffffff', label: 'At risk' },
+    critical: { bg: '#B91C1C', color: '#ffffff', label: 'Critical' },
+    no_activity: { bg: '#4B5563', color: '#ffffff', label: 'No sales' },
+    no_target: { bg: '#4B5563', color: '#ffffff', label: 'No target set' },
 };
 
 export default function StorageFacilitySalesRepPerformancePanel({
@@ -171,7 +171,7 @@ export default function StorageFacilitySalesRepPerformancePanel({
     if (loading && !data) {
         return (
             <div className="ws-section">
-                <ShimmerStatStrip cards={4} />
+                <ShimmerKpiGrid cards={4} />
                 <ShimmerTable rows={8} columns={6} />
             </div>
         );
@@ -252,22 +252,13 @@ export default function StorageFacilitySalesRepPerformancePanel({
                 </div>
             </div>
 
-            <div
-                className="ws-kpi-grid"
-                style={{
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-                    marginBottom: 16,
-                    gap: 12,
-                }}
-            >
+            <div className="ws-kpi-grid">
                 <div className="ws-kpi-card">
                     <div>
                         <p className="ws-kpi-label">SALES (POSTED)</p>
-                        <p className="ws-kpi-value" style={{ color: '#15803d' }}>
-                            {fmtSar(summary.totalSales)}
-                        </p>
+                        <p className="ws-kpi-value">{fmtSar(summary.totalSales)}</p>
                     </div>
-                    <div className="ws-kpi-icon ws-kpi-icon--green">
+                    <div className="ws-kpi-icon ws-kpi-icon--dark">
                         <TrendingUp size={22} />
                     </div>
                 </div>
@@ -276,18 +267,16 @@ export default function StorageFacilitySalesRepPerformancePanel({
                         <p className="ws-kpi-label">COLLECTED</p>
                         <p className="ws-kpi-value">{fmtSar(summary.totalCollected)}</p>
                     </div>
-                    <div className="ws-kpi-icon ws-kpi-icon--blue">
+                    <div className="ws-kpi-icon ws-kpi-icon--dark">
                         <BarChart3 size={22} />
                     </div>
                 </div>
                 <div className="ws-kpi-card">
                     <div>
                         <p className="ws-kpi-label">OUTSTANDING</p>
-                        <p className="ws-kpi-value" style={{ color: '#2563eb' }}>
-                            {fmtSar(summary.totalOutstanding)}
-                        </p>
+                        <p className="ws-kpi-value">{fmtSar(summary.totalOutstanding)}</p>
                     </div>
-                    <div className="ws-kpi-icon ws-kpi-icon--purple">
+                    <div className="ws-kpi-icon ws-kpi-icon--dark">
                         <AlertCircle size={22} />
                     </div>
                 </div>
@@ -296,7 +285,7 @@ export default function StorageFacilitySalesRepPerformancePanel({
                         <p className="ws-kpi-label">INVOICES</p>
                         <p className="ws-kpi-value">{summary.invoiceCount ?? 0}</p>
                     </div>
-                    <div className="ws-kpi-icon ws-kpi-icon--blue">
+                    <div className="ws-kpi-icon ws-kpi-icon--dark">
                         <Target size={22} />
                     </div>
                 </div>

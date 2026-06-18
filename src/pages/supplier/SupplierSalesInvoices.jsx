@@ -17,6 +17,9 @@ import {
 } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import Modal from '../../components/Modal';
+import RowActionsMenu from '../../components/RowActionsMenu';
+import InlineFormScreen from '../../components/InlineFormScreen';
+import AutoGrowTextarea from '../../components/AutoGrowTextarea';
 import '../../styles/admin/AccountingPage.css';
 import {
     createSupplierInvoice,
@@ -429,17 +432,20 @@ const SEARCH_MAX_RESULTS = 50;
 function scoreSalesInvoiceSearchItem(item, q) {
     const name = String(item?.name || '').toLowerCase();
     const sku = String(item?.sku || '').toLowerCase();
+    const masterName = String(item?.masterProductName || '').toLowerCase();
+    const masterSku = String(item?.masterProductSku || '').toLowerCase();
+    const hay = `${name} ${sku} ${masterName} ${masterSku}`;
     if (!q) return 0;
-    if (sku === q) return 100;
-    if (name === q) return 95;
-    if (sku.startsWith(q)) return 90;
-    if (name.startsWith(q)) return 85;
-    if (sku.includes(q)) return 70;
-    if (name.includes(q)) return 60;
+    if (sku === q || masterSku === q) return 100;
+    if (name === q || masterName === q) return 95;
+    if (sku.startsWith(q) || masterSku.startsWith(q)) return 90;
+    if (name.startsWith(q) || masterName.startsWith(q)) return 85;
+    if (sku.includes(q) || masterSku.includes(q)) return 70;
+    if (name.includes(q) || masterName.includes(q)) return 60;
     const tokens = q.split(/\s+/).filter((t) => t.length >= 2);
     let hits = 0;
     for (const t of tokens) {
-        if (name.includes(t) || sku.includes(t)) hits += 1;
+        if (hay.includes(t)) hits += 1;
     }
     if (tokens.length && hits === tokens.length) return 50 + hits * 5;
     return 0;
@@ -653,8 +659,10 @@ const lastSaleMeta =
 
     return {
     id: catalogId ?? `row-${item.productName}-${item.sku || ''}`,
-    name: item.productName || 'Product',
-    sku: String(item.sku ?? item.barcode ?? '').trim(),
+    name: item.productName || item.masterProductName || 'Product',
+    sku: String(item.sku ?? item.masterProductSku ?? item.barcode ?? '').trim(),
+    masterProductName: item.masterProductName || null,
+    masterProductSku: item.masterProductSku || null,
     price,
     unit: uom,
     warehouseUnit,
@@ -1633,6 +1641,10 @@ export default function SupplierSalesInvoices() {
                 return;
             }
             setEditingInvoiceStatus(inv.status || 'pending_payment');
+            const m =
+                inv.salesInvoiceMeta != null && typeof inv.salesInvoiceMeta === 'object'
+                    ? inv.salesInvoiceMeta
+                    : {};
             const wpiFromMeta =
                 m.workshopPurchaseInvoiceId ?? m.workshop_purchase_invoice_id;
             workshopPurchaseSourceIdRef.current =
@@ -1640,10 +1652,6 @@ export default function SupplierSalesInvoices() {
                     ? String(wpiFromMeta).trim()
                     : null;
             setIssueDate(inv.invoiceDate || issueDate);
-            const m =
-                inv.salesInvoiceMeta != null && typeof inv.salesInvoiceMeta === 'object'
-                    ? inv.salesInvoiceMeta
-                    : {};
             if (m.externalPartyId) {
                 setSelectedCustomerKey(`external:${String(m.externalPartyId)}`);
             } else if (m.affiliatedWorkshopId) {
@@ -2669,6 +2677,8 @@ export default function SupplierSalesInvoices() {
 
     return (
         <div className="mgr-si-page">
+            {!modalOpen && (
+            <>
             <header className="mgr-si-header">
                 <div className="mgr-si-header-top">
                     <div className="mgr-si-breadcrumb">Sales Invoices (AR)</div>
@@ -2856,44 +2866,29 @@ export default function SupplierSalesInvoices() {
                                                         <span className={mgrStatus.cls}>{mgrStatus.label}</span>
                                                     </td>
                                                     <td className="table-cell mgr-si-cell-actions">
-                                                        <div className="mgr-si-action-icons">
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleViewInvoice(inv)}
-                                                                className="mgr-si-icon-btn"
-                                                                title="View"
-                                                            >
-                                                                <Eye size={14} />
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                disabled={salesInvoicePdfBusy}
-                                                                onClick={() => handleDownloadInvoice(inv)}
-                                                                className="mgr-si-icon-btn"
-                                                                title="Download PDF"
-                                                            >
-                                                                <Download size={14} />
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => openReturnModal(inv)}
-                                                                className="mgr-si-icon-btn mgr-si-icon-btn--return"
-                                                                title="Record return / credit"
-                                                            >
-                                                                <RotateCcw size={14} />
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                disabled={!canEdit}
-                                                                onClick={() => openEditInvoice(inv)}
-                                                                className={`mgr-si-icon-btn mgr-si-icon-btn--edit${
-                                                                    canEdit ? '' : ' mgr-si-icon-btn--disabled'
-                                                                }`}
-                                                                title={isDraft ? 'Edit draft' : 'Edit'}
-                                                            >
-                                                                <Pencil size={14} />
-                                                            </button>
-                                                        </div>
+                                                        <RowActionsMenu
+                                                            ariaLabel={`Actions for invoice ${inv.invoiceNo || inv.id}`}
+                                                            items={[
+                                                                {
+                                                                    label: 'View',
+                                                                    onClick: () => handleViewInvoice(inv),
+                                                                },
+                                                                {
+                                                                    label: 'Download PDF',
+                                                                    onClick: () => handleDownloadInvoice(inv),
+                                                                    disabled: salesInvoicePdfBusy,
+                                                                },
+                                                                {
+                                                                    label: 'Record return / credit',
+                                                                    onClick: () => openReturnModal(inv),
+                                                                },
+                                                                {
+                                                                    label: isDraft ? 'Edit draft' : 'Edit',
+                                                                    onClick: () => openEditInvoice(inv),
+                                                                    disabled: !canEdit,
+                                                                },
+                                                            ]}
+                                                        />
                                                     </td>
                                                 </tr>
                                             );
@@ -2938,9 +2933,11 @@ export default function SupplierSalesInvoices() {
                     )}
                 </div>
             </div>
+            </>
+            )}
             <AnimatePresence>
                 {modalOpen && (
-                    <Modal
+                    <InlineFormScreen
                         title={
                             <div className="pi-modal-title">
                                 <span className="pi-breadcrumb">
@@ -2959,9 +2956,8 @@ export default function SupplierSalesInvoices() {
                                 </div>
                             </div>
                         }
-                        onClose={closeInvoiceModal}
-                        width="1350px"
-                        contentClassName="modal-content-purchase"
+                        onBack={closeInvoiceModal}
+                        backLabel="Back to Sales Invoices"
                         footer={
                             <div className="pi-modal-footer">
                                 <div className="pi-footer-left">
@@ -3396,13 +3392,12 @@ export default function SupplierSalesInvoices() {
                                                 <div
                                                     style={{
                                                         display: 'flex',
-                                                        alignItems: 'stretch',
+                                                        alignItems: 'flex-start',
                                                         gap: 4,
                                                         width: '100%',
                                                     }}
                                                 >
-                                                    <input
-                                                        type="text"
+                                                    <AutoGrowTextarea
                                                         className="pi-row-input"
                                                         style={{
                                                             flex: 1,
@@ -4441,7 +4436,7 @@ export default function SupplierSalesInvoices() {
                                 </>
                             )}
                         </div>
-                    </Modal>
+                    </InlineFormScreen>
                 )}
             </AnimatePresence>
             <AnimatePresence>

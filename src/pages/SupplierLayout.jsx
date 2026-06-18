@@ -5,7 +5,6 @@ import {
     Warehouse,
     ArrowLeft,
     LogOut,
-    FileText,
     ShoppingCart,
     ChevronDown,
     ChevronRight,
@@ -30,6 +29,8 @@ import Modal from '../components/Modal';
 import { useAuth } from '../context/AuthContext';
 import { getSupplierProfile, getSupplierReceivables } from '../services/supplierApi';
 import './workshop/Workshop.css';
+import '../styles/ThemeOnly.css';
+import '../styles/RowActionsMenu.css';
 import { ShimmerLine } from '../components/supplier/Shimmer';
 
 export default function SupplierLayout() {
@@ -203,31 +204,15 @@ export default function SupplierLayout() {
                     <div><p className="ws-logo-title">Filter Supplier</p><p className="ws-logo-sub">Portal</p></div>
                 </div>
                 {!storageBrandPortal ? (
-                    <div
-                        style={{
-                            padding: '10px 14px',
-                            margin: '10px 12px',
-                            background: 'rgba(0,0,0,0.06)',
-                            border: '1px solid rgba(0,0,0,0.1)',
-                            borderRadius: 10,
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            color: '#000000',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 8,
-                            minWidth: 0,
-                        }}
-                    >
-                        <FileText size={14} style={{ flexShrink: 0 }} aria-hidden />
-                        <span style={{ flex: 1, minWidth: 0, lineHeight: 1.35 }}>
+                    <div className="sp-sidebar-ar-summary">
+                        <span className="sp-sidebar-ar-summary__text">
                             {arSummaryError ? (
                                 <>AR: Error</>
                             ) : arSummary === null ? (
-                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                                    <span style={{ fontWeight: 700 }}>AR:</span>
+                                <>
+                                    <span>AR:</span>
                                     <ShimmerLine height={14} width={72} rounded className="sp-shimmer-inline-block" />
-                                </span>
+                                </>
                             ) : (
                                 <>AR: SAR {Number(arSummary).toLocaleString()}</>
                             )}
@@ -238,13 +223,14 @@ export default function SupplierLayout() {
                     <a className="ws-back-link" onClick={() => navigate('/admin/dashboard')} style={{cursor:'pointer'}}><ArrowLeft size={14}/> Back to Super Admin</a>
                 ) : null}
                 <nav className="ws-nav">
-                    {navGroupsForUser.map(grp => (
-                        <div key={grp.label}>
-                            <div style={{fontSize:'0.625rem',fontWeight:800,color:'#000000',opacity:0.4,padding:'14px 14px 6px',textTransform:'uppercase',letterSpacing:'0.14em'}}>{grp.label}</div>
-                            {grp.items.map(item => {
+                    {navGroupsForUser.map((grp) => (
+                        <div key={grp.label || 'nav'}>
+                            {grp.items.map((item) => {
                                 const hasSub = item.subItems && item.subItems.length > 0;
                                 const isExpanded = expandedGroups.includes(item.id);
-                                const isActive = activeTab === item.id || activeTab.startsWith(`${item.id}_`);
+                                const isActive =
+                                    activeTab === item.id ||
+                                    (hasSub && activeTab.startsWith(`${item.id}_`));
 
                                 return (
                                     <div key={item.id} className="ws-nav-group">
@@ -252,12 +238,12 @@ export default function SupplierLayout() {
                                             className={`ws-nav-btn ${isActive ? 'active' : ''}`} 
                                             onClick={() => hasSub ? toggleGroup(item.id) : setActiveTab(item.id)}
                                         >
-                                            <item.icon size={17} color="#000000"/>
+                                            <item.icon size={17} stroke="currentColor" />
                                             <span>{item.label}</span>
                                             {item.badge > 0 && <span className="ws-nav-badge">{item.badge}</span>}
                                             {hasSub && (
                                                 <div style={{ marginLeft: 'auto', opacity: 0.5 }}>
-                                                    {isExpanded ? <ChevronDown size={14} color="#000000"/> : <ChevronRight size={14} color="#000000"/>}
+                                                    {isExpanded ? <ChevronDown size={14} stroke="currentColor" /> : <ChevronRight size={14} stroke="currentColor" />}
                                                 </div>
                                             )}
                                         </button>
@@ -281,7 +267,7 @@ export default function SupplierLayout() {
                                                                 setActiveTab(sub.id);
                                                             }}
                                                         >
-                                                            <sub.icon size={14} color="#000000"/>
+                                                            <sub.icon size={14} stroke="currentColor" />
                                                             <span>{sub.label}</span>
                                                         </button>
                                                     ))}

@@ -3,7 +3,7 @@ import { RefreshCw, Plus, Pencil, Search } from 'lucide-react';
 import { apiFetch } from '../../services/api';
 import { qs, branchScopeParams, unwrapWorkshopBranchListResponse } from '../../services/workshopStaffApi';
 import { getBranchProducts, getBranchServices } from '../../services/workshopCatalogApi';
-import Modal from '../../components/Modal';
+import WorkshopSubScreen from '../../components/workshop/WorkshopSubScreen';
 import { useAuth } from '../../context/AuthContext';
 import { ShimmerTableBodyRows } from '../../components/supplier/Shimmer';
 
@@ -756,6 +756,61 @@ export default function WorkshopPromoCodes({ selectedBranchId = 'all', branches 
         || (form.branchMode === 'selected' && form.branchIds.length > 0);
     const saveBlockedByCatalog = catalogLoading && needsCatalogForSave;
 
+    if (showCreateModal) {
+        return (
+            <WorkshopSubScreen
+                title={editingPromo ? `Edit Promo — ${editingPromo.code}` : 'Create Promo Code'}
+                subtitle="Discount rules, branch scope, and catalog eligibility."
+                backLabel="Back to Promo Codes"
+                onBack={closeModal}
+                backDisabled={isSaving}
+                size="xl"
+                maxWidth="920px"
+                className="ws-promo-sub-screen"
+                footer={(
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
+                        {modalError ? (
+                            <p className="ws-promo-form-error" style={{ margin: 0 }}>{modalError}</p>
+                        ) : null}
+                        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', width: '100%' }}>
+                            <button type="button" className="btn-secondary" onClick={closeModal} disabled={isSaving}>
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                form="ws-promo-code-form"
+                                className="btn-submit"
+                                disabled={isSaving || saveBlockedByCatalog}
+                            >
+                                {isSaving ? 'Saving...' : saveBlockedByCatalog ? 'Loading catalog...' : editingPromo ? 'Update Promo' : 'Create Promo'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+            >
+                <div className="ws-section ws-promo-form-body" style={{ padding: 20 }}>
+                    <form
+                        id="ws-promo-code-form"
+                        onSubmit={savePromoCode}
+                        noValidate
+                    >
+                        <PromoCodeFormFields
+                            form={form}
+                            setForm={setForm}
+                            branches={branches}
+                            catalogProducts={catalogProducts}
+                            catalogServices={catalogServices}
+                            catalogLoading={catalogLoading}
+                            codeReadOnly={Boolean(editingPromo)}
+                            usageCount={editingPromo ? toNumber(editingPromo.usageCount) : undefined}
+                            formError={modalError}
+                        />
+                    </form>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
     return (
         <div>
             <div className="ws-page-header">
@@ -875,52 +930,6 @@ export default function WorkshopPromoCodes({ selectedBranchId = 'all', branches 
                 </div>
             </div>
 
-            {showCreateModal && (
-                <Modal
-                    title={editingPromo ? `Edit Promo — ${editingPromo.code}` : 'Create Promo Code'}
-                    onClose={closeModal}
-                    width={920}
-                    contentClassName="ws-promo-modal"
-                    footer={(
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
-                            {modalError ? (
-                                <p className="ws-promo-form-error" style={{ margin: 0 }}>{modalError}</p>
-                            ) : null}
-                            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', width: '100%' }}>
-                                <button type="button" className="btn-secondary" onClick={closeModal} disabled={isSaving}>
-                                    Cancel
-                                </button>
-                                <button
-                                    type="submit"
-                                    form="ws-promo-code-form"
-                                    className="btn-submit"
-                                    disabled={isSaving || saveBlockedByCatalog}
-                                >
-                                    {isSaving ? 'Saving...' : saveBlockedByCatalog ? 'Loading catalog...' : editingPromo ? 'Update Promo' : 'Create Promo'}
-                                </button>
-                            </div>
-                        </div>
-                    )}
-                >
-                    <form
-                        id="ws-promo-code-form"
-                        onSubmit={savePromoCode}
-                        noValidate
-                    >
-                        <PromoCodeFormFields
-                            form={form}
-                            setForm={setForm}
-                            branches={branches}
-                            catalogProducts={catalogProducts}
-                            catalogServices={catalogServices}
-                            catalogLoading={catalogLoading}
-                            codeReadOnly={Boolean(editingPromo)}
-                            usageCount={editingPromo ? toNumber(editingPromo.usageCount) : undefined}
-                            formError={modalError}
-                        />
-                    </form>
-                </Modal>
-            )}
         </div>
     );
 }

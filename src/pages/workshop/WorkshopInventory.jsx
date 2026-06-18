@@ -4,6 +4,7 @@ import './Workshop.css';
 
 import { AnimatePresence } from 'framer-motion';
 import Modal from '../../components/Modal';
+import WorkshopSubScreen from '../../components/workshop/WorkshopSubScreen';
 import { ShimmerTableBodyRows } from '../../components/supplier/Shimmer';
 import { MOCK_SUPPLIERS_CATALOG } from './constants';
 import { getMyProducts, getBranchProducts, patchBranchProduct } from '../../services/workshopCatalogApi';
@@ -1861,6 +1862,742 @@ export default function WorkshopInventory({
         return 'No products match your search.';
     };
 
+    if (uomEditProduct && !isAllBranches) {
+        return (
+            <WorkshopProductUomEditModal
+                product={uomEditProduct}
+                branchId={String(selectedBranchId)}
+                workshopId={workshopIdQuery}
+                onClose={() => setUomEditProduct(null)}
+                onSaved={handleUomSaved}
+            />
+        );
+    }
+
+    if (isBulkUomModalOpen && !isAllBranches) {
+        return (
+            <WorkshopBulkUomModal
+                products={selectedProductsForBulk}
+                branchId={String(selectedBranchId)}
+                workshopId={workshopIdQuery}
+                onClose={() => setIsBulkUomModalOpen(false)}
+                onSaved={handleBulkUomSaved}
+            />
+        );
+    }
+
+    if (isCriticalModalOpen && criticalItem) {
+        return (
+            <WorkshopSubScreen
+                title="Critical stock level"
+                subtitle={criticalItem?.name || 'Set low-stock alert threshold for this branch.'}
+                backLabel="Back to Inventory"
+                onBack={closeCriticalModal}
+                backDisabled={criticalSaving}
+                size="narrow"
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    <div style={{ marginBottom: 20, padding: 16, background: '#F9FAFB', borderRadius: 12, border: '1px solid var(--color-border-light)' }}>
+                        <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: 8 }}>Product</p>
+                        <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>{criticalItem?.name}</h4>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                            Current stock: <strong>{criticalItem?.qty ?? 0}</strong>
+                            {criticalItem?.openingQty != null ? (
+                                <> · Opening (adoption): <strong>{criticalItem.openingQty}</strong></>
+                            ) : null}
+                        </p>
+                    </div>
+                    {isAllBranches ? (
+                        <p style={{ margin: '0 0 16px', fontSize: '0.8125rem', color: '#92400E', background: '#FFFBEB', padding: 12, borderRadius: 8 }}>
+                            Select a <strong>single branch</strong> in the workshop header to update critical levels on the server.
+                        </p>
+                    ) : (
+                        <p style={{ margin: '0 0 16px', fontSize: '0.8125rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+                            When <strong>current stock</strong> is at or below this number (and the value is greater than 0), the product is flagged as <strong>low stock</strong>. Use <strong>0</strong> to turn off the threshold for this branch.
+                        </p>
+                    )}
+                    <div className="mc-form-group" style={{ marginBottom: 24 }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 8, display: 'block' }}>
+                            CRITICAL STOCK POINT (THIS BRANCH)
+                        </label>
+                        <input
+                            type="number"
+                            className="mc-filter-select"
+                            style={{ width: '100%', height: 45 }}
+                            min={0}
+                            step="any"
+                            placeholder="0"
+                            value={criticalInput}
+                            onChange={(e) => setCriticalInput(e.target.value)}
+                            disabled={criticalSaving || isAllBranches}
+                        />
+                    </div>
+                    {criticalSubmitError && (
+                        <p style={{ margin: '0 0 16px', padding: 12, background: '#FEE2E2', borderRadius: 8, color: '#991B1B', fontSize: '0.8125rem' }}>
+                            {criticalSubmitError}
+                        </p>
+                    )}
+                    <div style={{ display: 'flex', gap: 12 }}>
+                        <button type="button" className="mc-btn-ghost" style={{ flex: 1, padding: 12 }} onClick={closeCriticalModal} disabled={criticalSaving}>
+                            Cancel
+                        </button>
+                        <button
+                            type="button"
+                            className="mc-btn-primary"
+                            style={{ flex: 2, padding: 12 }}
+                            onClick={handleCriticalSubmit}
+                            disabled={
+                                criticalSaving ||
+                                isAllBranches ||
+                                (() => {
+                                    const parsed = Number.parseFloat(String(criticalInput).trim().replace(/,/g, ''));
+                                    if (!Number.isFinite(parsed) || parsed < 0) return true;
+                                    const nextCrit = Math.round(parsed * 1000) / 1000;
+                                    return nextCrit === (Number(criticalItem?.critical_level) || 0);
+                                })()
+                            }
+                        >
+                            {criticalSaving ? 'Saving…' : 'Save'}
+                        </button>
+                    </div>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
+    if (logProduct) {
+        return (
+            <WorkshopSubScreen
+                title="Inventory stock timeline"
+                subtitle={logProduct.name}
+                backLabel="Back to Inventory"
+                onBack={() => setLogProduct(null)}
+                size="xl"
+                footer={(
+                    <button type="button" className="mc-btn-ghost mc-btn-large" onClick={() => setLogProduct(null)}>Close</button>
+                )}
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    <div style={{ padding: '0 24px 24px' }}>
+                                                <div style={{ marginBottom: 20, padding: '14px 16px', background: '#F9FAFB', borderRadius: 12, border: '1px solid var(--color-border-light)' }}>
+                                                    <p style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', margin: '0 0 6px' }}>Product</p>
+                                                    <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>{logProduct.name}</h4>
+                                                    <p style={{ margin: '6px 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                                                        SKU: {logProduct.sku || '—'} · Opening (adoption):{' '}
+                                                        <strong
+                                                            style={{
+                                                                padding: '2px 8px',
+                                                                borderRadius: 6,
+                                                                background: '#FEF3C7',
+                                                                color: '#92400E',
+                                                            }}
+                                                        >
+                                                            {logOpeningContext?.displayOpening != null &&
+                                                            Number.isFinite(logOpeningContext.displayOpening)
+                                                                ? logOpeningContext.displayOpening
+                                                                : '—'}
+                                                        </strong>
+                                                        {logOpeningContext?.storedDrift ? (
+                                                            <span style={{ display: 'block', marginTop: 8, fontSize: '0.75rem', color: '#B45309' }}>
+                                                                Stored adoption on this branch is <strong>0</strong>, but your timeline&apos;s last
+                                                                opening-qty entry is <strong>{logOpeningContext.timelineOpening}</strong>. That
+                                                                usually means a later bulk/manual change wrote 0 to adoption, or only current stock was
+                                                                updated (not opening). The inventory table uses the stored value (0), not the history
+                                                                alone.
+                                                            </span>
+                                                        ) : null}
+                                                        {' '}
+                                                        · Current stock:{' '}
+                                                        <strong>{formatInventoryQty(productRows.find((p) => String(p.id) === String(logProduct.id))?.qty, productRows.find((p) => String(p.id) === String(logProduct.id))?.isInfiniteQty ?? logProduct.isInfiniteQty)}</strong>
+                                                        {isAllBranches ? ' · All branches: offline log only' : ` · ${selectedBranchName}`}
+                                                    </p>
+                                                    {logOpeningContext?.storedDrift && !isAllBranches ? (
+                                                        <div style={{ marginTop: 12 }}>
+                                                            <button
+                                                                type="button"
+                                                                className="mc-btn-primary"
+                                                                style={{ padding: '10px 16px', fontSize: '0.8125rem' }}
+                                                                disabled={alignOpeningSaving || logLoading}
+                                                                onClick={alignOpeningAdoptionFromTimeline}
+                                                            >
+                                                                {alignOpeningSaving
+                                                                    ? 'Saving…'
+                                                                    : `Set opening adoption to ${logOpeningContext.timelineOpening}`}
+                                                            </button>
+                                                            {alignOpeningError ? (
+                                                                <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: '#B91C1C' }}>{alignOpeningError}</p>
+                                                            ) : null}
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                                <div
+                                                    style={{
+                                                        display: 'flex',
+                                                        flexWrap: 'wrap',
+                                                        gap: 8,
+                                                        marginBottom: 16,
+                                                    }}
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        disabled={timelineExportDisabled}
+                                                        title={
+                                                            logLoading
+                                                                ? 'Loading…'
+                                                                : !logMergedEntries.length
+                                                                  ? 'No timeline rows to export'
+                                                                  : 'Download spreadsheet (.xlsx)'
+                                                        }
+                                                        style={{
+                                                            ...timelineExportBtnStyle,
+                                                            opacity: timelineExportDisabled ? 0.5 : 1,
+                                                            cursor: timelineExportDisabled ? 'not-allowed' : 'pointer',
+                                                        }}
+                                                        onClick={() => {
+                                                            exportWorkshopTimelineExcel(logProduct, logMergedEntries, {
+                                                                branchName: selectedBranchName,
+                                                                filenameBase: timelineExportFilename,
+                                                            });
+                                                        }}
+                                                    >
+                                                        <FileSpreadsheet size={14} aria-hidden /> Excel
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={timelineExportDisabled}
+                                                        title={
+                                                            logLoading
+                                                                ? 'Loading…'
+                                                                : !logMergedEntries.length
+                                                                  ? 'No timeline rows to export'
+                                                                  : 'Download PDF'
+                                                        }
+                                                        style={{
+                                                            ...timelineExportBtnStyle,
+                                                            opacity: timelineExportDisabled ? 0.5 : 1,
+                                                            cursor: timelineExportDisabled ? 'not-allowed' : 'pointer',
+                                                        }}
+                                                        onClick={() => {
+                                                            exportWorkshopTimelinePdf(logProduct, logMergedEntries, {
+                                                                branchName: selectedBranchName,
+                                                                filenameBase: timelineExportFilename,
+                                                            });
+                                                        }}
+                                                    >
+                                                        <FileText size={14} aria-hidden /> PDF
+                                                    </button>
+                                                </div>
+                                                {logFetchError && (
+                                                    <p style={{ margin: '0 0 12px', padding: '10px 12px', background: '#FEF3C7', borderRadius: 8, color: '#92400E', fontSize: '0.8125rem' }}>
+                                                        {logFetchError} Showing any entries cached in this browser.
+                                                    </p>
+                                                )}
+                                                {(() => {
+                                                    const merged = logMergedEntries;
+
+                                                    if (logLoading && !isAllBranches) {
+                                                        return (
+                                                            <p style={{ margin: 0, padding: '40px 0', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+                                                                Loading history…
+                                                            </p>
+                                                        );
+                                                    }
+
+                                                    if (!merged.length) {
+                                                        return (
+                                                            <p style={{ margin: 0, padding: '24px 0', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+                                                                No timeline entries yet for this branch/product.
+                                                            </p>
+                                                        );
+                                                    }
+                                                    const showByCol = merged.some((e) => e.adjustedBy?.name || e.adjustedBy?.id);
+                                                    const showRefCol = merged.some(
+                                                        (e) => e.reference?.id || (e.source && e.source !== 'manual'),
+                                                    );
+                                                    return (
+                                                        <div style={{ overflowX: 'auto', maxHeight: 'min(420px, 55vh)', overflowY: 'auto', border: '1px solid var(--color-border-light)', borderRadius: 12 }}>
+                                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+                                                                <thead>
+                                                                    <tr style={{ background: '#F9FAFB', position: 'sticky', top: 0 }}>
+                                                                        <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>When</th>
+                                                                        <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>From</th>
+                                                                        <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>To</th>
+                                                                        <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>Δ</th>
+                                                                        <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>Reason</th>
+                                                                        {showRefCol ? (
+                                                                            <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>Source / Ref</th>
+                                                                        ) : null}
+                                                                        {showByCol ? (
+                                                                            <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>By</th>
+                                                                        ) : null}
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {merged.map((e) => {
+                                                                        const openingRow = isOpeningQtyAdjustmentEntry(e);
+                                                                        const infiniteRow = isInfiniteQtyAdjustmentEntry(e);
+                                                                        return (
+                                                                        <tr
+                                                                            key={e.id}
+                                                                            style={{
+                                                                                borderBottom: '1px solid var(--color-border-light)',
+                                                                                background: openingRow ? '#FEF9C3' : infiniteRow ? '#F5F3FF' : undefined,
+                                                                            }}
+                                                                        >
+                                                                            <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', color: openingRow ? '#92400E' : infiniteRow ? '#6D28D9' : 'var(--color-text-muted)' }}>
+                                                                                {new Date(e.at).toLocaleString()}
+                                                                                {openingRow ? (
+                                                                                    <span
+                                                                                        style={{
+                                                                                            display: 'block',
+                                                                                            fontSize: '0.65rem',
+                                                                                            fontWeight: 800,
+                                                                                            textTransform: 'uppercase',
+                                                                                            marginTop: 4,
+                                                                                        }}
+                                                                                    >
+                                                                                        Opening (adoption)
+                                                                                    </span>
+                                                                                ) : null}
+                                                                                {infiniteRow ? (
+                                                                                    <span
+                                                                                        style={{
+                                                                                            display: 'block',
+                                                                                            fontSize: '0.65rem',
+                                                                                            fontWeight: 800,
+                                                                                            textTransform: 'uppercase',
+                                                                                            marginTop: 4,
+                                                                                        }}
+                                                                                    >
+                                                                                        Unlimited stock
+                                                                                    </span>
+                                                                                ) : null}
+                                                                            </td>
+                                                                            <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700 }}>{formatTimelineQty(e, 'previous')}</td>
+                                                                            <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700 }}>{formatTimelineQty(e, 'new')}</td>
+                                                                            <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: infiniteRow ? '#6D28D9' : e.delta >= 0 ? '#047857' : '#B91C1C' }}>
+                                                                                {infiniteRow ? '—' : e.delta > 0 ? `+${e.delta}` : e.delta}
+                                                                            </td>
+                                                                            <td style={{ padding: '12px 14px' }}>{e.reason}</td>
+                                                                            {showRefCol ? (
+                                                                                <td style={{ padding: '12px 14px', color: 'var(--color-text-muted)' }}>
+                                                                                    <span>{humanizeInventoryLogSource(e.source)}</span>
+                                                                                    {e.reference?.id ? (
+                                                                                        <span>
+                                                                                            {' '}
+                                                                                            · {humanizeInventoryLogReferenceType(e.reference.type)}{' '}
+                                                                                            {e.reference.invoiceNumber ? (
+                                                                                                <strong>{e.reference.invoiceNumber}</strong>
+                                                                                            ) : (
+                                                                                                <>#{e.reference.id}</>
+                                                                                            )}
+                                                                                        </span>
+                                                                                    ) : null}
+                                                                                </td>
+                                                                            ) : null}
+                                                                            {showByCol ? (
+                                                                                <td style={{ padding: '12px 14px', color: 'var(--color-text-muted)' }}>
+                                                                                    {e.adjustedBy?.name || e.adjustedBy?.id || '—'}
+                                                                                </td>
+                                                                            ) : null}
+                                                                        </tr>
+                                                                    );
+                                                                    })}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </div>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
+    if (isAdjustModalOpen && adjustItem) {
+        return (
+            <WorkshopSubScreen
+                title="Manual Inventory Adjustment"
+                subtitle={adjustItem?.name || 'Update stock for this product.'}
+                backLabel="Back to Inventory"
+                onBack={closeAdjustModal}
+                backDisabled={adjustSaving}
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    <div style={{ marginBottom: '20px', padding: '16px', background: '#F9FAFB', borderRadius: '12px', border: '1px solid var(--color-border-light)' }}>
+                                                    <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Product Details</p>
+                                                    <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>{adjustItem?.name}</h4>
+                                                    <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                                                        Current stock: <strong>{formatInventoryQty(adjustItem?.qty, adjustItem?.isInfiniteQty)}</strong>
+                                                        {adjustItem?.openingQty != null ? (
+                                                            <>
+                                                                {' '}
+                                                                · Opening (adoption):{' '}
+                                                                <strong
+                                                                    style={{
+                                                                        padding: '2px 8px',
+                                                                        borderRadius: 6,
+                                                                        background: isAdjustOpeningQty ? '#FEF3C7' : 'transparent',
+                                                                        color: isAdjustOpeningQty ? '#92400E' : 'inherit',
+                                                                    }}
+                                                                >
+                                                                    {adjustItem.openingQty}
+                                                                </strong>
+                                                            </>
+                                                        ) : null}
+                                                    </p>
+                                                </div>
+
+                                                <p style={{ margin: '0 0 16px', fontSize: '0.8125rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+                                                    {isAdjustInfiniteQty ? (
+                                                        <>
+                                                            Marks this product as <strong>unlimited stock</strong> at this branch. POS sales will not
+                                                            deplete quantity. The last known stock level is kept for reference and shown in the timeline.
+                                                        </>
+                                                    ) : isAdjustOpeningQty ? (
+                                                        <>
+                                                            Sets <strong>Opening (adoption)</strong> and <strong>Current stock</strong> to the same
+                                                            value (initial / reset). Enter the new total (≥ 0).
+                                                        </>
+                                                    ) : adjustItem?.isInfiniteQty ? (
+                                                        <>
+                                                            This product has <strong>unlimited stock</strong>. Entering a new quantity turns unlimited
+                                                            mode off and sets on-hand stock to that value
+                                                            {adjustItem.lastPhysicalQty != null ? (
+                                                                <> (last physical count: <strong>{adjustItem.lastPhysicalQty}</strong>)</>
+                                                            ) : null}
+                                                            .
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            Sets <strong>current stock</strong> (effective on-hand per branch; not adoption opening). Enter a new total — higher to increase, lower to decrease. Must be ≥ 0.
+                                                        </>
+                                                    )}
+                                                    {isAllBranches
+                                                        ? ' Select a single branch to save on the server.'
+                                                        : isAdjustInfiniteQty
+                                                          ? adjustItem?.isInfiniteQty
+                                                            ? ' This product already has unlimited stock.'
+                                                            : ' Recorded in the product timeline as Infinite qty.'
+                                                          : isAdjustOpeningQty
+                                                          ? ' Uses the stored opening adoption on the server (the list can show 0 while the real value is higher).'
+                                                          : adjustItem?.isInfiniteQty
+                                                            ? ' No previous-qty check while leaving unlimited mode.'
+                                                            : ' The server checks previousQty matches current stock — refresh if it changed elsewhere.'}
+                                                </p>
+
+                                                <div className="mc-form-group" style={{ marginBottom: '16px' }}>
+                                                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>REASON FOR ADJUSTMENT</label>
+                                                    <select
+                                                        className="mc-filter-select"
+                                                        style={{ width: '100%', height: '45px' }}
+                                                        value={adjustReason}
+                                                        onChange={(e) => handleAdjustReasonChange(e.target.value)}
+                                                        disabled={adjustSaving}
+                                                    >
+                                                        <option value="">Select a reason...</option>
+                                                        {INVENTORY_ADJUST_REASON_OPTIONS.map((opt) => (
+                                                            <option key={opt.value} value={opt.value}>
+                                                                {opt.label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
+                                                {!isAdjustInfiniteQty ? (
+                                                <div className="mc-form-group" style={{ marginBottom: '16px' }}>
+                                                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>
+                                                        {isAdjustOpeningQty ? 'NEW OPENING QTY (ADOPTION)' : 'NEW QUANTITY (CURRENT STOCK)'}
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        className="mc-filter-select"
+                                                        style={{ width: '100%', height: '45px' }}
+                                                        placeholder={isAdjustOpeningQty ? 'Enter new opening qty…' : 'Enter new stock level…'}
+                                                        min={0}
+                                                        step={1}
+                                                        value={newQty}
+                                                        onChange={(e) => setNewQty(e.target.value)}
+                                                        disabled={adjustSaving}
+                                                    />
+                                                </div>
+                                                ) : null}
+
+                                                {adjustSubmitError && (
+                                                    <p style={{ margin: '0 0 16px', padding: '12px', background: '#FEE2E2', borderRadius: 8, color: '#991B1B', fontSize: '0.8125rem' }}>
+                                                        {adjustSubmitError}
+                                                    </p>
+                                                )}
+
+                                                <div style={{ display: 'flex', gap: '12px' }}>
+                                                    <button type="button" className="mc-btn-ghost" style={{ flex: 1, padding: '12px' }} onClick={closeAdjustModal} disabled={adjustSaving}>
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="mc-btn-primary"
+                                                        style={{ flex: 2, padding: '12px', background: '#4B5563', borderColor: '#4B5563' }}
+                                                        onClick={handleAdjustSubmit}
+                                                        disabled={(() => {
+                                                            if (adjustSaving || !adjustItem || !adjustReason.trim()) return true;
+                                                            if (isAdjustInfiniteQty) {
+                                                                return Boolean(adjustItem.isInfiniteQty);
+                                                            }
+                                                            const parsed = Number.parseFloat(String(newQty).trim().replace(/,/g, ''));
+                                                            if (!Number.isFinite(parsed) || parsed < 0) return true;
+                                                            if (adjustItem.isInfiniteQty) return false;
+                                                            const baseline = isAdjustOpeningQty
+                                                                ? Number(adjustItem.openingQty ?? adjustItem.qty) || 0
+                                                                : Number(adjustItem.qty) || 0;
+                                                            return Math.round(parsed) === baseline;
+                                                        })()}
+                                                    >
+                                                        {adjustSaving ? 'Saving…' : 'Apply Adjustment'}
+                                                    </button>
+                                                </div>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
+    if (isBulkAdjustModalOpen) {
+        return (
+            <WorkshopSubScreen
+                title={`Bulk adjust — ${selectedProductsForBulk.length} product${selectedProductsForBulk.length !== 1 ? 's' : ''}`}
+                subtitle="Apply the same reason and quantity to all selected products."
+                backLabel="Back to Inventory"
+                onBack={closeBulkAdjustModal}
+                backDisabled={bulkAdjustSaving}
+                size="xl"
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    <p style={{ margin: '0 0 16px', fontSize: '0.8125rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+                                                    {isBulkInfiniteQty ? (
+                                                        <>
+                                                            <strong>Infinite qty</strong> marks selected products as <strong>unlimited stock</strong>.
+                                                            No quantity entry is needed. Each change is recorded in the product timeline.
+                                                        </>
+                                                    ) : isBulkOpeningQty ? (
+                                                        <>
+                                                            <strong>Opening qty</strong> sets <strong>Opening (adoption)</strong> and{' '}
+                                                            <strong>current stock</strong> to the value you enter.
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            Any other reason sets <strong>current stock only</strong> to the exact quantity you
+                                                            enter (not added on top). Opening (adoption) is unchanged.
+                                                        </>
+                                                    )}
+                                                    {isAllBranches
+                                                        ? ' All branches: changes are saved in this browser only until you pick a branch.'
+                                                        : ` Saved on the server for ${selectedBranchName}.`}
+                                                </p>
+
+                                                <div className="mc-form-group" style={{ marginBottom: '16px' }}>
+                                                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>
+                                                        REASON FOR ADJUSTMENT
+                                                    </label>
+                                                    <select
+                                                        className="mc-filter-select"
+                                                        style={{ width: '100%', height: '45px' }}
+                                                        value={bulkAdjustReason}
+                                                        onChange={(e) => setBulkAdjustReason(e.target.value)}
+                                                        disabled={bulkAdjustSaving}
+                                                    >
+                                                        <option value="">Select a reason...</option>
+                                                        {INVENTORY_ADJUST_REASON_OPTIONS.map((opt) => (
+                                                            <option key={opt.value} value={opt.value}>
+                                                                {opt.label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
+                                                {!isBulkInfiniteQty ? (
+                                                <div className="mc-form-group" style={{ marginBottom: '16px' }}>
+                                                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>
+                                                        {isBulkOpeningQty
+                                                            ? 'NEW OPENING QTY (ADOPTION + CURRENT STOCK)'
+                                                            : 'NEW QUANTITY (CURRENT STOCK ONLY)'}
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        className="mc-filter-select"
+                                                        style={{ width: '100%', height: '45px' }}
+                                                        min={0}
+                                                        step={1}
+                                                        placeholder="e.g. 90"
+                                                        value={bulkAdjustAmount}
+                                                        onChange={(e) => setBulkAdjustAmount(e.target.value)}
+                                                        disabled={bulkAdjustSaving || !bulkAdjustReason.trim()}
+                                                    />
+                                                </div>
+                                                ) : null}
+
+                                                {bulkAdjustPreview.length > 0 && (
+                                                    <div
+                                                        style={{
+                                                            marginBottom: 16,
+                                                            maxHeight: 200,
+                                                            overflowY: 'auto',
+                                                            border: '1px solid var(--color-border-light)',
+                                                            borderRadius: 12,
+                                                            background: '#F9FAFB',
+                                                        }}
+                                                    >
+                                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+                                                            <thead>
+                                                                <tr style={{ borderBottom: '1px solid var(--color-border-light)' }}>
+                                                                    <th style={{ padding: '10px 12px', textAlign: 'left' }}>Product</th>
+                                                                    {isBulkOpeningQty ? (
+                                                                        <>
+                                                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>Opening</th>
+                                                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>New opening</th>
+                                                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>Current</th>
+                                                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>New stock</th>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>Current</th>
+                                                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>New</th>
+                                                                        </>
+                                                                    )}
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {bulkAdjustPreview.slice(0, 12).map((row) => (
+                                                                    <tr key={row.id} style={{ borderBottom: '1px solid var(--color-border-light)' }}>
+                                                                        <td style={{ padding: '8px 12px' }}>
+                                                                            <strong>{row.name}</strong>
+                                                                            {row.sku !== '—' ? (
+                                                                                <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>{row.sku}</span>
+                                                                            ) : null}
+                                                                        </td>
+                                                                        {isBulkInfiniteQty ? (
+                                                                            <>
+                                                                                <td style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                                                                                    {formatInventoryQty(row.prevCurrent, false)}
+                                                                                </td>
+                                                                                <td
+                                                                                    style={{
+                                                                                        padding: '8px 12px',
+                                                                                        textAlign: 'center',
+                                                                                        fontWeight: 700,
+                                                                                        color: row.unchanged ? 'var(--color-text-muted)' : '#6D28D9',
+                                                                                    }}
+                                                                                >
+                                                                                    {row.unchanged ? '∞ (skip)' : '∞'}
+                                                                                </td>
+                                                                            </>
+                                                                        ) : isBulkOpeningQty ? (
+                                                                            <>
+                                                                                <td
+                                                                                    style={{
+                                                                                        padding: '8px 12px',
+                                                                                        textAlign: 'center',
+                                                                                        color: '#92400E',
+                                                                                        background: '#FFFBEB',
+                                                                                        fontWeight: 600,
+                                                                                    }}
+                                                                                >
+                                                                                    {row.prevOpening}
+                                                                                </td>
+                                                                                <td
+                                                                                    style={{
+                                                                                        padding: '8px 12px',
+                                                                                        textAlign: 'center',
+                                                                                        fontWeight: 700,
+                                                                                        color: row.unchanged ? 'var(--color-text-muted)' : '#92400E',
+                                                                                        background: row.unchanged ? undefined : '#FEF3C7',
+                                                                                    }}
+                                                                                >
+                                                                                    {row.newOpening}
+                                                                                </td>
+                                                                                <td style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                                                                                    {row.prevCurrent}
+                                                                                </td>
+                                                                                <td
+                                                                                    style={{
+                                                                                        padding: '8px 12px',
+                                                                                        textAlign: 'center',
+                                                                                        fontWeight: 700,
+                                                                                        color: row.unchanged ? 'var(--color-text-muted)' : '#047857',
+                                                                                    }}
+                                                                                >
+                                                                                    {row.newCurrent}
+                                                                                    {row.unchanged ? ' (skip)' : ''}
+                                                                                </td>
+                                                                            </>
+                                                                        ) : (
+                                                                            <>
+                                                                                <td style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--color-text-muted)' }}>{row.prevQty}</td>
+                                                                                <td
+                                                                                    style={{
+                                                                                        padding: '8px 12px',
+                                                                                        textAlign: 'center',
+                                                                                        fontWeight: 700,
+                                                                                        color: row.unchanged ? 'var(--color-text-muted)' : '#047857',
+                                                                                    }}
+                                                                                >
+                                                                                    {row.newQty}
+                                                                                    {row.unchanged ? ' (skip)' : ''}
+                                                                                </td>
+                                                                            </>
+                                                                        )}
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                        {bulkAdjustPreview.length > 12 ? (
+                                                            <p style={{ margin: 0, padding: '8px 12px', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                                                + {bulkAdjustPreview.length - 12} more…
+                                                            </p>
+                                                        ) : null}
+                                                    </div>
+                                                )}
+
+                                                <p style={{ margin: '0 0 12px', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                                    <strong>{bulkAdjustWillChangeCount}</strong> of {bulkAdjustPreview.length} will be updated.
+                                                    {bulkAdjustSaving && bulkAdjustProgress.total > 0
+                                                        ? bulkAdjustProgress.done >= bulkAdjustProgress.total
+                                                            ? ' Done.'
+                                                            : ` Applying to ${bulkAdjustProgress.total} products on the server (one request)…`
+                                                        : ''}
+                                                </p>
+
+                                                {bulkAdjustError && (
+                                                    <p style={{ margin: '0 0 16px', padding: '12px', background: '#FEE2E2', borderRadius: 8, color: '#991B1B', fontSize: '0.8125rem' }}>
+                                                        {bulkAdjustError}
+                                                    </p>
+                                                )}
+
+                                                <div style={{ display: 'flex', gap: '12px' }}>
+                                                    <button type="button" className="mc-btn-ghost" style={{ flex: 1, padding: '12px' }} onClick={closeBulkAdjustModal} disabled={bulkAdjustSaving}>
+                                                        Cancel
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="mc-btn-primary"
+                                                        style={{ flex: 2, padding: '12px' }}
+                                                        onClick={handleBulkAdjustSubmit}
+                                                        disabled={
+                                                            bulkAdjustSaving ||
+                                                            !bulkAdjustReason.trim() ||
+                                                            bulkAdjustWillChangeCount === 0 ||
+                                                            (!isBulkInfiniteQty &&
+                                                                !Number.isFinite(
+                                                                    Number.parseFloat(String(bulkAdjustAmount).trim().replace(/,/g, '')),
+                                                                ))
+                                                        }
+                                                    >
+                                                        {bulkAdjustSaving ? 'Applying…' : `Apply to ${bulkAdjustWillChangeCount} product${bulkAdjustWillChangeCount !== 1 ? 's' : ''}`}
+                                                    </button>
+                                                </div>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
     return (
         <div className="mc-catalog-container">
             <div className="mc-selection-header">
@@ -2698,713 +3435,8 @@ export default function WorkshopInventory({
                 )}
             </AnimatePresence>
 
-            <AnimatePresence>
-                {logProduct && (
-                    <Modal onClose={() => setLogProduct(null)} title="Inventory stock timeline" width="780px">
-                        <div style={{ padding: '0 24px 24px' }}>
-                            <div style={{ marginBottom: 20, padding: '14px 16px', background: '#F9FAFB', borderRadius: 12, border: '1px solid var(--color-border-light)' }}>
-                                <p style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', margin: '0 0 6px' }}>Product</p>
-                                <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>{logProduct.name}</h4>
-                                <p style={{ margin: '6px 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                                    SKU: {logProduct.sku || '—'} · Opening (adoption):{' '}
-                                    <strong
-                                        style={{
-                                            padding: '2px 8px',
-                                            borderRadius: 6,
-                                            background: '#FEF3C7',
-                                            color: '#92400E',
-                                        }}
-                                    >
-                                        {logOpeningContext?.displayOpening != null &&
-                                        Number.isFinite(logOpeningContext.displayOpening)
-                                            ? logOpeningContext.displayOpening
-                                            : '—'}
-                                    </strong>
-                                    {logOpeningContext?.storedDrift ? (
-                                        <span style={{ display: 'block', marginTop: 8, fontSize: '0.75rem', color: '#B45309' }}>
-                                            Stored adoption on this branch is <strong>0</strong>, but your timeline&apos;s last
-                                            opening-qty entry is <strong>{logOpeningContext.timelineOpening}</strong>. That
-                                            usually means a later bulk/manual change wrote 0 to adoption, or only current stock was
-                                            updated (not opening). The inventory table uses the stored value (0), not the history
-                                            alone.
-                                        </span>
-                                    ) : null}
-                                    {' '}
-                                    · Current stock:{' '}
-                                    <strong>{formatInventoryQty(productRows.find((p) => String(p.id) === String(logProduct.id))?.qty, productRows.find((p) => String(p.id) === String(logProduct.id))?.isInfiniteQty ?? logProduct.isInfiniteQty)}</strong>
-                                    {isAllBranches ? ' · All branches: offline log only' : ` · ${selectedBranchName}`}
-                                </p>
-                                {logOpeningContext?.storedDrift && !isAllBranches ? (
-                                    <div style={{ marginTop: 12 }}>
-                                        <button
-                                            type="button"
-                                            className="mc-btn-primary"
-                                            style={{ padding: '10px 16px', fontSize: '0.8125rem' }}
-                                            disabled={alignOpeningSaving || logLoading}
-                                            onClick={alignOpeningAdoptionFromTimeline}
-                                        >
-                                            {alignOpeningSaving
-                                                ? 'Saving…'
-                                                : `Set opening adoption to ${logOpeningContext.timelineOpening}`}
-                                        </button>
-                                        {alignOpeningError ? (
-                                            <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: '#B91C1C' }}>{alignOpeningError}</p>
-                                        ) : null}
-                                    </div>
-                                ) : null}
-                            </div>
-                            <div
-                                style={{
-                                    display: 'flex',
-                                    flexWrap: 'wrap',
-                                    gap: 8,
-                                    marginBottom: 16,
-                                }}
-                            >
-                                <button
-                                    type="button"
-                                    disabled={timelineExportDisabled}
-                                    title={
-                                        logLoading
-                                            ? 'Loading…'
-                                            : !logMergedEntries.length
-                                              ? 'No timeline rows to export'
-                                              : 'Download spreadsheet (.xlsx)'
-                                    }
-                                    style={{
-                                        ...timelineExportBtnStyle,
-                                        opacity: timelineExportDisabled ? 0.5 : 1,
-                                        cursor: timelineExportDisabled ? 'not-allowed' : 'pointer',
-                                    }}
-                                    onClick={() => {
-                                        exportWorkshopTimelineExcel(logProduct, logMergedEntries, {
-                                            branchName: selectedBranchName,
-                                            filenameBase: timelineExportFilename,
-                                        });
-                                    }}
-                                >
-                                    <FileSpreadsheet size={14} aria-hidden /> Excel
-                                </button>
-                                <button
-                                    type="button"
-                                    disabled={timelineExportDisabled}
-                                    title={
-                                        logLoading
-                                            ? 'Loading…'
-                                            : !logMergedEntries.length
-                                              ? 'No timeline rows to export'
-                                              : 'Download PDF'
-                                    }
-                                    style={{
-                                        ...timelineExportBtnStyle,
-                                        opacity: timelineExportDisabled ? 0.5 : 1,
-                                        cursor: timelineExportDisabled ? 'not-allowed' : 'pointer',
-                                    }}
-                                    onClick={() => {
-                                        exportWorkshopTimelinePdf(logProduct, logMergedEntries, {
-                                            branchName: selectedBranchName,
-                                            filenameBase: timelineExportFilename,
-                                        });
-                                    }}
-                                >
-                                    <FileText size={14} aria-hidden /> PDF
-                                </button>
-                            </div>
-                            {logFetchError && (
-                                <p style={{ margin: '0 0 12px', padding: '10px 12px', background: '#FEF3C7', borderRadius: 8, color: '#92400E', fontSize: '0.8125rem' }}>
-                                    {logFetchError} Showing any entries cached in this browser.
-                                </p>
-                            )}
-                            {(() => {
-                                const merged = logMergedEntries;
 
-                                if (logLoading && !isAllBranches) {
-                                    return (
-                                        <p style={{ margin: 0, padding: '40px 0', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
-                                            Loading history…
-                                        </p>
-                                    );
-                                }
 
-                                if (!merged.length) {
-                                    return (
-                                        <p style={{ margin: 0, padding: '24px 0', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
-                                            No timeline entries yet for this branch/product.
-                                        </p>
-                                    );
-                                }
-                                const showByCol = merged.some((e) => e.adjustedBy?.name || e.adjustedBy?.id);
-                                const showRefCol = merged.some(
-                                    (e) => e.reference?.id || (e.source && e.source !== 'manual'),
-                                );
-                                return (
-                                    <div style={{ overflowX: 'auto', maxHeight: 'min(420px, 55vh)', overflowY: 'auto', border: '1px solid var(--color-border-light)', borderRadius: 12 }}>
-                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
-                                            <thead>
-                                                <tr style={{ background: '#F9FAFB', position: 'sticky', top: 0 }}>
-                                                    <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>When</th>
-                                                    <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>From</th>
-                                                    <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>To</th>
-                                                    <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>Δ</th>
-                                                    <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>Reason</th>
-                                                    {showRefCol ? (
-                                                        <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>Source / Ref</th>
-                                                    ) : null}
-                                                    {showByCol ? (
-                                                        <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>By</th>
-                                                    ) : null}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {merged.map((e) => {
-                                                    const openingRow = isOpeningQtyAdjustmentEntry(e);
-                                                    const infiniteRow = isInfiniteQtyAdjustmentEntry(e);
-                                                    return (
-                                                    <tr
-                                                        key={e.id}
-                                                        style={{
-                                                            borderBottom: '1px solid var(--color-border-light)',
-                                                            background: openingRow ? '#FEF9C3' : infiniteRow ? '#F5F3FF' : undefined,
-                                                        }}
-                                                    >
-                                                        <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', color: openingRow ? '#92400E' : infiniteRow ? '#6D28D9' : 'var(--color-text-muted)' }}>
-                                                            {new Date(e.at).toLocaleString()}
-                                                            {openingRow ? (
-                                                                <span
-                                                                    style={{
-                                                                        display: 'block',
-                                                                        fontSize: '0.65rem',
-                                                                        fontWeight: 800,
-                                                                        textTransform: 'uppercase',
-                                                                        marginTop: 4,
-                                                                    }}
-                                                                >
-                                                                    Opening (adoption)
-                                                                </span>
-                                                            ) : null}
-                                                            {infiniteRow ? (
-                                                                <span
-                                                                    style={{
-                                                                        display: 'block',
-                                                                        fontSize: '0.65rem',
-                                                                        fontWeight: 800,
-                                                                        textTransform: 'uppercase',
-                                                                        marginTop: 4,
-                                                                    }}
-                                                                >
-                                                                    Unlimited stock
-                                                                </span>
-                                                            ) : null}
-                                                        </td>
-                                                        <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700 }}>{formatTimelineQty(e, 'previous')}</td>
-                                                        <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700 }}>{formatTimelineQty(e, 'new')}</td>
-                                                        <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: infiniteRow ? '#6D28D9' : e.delta >= 0 ? '#047857' : '#B91C1C' }}>
-                                                            {infiniteRow ? '—' : e.delta > 0 ? `+${e.delta}` : e.delta}
-                                                        </td>
-                                                        <td style={{ padding: '12px 14px' }}>{e.reason}</td>
-                                                        {showRefCol ? (
-                                                            <td style={{ padding: '12px 14px', color: 'var(--color-text-muted)' }}>
-                                                                <span>{humanizeInventoryLogSource(e.source)}</span>
-                                                                {e.reference?.id ? (
-                                                                    <span>
-                                                                        {' '}
-                                                                        · {humanizeInventoryLogReferenceType(e.reference.type)}{' '}
-                                                                        {e.reference.invoiceNumber ? (
-                                                                            <strong>{e.reference.invoiceNumber}</strong>
-                                                                        ) : (
-                                                                            <>#{e.reference.id}</>
-                                                                        )}
-                                                                    </span>
-                                                                ) : null}
-                                                            </td>
-                                                        ) : null}
-                                                        {showByCol ? (
-                                                            <td style={{ padding: '12px 14px', color: 'var(--color-text-muted)' }}>
-                                                                {e.adjustedBy?.name || e.adjustedBy?.id || '—'}
-                                                            </td>
-                                                        ) : null}
-                                                    </tr>
-                                                );
-                                                })}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                );
-                            })()}
-                        </div>
-                    </Modal>
-                )}
-            </AnimatePresence>
-
-            <AnimatePresence>
-                {isAdjustModalOpen && (
-                    <Modal onClose={closeAdjustModal} title="Manual Inventory Adjustment" width="500px">
-                        <div className="mc-modal-form" style={{ padding: '24px' }}>
-                            <div style={{ marginBottom: '20px', padding: '16px', background: '#F9FAFB', borderRadius: '12px', border: '1px solid var(--color-border-light)' }}>
-                                <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Product Details</p>
-                                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>{adjustItem?.name}</h4>
-                                <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                                    Current stock: <strong>{formatInventoryQty(adjustItem?.qty, adjustItem?.isInfiniteQty)}</strong>
-                                    {adjustItem?.openingQty != null ? (
-                                        <>
-                                            {' '}
-                                            · Opening (adoption):{' '}
-                                            <strong
-                                                style={{
-                                                    padding: '2px 8px',
-                                                    borderRadius: 6,
-                                                    background: isAdjustOpeningQty ? '#FEF3C7' : 'transparent',
-                                                    color: isAdjustOpeningQty ? '#92400E' : 'inherit',
-                                                }}
-                                            >
-                                                {adjustItem.openingQty}
-                                            </strong>
-                                        </>
-                                    ) : null}
-                                </p>
-                            </div>
-
-                            <p style={{ margin: '0 0 16px', fontSize: '0.8125rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
-                                {isAdjustInfiniteQty ? (
-                                    <>
-                                        Marks this product as <strong>unlimited stock</strong> at this branch. POS sales will not
-                                        deplete quantity. The last known stock level is kept for reference and shown in the timeline.
-                                    </>
-                                ) : isAdjustOpeningQty ? (
-                                    <>
-                                        Sets <strong>Opening (adoption)</strong> and <strong>Current stock</strong> to the same
-                                        value (initial / reset). Enter the new total (≥ 0).
-                                    </>
-                                ) : adjustItem?.isInfiniteQty ? (
-                                    <>
-                                        This product has <strong>unlimited stock</strong>. Entering a new quantity turns unlimited
-                                        mode off and sets on-hand stock to that value
-                                        {adjustItem.lastPhysicalQty != null ? (
-                                            <> (last physical count: <strong>{adjustItem.lastPhysicalQty}</strong>)</>
-                                        ) : null}
-                                        .
-                                    </>
-                                ) : (
-                                    <>
-                                        Sets <strong>current stock</strong> (effective on-hand per branch; not adoption opening). Enter a new total — higher to increase, lower to decrease. Must be ≥ 0.
-                                    </>
-                                )}
-                                {isAllBranches
-                                    ? ' Select a single branch to save on the server.'
-                                    : isAdjustInfiniteQty
-                                      ? adjustItem?.isInfiniteQty
-                                        ? ' This product already has unlimited stock.'
-                                        : ' Recorded in the product timeline as Infinite qty.'
-                                      : isAdjustOpeningQty
-                                      ? ' Uses the stored opening adoption on the server (the list can show 0 while the real value is higher).'
-                                      : adjustItem?.isInfiniteQty
-                                        ? ' No previous-qty check while leaving unlimited mode.'
-                                        : ' The server checks previousQty matches current stock — refresh if it changed elsewhere.'}
-                            </p>
-
-                            <div className="mc-form-group" style={{ marginBottom: '16px' }}>
-                                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>REASON FOR ADJUSTMENT</label>
-                                <select
-                                    className="mc-filter-select"
-                                    style={{ width: '100%', height: '45px' }}
-                                    value={adjustReason}
-                                    onChange={(e) => handleAdjustReasonChange(e.target.value)}
-                                    disabled={adjustSaving}
-                                >
-                                    <option value="">Select a reason...</option>
-                                    {INVENTORY_ADJUST_REASON_OPTIONS.map((opt) => (
-                                        <option key={opt.value} value={opt.value}>
-                                            {opt.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {!isAdjustInfiniteQty ? (
-                            <div className="mc-form-group" style={{ marginBottom: '16px' }}>
-                                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>
-                                    {isAdjustOpeningQty ? 'NEW OPENING QTY (ADOPTION)' : 'NEW QUANTITY (CURRENT STOCK)'}
-                                </label>
-                                <input
-                                    type="number"
-                                    className="mc-filter-select"
-                                    style={{ width: '100%', height: '45px' }}
-                                    placeholder={isAdjustOpeningQty ? 'Enter new opening qty…' : 'Enter new stock level…'}
-                                    min={0}
-                                    step={1}
-                                    value={newQty}
-                                    onChange={(e) => setNewQty(e.target.value)}
-                                    disabled={adjustSaving}
-                                />
-                            </div>
-                            ) : null}
-
-                            {adjustSubmitError && (
-                                <p style={{ margin: '0 0 16px', padding: '12px', background: '#FEE2E2', borderRadius: 8, color: '#991B1B', fontSize: '0.8125rem' }}>
-                                    {adjustSubmitError}
-                                </p>
-                            )}
-
-                            <div style={{ display: 'flex', gap: '12px' }}>
-                                <button type="button" className="mc-btn-ghost" style={{ flex: 1, padding: '12px' }} onClick={closeAdjustModal} disabled={adjustSaving}>
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    className="mc-btn-primary"
-                                    style={{ flex: 2, padding: '12px', background: '#4B5563', borderColor: '#4B5563' }}
-                                    onClick={handleAdjustSubmit}
-                                    disabled={(() => {
-                                        if (adjustSaving || !adjustItem || !adjustReason.trim()) return true;
-                                        if (isAdjustInfiniteQty) {
-                                            return Boolean(adjustItem.isInfiniteQty);
-                                        }
-                                        const parsed = Number.parseFloat(String(newQty).trim().replace(/,/g, ''));
-                                        if (!Number.isFinite(parsed) || parsed < 0) return true;
-                                        if (adjustItem.isInfiniteQty) return false;
-                                        const baseline = isAdjustOpeningQty
-                                            ? Number(adjustItem.openingQty ?? adjustItem.qty) || 0
-                                            : Number(adjustItem.qty) || 0;
-                                        return Math.round(parsed) === baseline;
-                                    })()}
-                                >
-                                    {adjustSaving ? 'Saving…' : 'Apply Adjustment'}
-                                </button>
-                            </div>
-                        </div>
-                    </Modal>
-                )}
-            </AnimatePresence>
-
-            <AnimatePresence>
-                {isBulkAdjustModalOpen && (
-                    <Modal
-                        onClose={closeBulkAdjustModal}
-                        title={`Bulk adjust — ${selectedProductsForBulk.length} product${selectedProductsForBulk.length !== 1 ? 's' : ''}`}
-                        width="560px"
-                    >
-                        <div className="mc-modal-form" style={{ padding: '24px' }}>
-                            <p style={{ margin: '0 0 16px', fontSize: '0.8125rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
-                                {isBulkInfiniteQty ? (
-                                    <>
-                                        <strong>Infinite qty</strong> marks selected products as <strong>unlimited stock</strong>.
-                                        No quantity entry is needed. Each change is recorded in the product timeline.
-                                    </>
-                                ) : isBulkOpeningQty ? (
-                                    <>
-                                        <strong>Opening qty</strong> sets <strong>Opening (adoption)</strong> and{' '}
-                                        <strong>current stock</strong> to the value you enter.
-                                    </>
-                                ) : (
-                                    <>
-                                        Any other reason sets <strong>current stock only</strong> to the exact quantity you
-                                        enter (not added on top). Opening (adoption) is unchanged.
-                                    </>
-                                )}
-                                {isAllBranches
-                                    ? ' All branches: changes are saved in this browser only until you pick a branch.'
-                                    : ` Saved on the server for ${selectedBranchName}.`}
-                            </p>
-
-                            <div className="mc-form-group" style={{ marginBottom: '16px' }}>
-                                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>
-                                    REASON FOR ADJUSTMENT
-                                </label>
-                                <select
-                                    className="mc-filter-select"
-                                    style={{ width: '100%', height: '45px' }}
-                                    value={bulkAdjustReason}
-                                    onChange={(e) => setBulkAdjustReason(e.target.value)}
-                                    disabled={bulkAdjustSaving}
-                                >
-                                    <option value="">Select a reason...</option>
-                                    {INVENTORY_ADJUST_REASON_OPTIONS.map((opt) => (
-                                        <option key={opt.value} value={opt.value}>
-                                            {opt.label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {!isBulkInfiniteQty ? (
-                            <div className="mc-form-group" style={{ marginBottom: '16px' }}>
-                                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>
-                                    {isBulkOpeningQty
-                                        ? 'NEW OPENING QTY (ADOPTION + CURRENT STOCK)'
-                                        : 'NEW QUANTITY (CURRENT STOCK ONLY)'}
-                                </label>
-                                <input
-                                    type="number"
-                                    className="mc-filter-select"
-                                    style={{ width: '100%', height: '45px' }}
-                                    min={0}
-                                    step={1}
-                                    placeholder="e.g. 90"
-                                    value={bulkAdjustAmount}
-                                    onChange={(e) => setBulkAdjustAmount(e.target.value)}
-                                    disabled={bulkAdjustSaving || !bulkAdjustReason.trim()}
-                                />
-                            </div>
-                            ) : null}
-
-                            {bulkAdjustPreview.length > 0 && (
-                                <div
-                                    style={{
-                                        marginBottom: 16,
-                                        maxHeight: 200,
-                                        overflowY: 'auto',
-                                        border: '1px solid var(--color-border-light)',
-                                        borderRadius: 12,
-                                        background: '#F9FAFB',
-                                    }}
-                                >
-                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
-                                        <thead>
-                                            <tr style={{ borderBottom: '1px solid var(--color-border-light)' }}>
-                                                <th style={{ padding: '10px 12px', textAlign: 'left' }}>Product</th>
-                                                {isBulkOpeningQty ? (
-                                                    <>
-                                                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>Opening</th>
-                                                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>New opening</th>
-                                                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>Current</th>
-                                                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>New stock</th>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>Current</th>
-                                                        <th style={{ padding: '10px 12px', textAlign: 'center' }}>New</th>
-                                                    </>
-                                                )}
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {bulkAdjustPreview.slice(0, 12).map((row) => (
-                                                <tr key={row.id} style={{ borderBottom: '1px solid var(--color-border-light)' }}>
-                                                    <td style={{ padding: '8px 12px' }}>
-                                                        <strong>{row.name}</strong>
-                                                        {row.sku !== '—' ? (
-                                                            <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>{row.sku}</span>
-                                                        ) : null}
-                                                    </td>
-                                                    {isBulkInfiniteQty ? (
-                                                        <>
-                                                            <td style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
-                                                                {formatInventoryQty(row.prevCurrent, false)}
-                                                            </td>
-                                                            <td
-                                                                style={{
-                                                                    padding: '8px 12px',
-                                                                    textAlign: 'center',
-                                                                    fontWeight: 700,
-                                                                    color: row.unchanged ? 'var(--color-text-muted)' : '#6D28D9',
-                                                                }}
-                                                            >
-                                                                {row.unchanged ? '∞ (skip)' : '∞'}
-                                                            </td>
-                                                        </>
-                                                    ) : isBulkOpeningQty ? (
-                                                        <>
-                                                            <td
-                                                                style={{
-                                                                    padding: '8px 12px',
-                                                                    textAlign: 'center',
-                                                                    color: '#92400E',
-                                                                    background: '#FFFBEB',
-                                                                    fontWeight: 600,
-                                                                }}
-                                                            >
-                                                                {row.prevOpening}
-                                                            </td>
-                                                            <td
-                                                                style={{
-                                                                    padding: '8px 12px',
-                                                                    textAlign: 'center',
-                                                                    fontWeight: 700,
-                                                                    color: row.unchanged ? 'var(--color-text-muted)' : '#92400E',
-                                                                    background: row.unchanged ? undefined : '#FEF3C7',
-                                                                }}
-                                                            >
-                                                                {row.newOpening}
-                                                            </td>
-                                                            <td style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
-                                                                {row.prevCurrent}
-                                                            </td>
-                                                            <td
-                                                                style={{
-                                                                    padding: '8px 12px',
-                                                                    textAlign: 'center',
-                                                                    fontWeight: 700,
-                                                                    color: row.unchanged ? 'var(--color-text-muted)' : '#047857',
-                                                                }}
-                                                            >
-                                                                {row.newCurrent}
-                                                                {row.unchanged ? ' (skip)' : ''}
-                                                            </td>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <td style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--color-text-muted)' }}>{row.prevQty}</td>
-                                                            <td
-                                                                style={{
-                                                                    padding: '8px 12px',
-                                                                    textAlign: 'center',
-                                                                    fontWeight: 700,
-                                                                    color: row.unchanged ? 'var(--color-text-muted)' : '#047857',
-                                                                }}
-                                                            >
-                                                                {row.newQty}
-                                                                {row.unchanged ? ' (skip)' : ''}
-                                                            </td>
-                                                        </>
-                                                    )}
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                    {bulkAdjustPreview.length > 12 ? (
-                                        <p style={{ margin: 0, padding: '8px 12px', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                            + {bulkAdjustPreview.length - 12} more…
-                                        </p>
-                                    ) : null}
-                                </div>
-                            )}
-
-                            <p style={{ margin: '0 0 12px', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
-                                <strong>{bulkAdjustWillChangeCount}</strong> of {bulkAdjustPreview.length} will be updated.
-                                {bulkAdjustSaving && bulkAdjustProgress.total > 0
-                                    ? bulkAdjustProgress.done >= bulkAdjustProgress.total
-                                        ? ' Done.'
-                                        : ` Applying to ${bulkAdjustProgress.total} products on the server (one request)…`
-                                    : ''}
-                            </p>
-
-                            {bulkAdjustError && (
-                                <p style={{ margin: '0 0 16px', padding: '12px', background: '#FEE2E2', borderRadius: 8, color: '#991B1B', fontSize: '0.8125rem' }}>
-                                    {bulkAdjustError}
-                                </p>
-                            )}
-
-                            <div style={{ display: 'flex', gap: '12px' }}>
-                                <button type="button" className="mc-btn-ghost" style={{ flex: 1, padding: '12px' }} onClick={closeBulkAdjustModal} disabled={bulkAdjustSaving}>
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    className="mc-btn-primary"
-                                    style={{ flex: 2, padding: '12px' }}
-                                    onClick={handleBulkAdjustSubmit}
-                                    disabled={
-                                        bulkAdjustSaving ||
-                                        !bulkAdjustReason.trim() ||
-                                        bulkAdjustWillChangeCount === 0 ||
-                                        (!isBulkInfiniteQty &&
-                                            !Number.isFinite(
-                                                Number.parseFloat(String(bulkAdjustAmount).trim().replace(/,/g, '')),
-                                            ))
-                                    }
-                                >
-                                    {bulkAdjustSaving ? 'Applying…' : `Apply to ${bulkAdjustWillChangeCount} product${bulkAdjustWillChangeCount !== 1 ? 's' : ''}`}
-                                </button>
-                            </div>
-                        </div>
-                    </Modal>
-                )}
-            </AnimatePresence>
-
-            {uomEditProduct && !isAllBranches ? (
-                <WorkshopProductUomEditModal
-                    product={uomEditProduct}
-                    branchId={String(selectedBranchId)}
-                    workshopId={workshopIdQuery}
-                    onClose={() => setUomEditProduct(null)}
-                    onSaved={handleUomSaved}
-                />
-            ) : null}
-            {isBulkUomModalOpen && !isAllBranches ? (
-                <WorkshopBulkUomModal
-                    products={selectedProductsForBulk}
-                    branchId={String(selectedBranchId)}
-                    workshopId={workshopIdQuery}
-                    onClose={() => setIsBulkUomModalOpen(false)}
-                    onSaved={handleBulkUomSaved}
-                />
-            ) : null}
-
-            <AnimatePresence>
-                {isCriticalModalOpen && (
-                    <Modal onClose={closeCriticalModal} title="Critical stock level" width="500px">
-                        <div className="mc-modal-form" style={{ padding: '24px' }}>
-                            <div style={{ marginBottom: '20px', padding: '16px', background: '#F9FAFB', borderRadius: '12px', border: '1px solid var(--color-border-light)' }}>
-                                <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>Product</p>
-                                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>{criticalItem?.name}</h4>
-                                <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
-                                    Current stock: <strong>{criticalItem?.qty ?? 0}</strong>
-                                    {criticalItem?.openingQty != null ? (
-                                        <> · Opening (adoption): <strong>{criticalItem.openingQty}</strong></>
-                                    ) : null}
-                                </p>
-                            </div>
-
-                            {isAllBranches ? (
-                                <p style={{ margin: '0 0 16px', fontSize: '0.8125rem', color: '#92400E', background: '#FFFBEB', padding: 12, borderRadius: 8 }}>
-                                    Select a <strong>single branch</strong> in the workshop header to update critical levels on the server.
-                                </p>
-                            ) : (
-                                <p style={{ margin: '0 0 16px', fontSize: '0.8125rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
-                                    When <strong>current stock</strong> is at or below this number (and the value is greater than 0), the product is flagged as <strong>low stock</strong>. Use <strong>0</strong> to turn off the threshold for this branch.
-                                </p>
-                            )}
-
-                            <div className="mc-form-group" style={{ marginBottom: '24px' }}>
-                                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>
-                                    CRITICAL STOCK POINT (THIS BRANCH)
-                                </label>
-                                <input
-                                    type="number"
-                                    className="mc-filter-select"
-                                    style={{ width: '100%', height: '45px' }}
-                                    min={0}
-                                    step="any"
-                                    placeholder="0"
-                                    value={criticalInput}
-                                    onChange={(e) => setCriticalInput(e.target.value)}
-                                    disabled={criticalSaving || isAllBranches}
-                                />
-                            </div>
-
-                            {criticalSubmitError && (
-                                <p style={{ margin: '0 0 16px', padding: '12px', background: '#FEE2E2', borderRadius: 8, color: '#991B1B', fontSize: '0.8125rem' }}>
-                                    {criticalSubmitError}
-                                </p>
-                            )}
-
-                            <div style={{ display: 'flex', gap: '12px' }}>
-                                <button type="button" className="mc-btn-ghost" style={{ flex: 1, padding: '12px' }} onClick={closeCriticalModal} disabled={criticalSaving}>
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    className="mc-btn-primary"
-                                    style={{ flex: 2, padding: '12px' }}
-                                    onClick={handleCriticalSubmit}
-                                    disabled={
-                                        criticalSaving ||
-                                        isAllBranches ||
-                                        (() => {
-                                            const parsed = Number.parseFloat(String(criticalInput).trim().replace(/,/g, ''));
-                                            if (!Number.isFinite(parsed) || parsed < 0) return true;
-                                            const nextCrit = Math.round(parsed * 1000) / 1000;
-                                            return nextCrit === (Number(criticalItem?.critical_level) || 0);
-                                        })()
-                                    }
-                                >
-                                    {criticalSaving ? 'Saving…' : 'Save'}
-                                </button>
-                            </div>
-                        </div>
-                    </Modal>
-                )}
-            </AnimatePresence>
 
             <AnimatePresence>
                 {isLowStockProofOpen && (

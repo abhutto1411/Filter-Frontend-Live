@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Users, Wrench, Radio, Plus, Pencil, Trash2, Loader, Eye, EyeOff, ShieldCheck, Key, ChevronDown, ChevronRight } from 'lucide-react';
-import { AnimatePresence } from 'framer-motion';
-import Modal from '../../components/Modal';
+import WorkshopSubScreen from '../../components/workshop/WorkshopSubScreen';
 import { useAuth } from '../../context/AuthContext';
 import * as workshopPermsApi from '../../services/workshopPermissionsApi';
 import { codesToActionsByTab, flattenActionsByTab } from '../../utils/permissions';
@@ -707,257 +706,69 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
         }
     };
 
-    return (
-        <div>
-            <div className="ws-page-header">
-                <div>
-                    <h2 className="ws-page-title">Employees</h2>
-                    <p className="ws-page-sub">
-                        One list from the workshop employees API (staff, technicians, and cashiers). Portal roles
-                        (manager / supervisor / team leader) show here when the server returns them; they sign in with
-                        the workshop portal after approval.
-                    </p>
-                </div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                    {canManagePermissions && (
-                        <button
-                            className="btn-portal-outline"
-                            onClick={() => setRolesPanelOpen((v) => !v)}
-                            title="Manage workshop roles & permissions"
-                        >
-                            <ShieldCheck size={15} /> Roles & Permissions ({workshopRoles.length})
-                        </button>
-                    )}
-                    {canCreate && (
-                        <button className="btn-portal" onClick={openAdd} disabled={saving}>
-                            <Plus size={15} /> Add New Employee
-                        </button>
-                    )}
-                </div>
-            </div>
+    if (roleEditTarget !== null) {
+        return (
+            <WorkshopRoleScreen
+                role={roleEditTarget.id ? roleEditTarget : null}
+                branches={branchList}
+                onBack={() => setRoleEditTarget(null)}
+                onSaved={async () => {
+                    setRoleEditTarget(null);
+                    await loadWorkshopRoles();
+                }}
+            />
+        );
+    }
 
-            {rolesPanelOpen && canManagePermissions && (
-                <WorkshopRolesPanel
-                    roles={workshopRoles}
-                    canCreate={canCreateRoles}
-                    canDelete={canDeleteRoles}
-                    onCreate={() => setRoleEditTarget({})}
-                    onEdit={(r) => setRoleEditTarget(r)}
-                    onDelete={async (r) => {
-                        if (!window.confirm(`Delete role "${r.name}"?`)) return;
-                        try {
-                            await workshopPermsApi.deleteRole(r.id);
-                            await loadWorkshopRoles();
-                        } catch (e) {
-                            alert(e?.message || 'Could not delete role');
-                        }
-                    }}
-                    onClose={() => setRolesPanelOpen(false)}
-                />
-            )}
-            {listError && (
-                <div className="ws-section" style={{ marginBottom: 12, padding: 12, color: '#B91C1C', fontSize: '0.875rem' }}>
-                    {listError}
-                </div>
-            )}
-            <div className="ws-kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-                <div className="ws-kpi-card">
-                    <div>
-                        <p className="ws-kpi-label">Total Staff</p>
-                        <p className="ws-kpi-value">{displayedEmployees.length}</p>
-                    </div>
-                    <div className="ws-kpi-icon ws-kpi-icon--blue">
-                        <Users size={22} />
-                    </div>
-                </div>
-                <div className="ws-kpi-card">
-                    <div>
-                        <p className="ws-kpi-label">On Workshop Duty</p>
-                        <p className="ws-kpi-value">{displayedEmployees.filter((e) => e.workshop_duty).length}</p>
-                    </div>
-                    <div className="ws-kpi-icon ws-kpi-icon--green">
-                        <Wrench size={22} />
-                    </div>
-                </div>
-                <div className="ws-kpi-card">
-                    <div>
-                        <p className="ws-kpi-label">On-Call</p>
-                        <p className="ws-kpi-value">{displayedEmployees.filter((e) => e.oncall_available).length}</p>
-                    </div>
-                    <div className="ws-kpi-icon ws-kpi-icon--purple">
-                        <Radio size={22} />
-                    </div>
-                </div>
-            </div>
-            <div className="ws-section" style={{ position: 'relative' }}>
-                {loading && (
-                    <div style={{ padding: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                        <Loader size={20} style={{ animation: 'ws-spin 0.8s linear infinite' }} />
-                        <span style={{ fontSize: '0.875rem' }}>Loading employees…</span>
+    if (portalAccessTarget) {
+        return (
+            <PortalAccessScreen
+                employee={portalAccessTarget}
+                roles={workshopRoles}
+                onBack={() => setPortalAccessTarget(null)}
+                onSaved={async () => {
+                    setPortalAccessTarget(null);
+                    await loadEmployees();
+                }}
+            />
+        );
+    }
+
+    if (permissionsTarget) {
+        return (
+            <EmployeePermissionsScreen
+                employee={permissionsTarget}
+                onBack={() => setPermissionsTarget(null)}
+                onSaved={() => setPermissionsTarget(null)}
+            />
+        );
+    }
+
+    if (modalOpen) {
+        return (
+            <WorkshopSubScreen
+                title={editing ? 'Edit Employee' : 'Add New Employee'}
+                subtitle={
+                    editing
+                        ? `Update ${editing.name || 'employee'} details, role, and access.`
+                        : 'Create a cashier, technician, or portal staff member for this workshop.'
+                }
+                backLabel="Back to Employees"
+                onBack={() => !saving && setModalOpen(false)}
+                backDisabled={saving}
+                size="wide"
+                footer={(
+                    <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', width: '100%' }}>
+                        <button type="button" className="btn-secondary" onClick={() => setModalOpen(false)} disabled={saving}>
+                            Cancel
+                        </button>
+                        <button type="button" className="btn-submit" onClick={handleSave} disabled={saving}>
+                            {saving ? 'Saving…' : 'Save'}
+                        </button>
                     </div>
                 )}
-                {!loading && displayedEmployees.length === 0 ? (
-                    <p style={{ padding: 16, color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>No employees in this view.</p>
-                ) : (
-                    !loading && (
-                        <table className="ws-table">
-                            <thead>
-                                <tr>
-                                    <th>Name</th>
-                                    <th>Role</th>
-                                    <th>Assigned Role</th>
-                                    <th>Department</th>
-                                    <th>Branch</th>
-                                    <th>Phone</th>
-                                    <th>Commission %</th>
-                                    <th>Workshop Duty</th>
-                                    <th>Status</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {displayedEmployees.map((emp) => (
-                                    <tr key={`${emp._source}-${emp.id}`}>
-                                        <td>
-                                            <strong>{emp.name}</strong>
-                                        </td>
-                                        <td>{String(emp.role || '').replace(/_/g, ' ') || '—'}</td>
-                                        <td>
-                                            {emp.permissionRole ? (
-                                                <span style={{
-                                                    display: 'inline-block', padding: '2px 8px',
-                                                    borderRadius: 999, background: '#f5f3ff',
-                                                    color: '#6b21a8', fontWeight: 700, fontSize: '0.75rem',
-                                                }}>
-                                                    {emp.permissionRole.name}
-                                                </span>
-                                            ) : (
-                                                <span style={{ color: '#94a3b8' }}>—</span>
-                                            )}
-                                        </td>
-                                        <td>{formatEmployeeDepartments(emp) ?? '—'}</td>
-                                        <td>{emp.branch || '—'}</td>
-                                        <td>{emp.phone}</td>
-                                        <td>{emp.commission_percent}%</td>
-                                        <td>
-                                            <span className={`ws-badge ${emp.workshop_duty ? 'ws-badge--green' : 'ws-badge--gray'}`}>
-                                                {emp.workshop_duty ? 'Active' : 'Off'}
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <span
-                                                className={`ws-badge ${
-                                                    emp.status === 'active'
-                                                        ? 'ws-badge--green'
-                                                        : emp.status === 'pending'
-                                                          ? 'ws-badge--yellow'
-                                                          : 'ws-badge--red'
-                                                }`}
-                                            >
-                                                {emp.status === 'pending' ? 'pending approval' : emp.status}
-                                            </span>
-                                        </td>
-                                        <td style={{ display: 'flex', gap: 6 }}>
-                                            {canEdit && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => openEdit(emp)}
-                                                    style={{
-                                                        padding: '5px 10px',
-                                                        background: '#EFF6FF',
-                                                        color: '#2563EB',
-                                                        border: 'none',
-                                                        borderRadius: 6,
-                                                        fontWeight: 700,
-                                                        cursor: 'pointer',
-                                                        fontSize: '0.75rem',
-                                                    }}
-                                                    disabled={saving}
-                                                >
-                                                    <Pencil size={12} />
-                                                </button>
-                                            )}
-                                            {canDelete && emp._source !== 'technician' && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleDelete(emp)}
-                                                    style={{
-                                                        padding: '5px 10px',
-                                                        background: '#FEE2E2',
-                                                        color: '#DC2626',
-                                                        border: 'none',
-                                                        borderRadius: 6,
-                                                        fontWeight: 700,
-                                                        cursor: 'pointer',
-                                                        fontSize: '0.75rem',
-                                                    }}
-                                                    disabled={saving}
-                                                >
-                                                    <Trash2 size={12} />
-                                                </button>
-                                            )}
-                                            {canManagePermissions && emp.userId && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setPortalAccessTarget(emp)}
-                                                    title="Grant / change portal access (cashier / technician / workshop)"
-                                                    style={{
-                                                        padding: '5px 10px',
-                                                        background: '#FEF3C7',
-                                                        color: '#92400E',
-                                                        border: 'none',
-                                                        borderRadius: 6,
-                                                        fontWeight: 700,
-                                                        cursor: 'pointer',
-                                                        fontSize: '0.75rem',
-                                                    }}
-                                                >
-                                                    <Key size={12} />
-                                                </button>
-                                            )}
-                                            {canManagePermissions && emp.userId && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setPermissionsTarget(emp)}
-                                                    title="Override permissions for this user"
-                                                    style={{
-                                                        padding: '5px 10px',
-                                                        background: '#F3E8FF',
-                                                        color: '#6B21A8',
-                                                        border: 'none',
-                                                        borderRadius: 6,
-                                                        fontWeight: 700,
-                                                        cursor: 'pointer',
-                                                        fontSize: '0.75rem',
-                                                    }}
-                                                >
-                                                    <ShieldCheck size={12} />
-                                                </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    )
-                )}
-            </div>
-            <AnimatePresence>
-                {modalOpen && (
-                    <Modal
-                        title={editing ? 'Edit Employee' : 'Add New Employee'}
-                        onClose={() => setModalOpen(false)}
-                        footer={
-                            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                                <button type="button" className="btn-secondary" onClick={() => setModalOpen(false)} disabled={saving}>
-                                    Cancel
-                                </button>
-                                <button type="button" className="btn-submit" onClick={handleSave} disabled={saving}>
-                                    {saving ? 'Saving…' : 'Save'}
-                                </button>
-                            </div>
-                        }
-                    >
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                             <div>
                                 <div
@@ -1392,41 +1203,256 @@ export default function WorkshopEmployees({ selectedBranchId = 'all', branches: 
                                 </div>
                             </div>
                         </div>
-                    </Modal>
-                )}
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
 
-                {/* Role create / edit modal */}
-                {roleEditTarget && (
-                    <WorkshopRoleModal
-                        role={roleEditTarget.id ? roleEditTarget : null}
-                        branches={branchList}
-                        onClose={() => setRoleEditTarget(null)}
-                        onSaved={async () => { setRoleEditTarget(null); await loadWorkshopRoles(); }}
-                    />
-                )}
+    if (rolesPanelOpen && canManagePermissions) {
+        return (
+            <WorkshopSubScreen
+                title="Roles & Permissions"
+                subtitle="Create roles and assign permission bundles to employees."
+                backLabel="Back to Employees"
+                onBack={() => setRolesPanelOpen(false)}
+                size="full"
+            >
+                <WorkshopRolesPanel
+                    roles={workshopRoles}
+                    canCreate={canCreateRoles}
+                    canDelete={canDeleteRoles}
+                    onCreate={() => setRoleEditTarget({})}
+                    onEdit={(r) => setRoleEditTarget(r)}
+                    onDelete={async (r) => {
+                        if (!window.confirm(`Delete role "${r.name}"?`)) return;
+                        try {
+                            await workshopPermsApi.deleteRole(r.id);
+                            await loadWorkshopRoles();
+                        } catch (e) {
+                            alert(e?.message || 'Could not delete role');
+                        }
+                    }}
+                />
+            </WorkshopSubScreen>
+        );
+    }
 
-                {/* Portal Access modal — per employee */}
-                {portalAccessTarget && (
-                    <PortalAccessModal
-                        employee={portalAccessTarget}
-                        roles={workshopRoles}
-                        onClose={() => setPortalAccessTarget(null)}
-                        onSaved={async () => {
-                            setPortalAccessTarget(null);
-                            await loadEmployees();
-                        }}
-                    />
-                )}
+    return (
+        <div>
+            <div className="ws-page-header">
+                <div>
+                    <h2 className="ws-page-title">Employees</h2>
+                    <p className="ws-page-sub">
+                        One list from the workshop employees API (staff, technicians, and cashiers). Portal roles
+                        (manager / supervisor / team leader) show here when the server returns them; they sign in with
+                        the workshop portal after approval.
+                    </p>
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                    {canManagePermissions && (
+                        <button
+                            className="btn-portal-outline"
+                            onClick={() => setRolesPanelOpen(true)}
+                            title="Manage workshop roles & permissions"
+                        >
+                            <ShieldCheck size={15} /> Roles & Permissions ({workshopRoles.length})
+                        </button>
+                    )}
+                    {canCreate && (
+                        <button className="btn-portal" onClick={openAdd} disabled={saving}>
+                            <Plus size={15} /> Add New Employee
+                        </button>
+                    )}
+                </div>
+            </div>
 
-                {/* Permission override modal — per employee */}
-                {permissionsTarget && (
-                    <EmployeePermissionsModal
-                        employee={permissionsTarget}
-                        onClose={() => setPermissionsTarget(null)}
-                        onSaved={() => setPermissionsTarget(null)}
-                    />
+            {listError && (
+                <div className="ws-section" style={{ marginBottom: 12, padding: 12, color: '#B91C1C', fontSize: '0.875rem' }}>
+                    {listError}
+                </div>
+            )}
+            <div className="ws-kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+                <div className="ws-kpi-card">
+                    <div>
+                        <p className="ws-kpi-label">Total Staff</p>
+                        <p className="ws-kpi-value">{displayedEmployees.length}</p>
+                    </div>
+                    <div className="ws-kpi-icon ws-kpi-icon--blue">
+                        <Users size={22} />
+                    </div>
+                </div>
+                <div className="ws-kpi-card">
+                    <div>
+                        <p className="ws-kpi-label">On Workshop Duty</p>
+                        <p className="ws-kpi-value">{displayedEmployees.filter((e) => e.workshop_duty).length}</p>
+                    </div>
+                    <div className="ws-kpi-icon ws-kpi-icon--green">
+                        <Wrench size={22} />
+                    </div>
+                </div>
+                <div className="ws-kpi-card">
+                    <div>
+                        <p className="ws-kpi-label">On-Call</p>
+                        <p className="ws-kpi-value">{displayedEmployees.filter((e) => e.oncall_available).length}</p>
+                    </div>
+                    <div className="ws-kpi-icon ws-kpi-icon--purple">
+                        <Radio size={22} />
+                    </div>
+                </div>
+            </div>
+            <div className="ws-section" style={{ position: 'relative' }}>
+                {loading && (
+                    <div style={{ padding: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                        <Loader size={20} style={{ animation: 'ws-spin 0.8s linear infinite' }} />
+                        <span style={{ fontSize: '0.875rem' }}>Loading employees…</span>
+                    </div>
                 )}
-            </AnimatePresence>
+                {!loading && displayedEmployees.length === 0 ? (
+                    <p style={{ padding: 16, color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>No employees in this view.</p>
+                ) : (
+                    !loading && (
+                        <table className="ws-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Role</th>
+                                    <th>Assigned Role</th>
+                                    <th>Department</th>
+                                    <th>Branch</th>
+                                    <th>Phone</th>
+                                    <th>Commission %</th>
+                                    <th>Workshop Duty</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {displayedEmployees.map((emp) => (
+                                    <tr key={`${emp._source}-${emp.id}`}>
+                                        <td>
+                                            <strong>{emp.name}</strong>
+                                        </td>
+                                        <td>{String(emp.role || '').replace(/_/g, ' ') || '—'}</td>
+                                        <td>
+                                            {emp.permissionRole ? (
+                                                <span style={{
+                                                    display: 'inline-block', padding: '2px 8px',
+                                                    borderRadius: 999, background: '#f5f3ff',
+                                                    color: '#6b21a8', fontWeight: 700, fontSize: '0.75rem',
+                                                }}>
+                                                    {emp.permissionRole.name}
+                                                </span>
+                                            ) : (
+                                                <span style={{ color: '#94a3b8' }}>—</span>
+                                            )}
+                                        </td>
+                                        <td>{formatEmployeeDepartments(emp) ?? '—'}</td>
+                                        <td>{emp.branch || '—'}</td>
+                                        <td>{emp.phone}</td>
+                                        <td>{emp.commission_percent}%</td>
+                                        <td>
+                                            <span className={`ws-badge ${emp.workshop_duty ? 'ws-badge--green' : 'ws-badge--gray'}`}>
+                                                {emp.workshop_duty ? 'Active' : 'Off'}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span
+                                                className={`ws-badge ${
+                                                    emp.status === 'active'
+                                                        ? 'ws-badge--green'
+                                                        : emp.status === 'pending'
+                                                          ? 'ws-badge--yellow'
+                                                          : 'ws-badge--red'
+                                                }`}
+                                            >
+                                                {emp.status === 'pending' ? 'pending approval' : emp.status}
+                                            </span>
+                                        </td>
+                                        <td style={{ display: 'flex', gap: 6 }}>
+                                            {canEdit && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => openEdit(emp)}
+                                                    style={{
+                                                        padding: '5px 10px',
+                                                        background: '#EFF6FF',
+                                                        color: '#2563EB',
+                                                        border: 'none',
+                                                        borderRadius: 6,
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.75rem',
+                                                    }}
+                                                    disabled={saving}
+                                                >
+                                                    <Pencil size={12} />
+                                                </button>
+                                            )}
+                                            {canDelete && emp._source !== 'technician' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDelete(emp)}
+                                                    style={{
+                                                        padding: '5px 10px',
+                                                        background: '#FEE2E2',
+                                                        color: '#DC2626',
+                                                        border: 'none',
+                                                        borderRadius: 6,
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.75rem',
+                                                    }}
+                                                    disabled={saving}
+                                                >
+                                                    <Trash2 size={12} />
+                                                </button>
+                                            )}
+                                            {canManagePermissions && emp.userId && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPortalAccessTarget(emp)}
+                                                    title="Grant / change portal access (cashier / technician / workshop)"
+                                                    style={{
+                                                        padding: '5px 10px',
+                                                        background: '#FEF3C7',
+                                                        color: '#92400E',
+                                                        border: 'none',
+                                                        borderRadius: 6,
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.75rem',
+                                                    }}
+                                                >
+                                                    <Key size={12} />
+                                                </button>
+                                            )}
+                                            {canManagePermissions && emp.userId && (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setPermissionsTarget(emp)}
+                                                    title="Override permissions for this user"
+                                                    style={{
+                                                        padding: '5px 10px',
+                                                        background: '#F3E8FF',
+                                                        color: '#6B21A8',
+                                                        border: 'none',
+                                                        borderRadius: 6,
+                                                        fontWeight: 700,
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.75rem',
+                                                    }}
+                                                >
+                                                    <ShieldCheck size={12} />
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    )
+                )}
+            </div>
         </div>
     );
 }
@@ -1537,10 +1563,10 @@ function WorkshopRolesPanel({ roles, canCreate = true, canDelete = true, onCreat
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
-/*  Workshop Role Create / Edit Modal                                         */
+/*  Workshop Role Create / Edit Screen                                         */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function WorkshopRoleModal({ role, branches = [], onClose, onSaved }) {
+function WorkshopRoleScreen({ role, branches = [], onBack, onSaved }) {
     const isEdit = Boolean(role?.id);
     const [name, setName] = useState(role?.name ?? '');
     const [description, setDescription] = useState(role?.description ?? '');
@@ -1627,20 +1653,23 @@ function WorkshopRoleModal({ role, branches = [], onClose, onSaved }) {
     };
 
     return (
-        <Modal
+        <WorkshopSubScreen
             title={isEdit ? `Edit Role — ${role.name}` : 'Create Workshop Role'}
-            onClose={onClose}
-            width="780px"
+            subtitle="Bundle permissions and optional branch scope for workshop staff."
+            backLabel="Back to Roles"
+            onBack={onBack}
+            backDisabled={saving}
+            size="xl"
             footer={(
                 <>
-                    <button className="btn-portal-outline" onClick={onClose} disabled={saving}>Cancel</button>
+                    <button className="btn-portal-outline" onClick={onBack} disabled={saving}>Cancel</button>
                     <button className="btn-portal" onClick={handleSave} disabled={saving}>
                         {saving ? 'Saving…' : (isEdit ? 'Save Changes' : 'Create Role')}
                     </button>
                 </>
             )}
         >
-            <div style={{ fontSize: '0.875rem' }}>
+            <div className="ws-section" style={{ padding: 20, fontSize: '0.875rem' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
                     <div>
                         <label style={{ display: 'block', fontWeight: 600, marginBottom: 6 }}>Role name *</label>
@@ -1771,7 +1800,7 @@ function WorkshopRoleModal({ role, branches = [], onClose, onSaved }) {
                     </div>
                 )}
             </div>
-        </Modal>
+        </WorkshopSubScreen>
     );
 }
 
@@ -1825,10 +1854,10 @@ function SectionCard({ section, perms, onToggleAction, onToggleTab }) {
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
-/*  Portal Access Modal — per employee                                        */
+/*  Portal Access Screen — per employee                                        */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function PortalAccessModal({ employee, roles, onClose, onSaved }) {
+function PortalAccessScreen({ employee, roles, onBack, onSaved }) {
     const [portal, setPortal] = useState('workshop');
     const [roleId, setRoleId] = useState('');
     const [password, setPassword] = useState('');
@@ -1864,20 +1893,23 @@ function PortalAccessModal({ employee, roles, onClose, onSaved }) {
     };
 
     return (
-        <Modal
+        <WorkshopSubScreen
             title={`Portal Access — ${employee.name || employee.email}`}
-            onClose={onClose}
-            width="560px"
+            subtitle="Choose which portal this employee signs into and which role applies."
+            backLabel="Back to Employees"
+            onBack={onBack}
+            backDisabled={saving}
+            size="form"
             footer={(
                 <>
-                    <button className="btn-portal-outline" onClick={onClose} disabled={saving}>Cancel</button>
+                    <button className="btn-portal-outline" onClick={onBack} disabled={saving}>Cancel</button>
                     <button className="btn-portal" onClick={handleSave} disabled={saving}>
                         {saving ? 'Saving…' : 'Grant Access'}
                     </button>
                 </>
             )}
         >
-            <div style={{ fontSize: '0.875rem' }}>
+            <div className="ws-section" style={{ padding: 20, fontSize: '0.875rem' }}>
                 <div style={{ padding: 12, background: '#f8fafc', border: '1px solid var(--color-border)', borderRadius: 10, marginBottom: 14 }}>
                     <strong>{employee.name || '—'}</strong>
                     <div style={{ color: '#64748b', fontSize: '0.8125rem' }}>{employee.email || 'no email'}</div>
@@ -1951,15 +1983,15 @@ function PortalAccessModal({ employee, roles, onClose, onSaved }) {
                     use one portal at a time.
                 </div>
             </div>
-        </Modal>
+        </WorkshopSubScreen>
     );
 }
 
 /* ────────────────────────────────────────────────────────────────────────── */
-/*  Employee Permission Override Modal                                        */
+/*  Employee Permission Override Screen                                        */
 /* ────────────────────────────────────────────────────────────────────────── */
 
-function EmployeePermissionsModal({ employee, onClose, onSaved }) {
+function EmployeePermissionsScreen({ employee, onBack, onSaved }) {
     const userId = employee.userId ?? employee.id;
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -2036,23 +2068,26 @@ function EmployeePermissionsModal({ employee, onClose, onSaved }) {
     };
 
     return (
-        <Modal
+        <WorkshopSubScreen
             title={`Permissions — ${employee.name || employee.email}`}
-            onClose={onClose}
-            width="780px"
+            subtitle="Override this employee's effective permissions on top of their assigned role."
+            backLabel="Back to Employees"
+            onBack={onBack}
+            backDisabled={saving}
+            size="xl"
             footer={(
                 <>
                     {hasOverride && (
                         <button className="btn-portal-outline" onClick={handleReset} disabled={saving}>Reset to role defaults</button>
                     )}
-                    <button className="btn-portal-outline" onClick={onClose} disabled={saving}>Cancel</button>
+                    <button className="btn-portal-outline" onClick={onBack} disabled={saving}>Cancel</button>
                     <button className="btn-portal" onClick={handleSave} disabled={saving || loading}>
                         {saving ? 'Saving…' : 'Save Override'}
                     </button>
                 </>
             )}
         >
-            <div style={{ fontSize: '0.875rem' }}>
+            <div className="ws-section" style={{ padding: 20, fontSize: '0.875rem' }}>
                 <div style={{
                     padding: '10px 14px', borderRadius: 10,
                     background: hasOverride ? '#faf5ff' : '#eff6ff',
@@ -2094,7 +2129,7 @@ function EmployeePermissionsModal({ employee, onClose, onSaved }) {
                     </>
                 )}
             </div>
-        </Modal>
+        </WorkshopSubScreen>
     );
 }
 

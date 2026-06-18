@@ -109,6 +109,13 @@ export const getMyServices = ({ departmentId, categoryId, isActive, branchId, si
 export const adoptDepartments = (body) =>
     apiFetch('/workshop-catalog/departments', { method: 'POST', body: JSON.stringify(body) });
 
+/** Activate/deactivate department for this workshop; cascades to linked catalog rows. */
+export const patchWorkshopDepartmentActive = (departmentId, isActive) =>
+    apiFetch(`/workshop-catalog/departments/${encodeURIComponent(String(departmentId))}/active`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isActive: Boolean(isActive) }),
+    });
+
 /** body: { categoryIds }  — parent departments auto-added. */
 export const adoptCategories = (body) =>
     apiFetch('/workshop-catalog/categories', { method: 'POST', body: JSON.stringify(body) });

@@ -68,7 +68,7 @@ const CreditNotePrintView = forwardRef(function CreditNotePrintView({ data }, re
     }, [workshopName, vatNumber, creditNoteDate, creditNoteNo, total, vatAmount]);
 
     return (
-        <div ref={ref} className="credit-note-print-root" style={{ fontFamily: 'Arial, Helvetica, sans-serif', color: '#111', background: '#fff', padding: 24, maxWidth: 820, margin: '0 auto' }}>
+        <div ref={ref} className="credit-note-print-root" style={{ fontFamily: "'Poppins', sans-serif", color: '#111', background: '#fff', padding: 24, maxWidth: 820, margin: '0 auto' }}>
             <style>{`
               @media print {
                 .credit-note-print-root { padding: 0 !important; max-width: none !important; }

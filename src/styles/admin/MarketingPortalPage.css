@@ -22,7 +22,7 @@
 .marketing-sub-tab {
     padding: 10px 20px;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
     border-radius: 12px;
     cursor: pointer;
@@ -52,7 +52,7 @@
 
 .marketing-title {
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 700;
     margin-bottom: 4px;
 }
 

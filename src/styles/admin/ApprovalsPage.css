@@ -39,7 +39,7 @@
 
 .approvals-title {
     font-size: 1.75rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 4px;
 }
 
@@ -116,7 +116,7 @@
     align-items: center;
     gap: 6px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-text-muted);
     text-transform: uppercase;
 }
@@ -125,7 +125,7 @@
     padding: 4px 10px;
     border-radius: 99px;
     font-size: 10px;
-    font-weight: 800;
+    font-weight: 700;
     text-transform: uppercase;
     white-space: nowrap;
 }
@@ -138,7 +138,7 @@
 
 .approval-amount {
     font-size: 1rem;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-text-dark);
 }
 
@@ -195,7 +195,7 @@
 
 .approval-card-title {
     font-size: 1.125rem;
-    font-weight: 800;
+    font-weight: 700;
     margin-bottom: 12px;
     color: var(--color-text-dark);
 }
@@ -220,7 +220,7 @@
     background: #F3F4F6;
     border-radius: 4px;
     font-size: 10px;
-    font-weight: 700;
+    font-weight: 600;
 }
 
 .approval-card-actions {
@@ -235,7 +235,7 @@
     padding: 10px 20px;
     border-radius: 10px;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     background: #059669;
     color: #FFF;
     border: none;
@@ -254,7 +254,7 @@
     padding: 10px 20px;
     border-radius: 10px;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     background: #FEE2E2;
     color: #B91C1C;
     border: none;
@@ -273,7 +273,7 @@
     padding: 10px 20px;
     border-radius: 10px;
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     background: #F3F4F6;
     color: #4B5563;
     border: none;
@@ -308,7 +308,7 @@
 
 .empty-title {
     font-size: 1.5rem;
-    font-weight: 900;
+    font-weight: 800;
     margin-bottom: 12px;
 }
 
@@ -322,7 +322,7 @@
 
 .empty-status {
     font-size: 11px;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-primary);
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -368,7 +368,7 @@
 
 .settings-module-name {
     font-size: 0.9375rem;
-    font-weight: 800;
+    font-weight: 700;
     color: var(--color-text-dark);
 }
 
@@ -489,7 +489,7 @@ input:checked+.slider:before {
 
 .settings-module-name-large {
     font-size: 1.0625rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #1E293B;
 }
 
@@ -507,7 +507,7 @@ input:checked+.slider:before {
 
 .toggle-status-label {
     font-size: 0.75rem;
-    font-weight: 800;
+    font-weight: 700;
     letter-spacing: 0.05em;
     padding: 4px 12px;
     border-radius: 6px;
@@ -555,7 +555,7 @@ input:checked+.slider:before {
 
 .sub-setting-name-premium {
     font-size: 0.875rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #334155;
 }
 
@@ -738,7 +738,7 @@ input:checked+.slider:before {
 }
 
 .approval-chip-label {
-    font-weight: 700;
+    font-weight: 600;
     color: #64748B;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -769,7 +769,7 @@ input:checked+.slider:before {
     z-index: 1100;
     padding: 12px 20px;
     border-radius: 12px;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.875rem;
     border: 1px solid transparent;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
@@ -799,13 +799,13 @@ input:checked+.slider:before {
 
 .approval-modal-lead strong {
     color: #0F172A;
-    font-weight: 800;
+    font-weight: 700;
 }
 
 .approval-modal-label {
     display: block;
     font-size: 0.75rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #475569;
     text-transform: uppercase;
     letter-spacing: 0.04em;
@@ -815,7 +815,7 @@ input:checked+.slider:before {
 .approval-modal-required {
     color: #DC2626;
     text-transform: none;
-    font-weight: 700;
+    font-weight: 600;
     letter-spacing: 0;
 }
 
@@ -911,7 +911,7 @@ input:checked+.slider:before {
 .approval-section-title {
     margin: 0;
     font-size: 0.8125rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #1E293B;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -942,7 +942,7 @@ input:checked+.slider:before {
 
 .approval-field-label {
     font-size: 0.6875rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #64748B;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -973,7 +973,7 @@ input:checked+.slider:before {
 
 .approval-section-count {
     color: #94A3B8;
-    font-weight: 700;
+    font-weight: 600;
     font-size: 0.75rem;
     margin-left: 4px;
 }
@@ -991,7 +991,7 @@ input:checked+.slider:before {
 .approval-subgroup-title {
     margin: 0 0 10px;
     font-size: 0.75rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #475569;
     text-transform: uppercase;
     letter-spacing: 0.06em;
@@ -1052,7 +1052,7 @@ input:checked+.slider:before {
 
 .approval-doc-label {
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #1E293B;
 }
 
@@ -1067,7 +1067,7 @@ input:checked+.slider:before {
     align-items: center;
     gap: 4px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: var(--color-primary);
     text-decoration: none;
 }
@@ -1114,7 +1114,7 @@ input:checked+.slider:before {
 .approval-table thead th {
     background: #F8FAFC;
     color: #475569;
-    font-weight: 800;
+    font-weight: 700;
     font-size: 0.6875rem;
     text-transform: uppercase;
     letter-spacing: 0.05em;

@@ -15,7 +15,7 @@
 
 .permissions-title {
     font-size: 1.875rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #0f172a;
     margin-bottom: 4px;
 }
@@ -127,7 +127,7 @@
     padding: 16px 24px;
     text-align: left;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: #64748b;
@@ -153,13 +153,13 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 700;
+    font-weight: 600;
     color: #64748b;
     border: 1px solid #e2e8f0;
 }
 
 .perm-user-name {
-    font-weight: 700;
+    font-weight: 600;
     color: #0f172a;
     font-size: 0.9375rem;
 }
@@ -196,7 +196,7 @@
     padding: 4px 10px;
     border-radius: 6px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
 }
 
@@ -336,7 +336,7 @@
 
 .role-name {
     font-size: 1.25rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #1e293b;
     margin: 0;
     letter-spacing: -0.02em;
@@ -344,7 +344,7 @@
 
 .role-perm-count {
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #94a3b8;
     text-transform: uppercase;
     letter-spacing: 0.05em;
@@ -385,7 +385,7 @@
 .role-tag-more {
     color: #94a3b8;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     padding: 4px 6px;
 }
 
@@ -400,7 +400,7 @@
 
 .system-role-badge {
     font-size: 0.7rem;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
     color: #64748b;
@@ -483,7 +483,7 @@
 
 .permissions-header h3 {
     font-size: 1rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #0f172a;
 }
 
@@ -524,14 +524,14 @@
 }
 
 .group-name {
-    font-weight: 700;
+    font-weight: 600;
     color: #1e293b;
     font-size: 0.9375rem;
 }
 
 .group-counter {
     font-size: 0.8125rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #64748b;
     background: #fff;
     padding: 2px 8px;

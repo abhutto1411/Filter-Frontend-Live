@@ -16,7 +16,7 @@
 
 .rep-title {
     font-size: 1.5rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #0F172A;
     margin-bottom: 4px;
 }
@@ -121,7 +121,7 @@
 
 .rep-stat-value {
     font-size: 1.75rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #0F172A;
     margin-bottom: 8px;
 }
@@ -230,7 +230,7 @@
     padding: 12px 24px;
     text-align: left;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     text-transform: uppercase;
     color: #64748B;
     letter-spacing: 0.05em;
@@ -258,7 +258,7 @@
     padding: 4px 10px;
     border-radius: 9999px;
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     display: inline-block;
 }
 
@@ -332,14 +332,14 @@
 
 .rep-details-header h2 {
     font-size: 1.25rem;
-    font-weight: 800;
+    font-weight: 700;
     color: #0F172A;
     margin-bottom: 4px;
 }
 
 .rep-details-header span {
     font-size: 0.75rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #3B82F6;
     letter-spacing: 0.05em;
 }
@@ -389,13 +389,13 @@
 
 .rep-detail-value {
     font-size: 1rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #0F172A;
 }
 
 .rep-details-section h3 {
     font-size: 1rem;
-    font-weight: 700;
+    font-weight: 600;
     color: #0F172A;
     margin-bottom: 16px;
     padding-bottom: 8px;

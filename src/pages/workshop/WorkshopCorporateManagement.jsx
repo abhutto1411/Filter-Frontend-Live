@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
     Building2, FileText, Lock, Mail, Pencil, Phone, Plus, RefreshCw, Store, User, UserPlus, ToggleLeft,
 } from 'lucide-react';
+import WorkshopSubScreen from '../../components/workshop/WorkshopSubScreen';
 import Modal from '../../components/Modal';
 import { ShimmerTableBodyRows } from '../../components/supplier/Shimmer';
 import { apiFetch } from '../../services/api';
@@ -275,7 +276,7 @@ function parseCorporateCustomersResponse(response) {
     return { list: arr, total };
 }
 
-function RegisterCorporateModal({ branches, selectedBranchId, onClose, onSuccess }) {
+function RegisterCorporateScreen({ branches, selectedBranchId, onClose, onSuccess }) {
     const defaultBranches = useMemo(() => {
         if (selectedBranchId && selectedBranchId !== 'all') return [String(selectedBranchId)];
         return [];
@@ -366,11 +367,15 @@ function RegisterCorporateModal({ branches, selectedBranchId, onClose, onSuccess
     };
 
     return (
-        <Modal
+        <WorkshopSubScreen
             title="Register corporate customer"
-            onClose={onClose}
-            width="560px"
-            footer={
+            subtitle="Signup request for super-admin approval — link branches in your workshop."
+            backLabel="Back to Corporate Management"
+            onBack={onClose}
+            backDisabled={saving}
+            size="form"
+            maxWidth="560px"
+            footer={(
                 <>
                     <button type="button" className="btn-portal-outline" onClick={onClose} disabled={saving}>
                         Cancel
@@ -379,9 +384,9 @@ function RegisterCorporateModal({ branches, selectedBranchId, onClose, onSuccess
                         {saving ? 'Submitting...' : 'Submit for approval'}
                     </button>
                 </>
-            }
+            )}
         >
-            <div style={{ fontSize: '0.875rem' }}>
+            <div className="ws-section" style={{ padding: 20, fontSize: '0.875rem' }}>
                 <p style={{ margin: '0 0 16px', color: 'var(--color-text-muted)', fontSize: '0.8125rem' }}>
                     Sends a signup request for super-admin approval. You can link only branches in your workshop here;
                     the administrator can attach additional branches when approving.
@@ -510,7 +515,7 @@ function RegisterCorporateModal({ branches, selectedBranchId, onClose, onSuccess
                     )}
                 </div>
             </div>
-        </Modal>
+        </WorkshopSubScreen>
     );
 }
 
@@ -705,6 +710,17 @@ export default function WorkshopCorporateManagement({ selectedBranchId = 'all', 
         loadBranches();
     }, [loadBranches]);
 
+    if (registerOpen) {
+        return (
+            <RegisterCorporateScreen
+                branches={mergedBranches}
+                selectedBranchId={selectedBranchId}
+                onClose={() => setRegisterOpen(false)}
+                onSuccess={loadCorporateCustomers}
+            />
+        );
+    }
+
     return (
         <div>
             <div className="ws-page-header">
@@ -836,14 +852,6 @@ export default function WorkshopCorporateManagement({ selectedBranchId = 'all', 
                 </div>
             </div>
 
-            {registerOpen && (
-                <RegisterCorporateModal
-                    branches={mergedBranches}
-                    selectedBranchId={selectedBranchId}
-                    onClose={() => setRegisterOpen(false)}
-                    onSuccess={loadCorporateCustomers}
-                />
-            )}
             {editing && (
                 <EditCorporateAccountModal
                     key={editing.id}
