@@ -1,0 +1,205 @@
+import {
+    defaultUomForWarehouseProduct,
+    formatLineUomConversionPreview,
+    isWarehouseUomLine,
+    lineUomOptions,
+    normUomLabel,
+    roundMoney2,
+} from '../supplier/internal/supplierUomLineUtils';
+
+/** Map API rule → caps row shape used by supplier UOM helpers. */
+export function uomRuleToCaps(rule) {
+    if (!rule) return null;
+    return {
+        id: rule.supplierProductId,
+        warehouseUnit: rule.warehouseUnit,
+        workshopUnit: rule.workshopUnit,
+        conversionFactor: rule.conversionFactor,
+    };
+}
+
+export function findUomCapsForLine(line, supplierUomByProductId, branchProductOptions = []) {
+    if (line?.warehouseUnit && line?.conversionFactor != null) {
+        return uomRuleToCaps({
+            supplierProductId: line.supplierProductId,
+            warehouseUnit: line.warehouseUnit,
+            workshopUnit: line.workshopUnit,
+            conversionFactor: line.conversionFactor,
+        });
+    }
+    const pid = String(line?.productId ?? '').trim();
+    if (!pid) return null;
+    const fromMap = supplierUomByProductId[pid];
+    if (fromMap) return uomRuleToCaps(fromMap);
+    const opt = branchProductOptions.find((o) => String(o.id) === pid);
+    if (opt?.uomProfileId || (opt?.warehouseUnit && opt?.conversionFactor != null)) {
+        return uomRuleToCaps({
+            supplierProductId: opt.supplierProductId,
+            warehouseUnit: opt.warehouseUnit,
+            workshopUnit: opt.workshopUnit,
+            conversionFactor: opt.conversionFactor,
+            uomProfileId: opt.uomProfileId,
+        });
+    }
+    return null;
+}
+
+/** Structured conversion hint for purchase invoice line rows. */
+export function parseWorkshopPurchaseLineUomHint(line, caps) {
+    if (!caps) return null;
+    const cf = Number(caps.conversionFactor) || 1;
+    if (!(cf > 1)) return null;
+    const wu = String(caps.warehouseUnit || 'Box').trim() || 'Box';
+    const wsu = String(caps.workshopUnit || 'pcs').trim() || 'pcs';
+    const qtyRaw = parseFloat(String(line?.qty ?? '').replace(',', '.'));
+    const qty = Number.isFinite(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
+    const price = parseFloat(String(line?.price ?? line?.unitPrice ?? '').replace(',', '.')) || 0;
+
+    if (isWarehouseUomLine(line, caps)) {
+        const wsQty = roundMoney2(qty * cf);
+        return {
+            rule: `1 ${wu} = ${cf} ${wsu}`,
+            stock: `${qty} ${wu} on invoice → +${wsQty} ${wsu} in branch inventory`,
+            prices:
+                price > 0
+                    ? `SAR ${price.toFixed(2)}/${wu} · SAR ${roundMoney2(price / cf).toFixed(2)}/${wsu}`
+                    : null,
+        };
+    }
+
+    const whQty = roundMoney2(qty / cf);
+    return {
+        rule: `1 ${wu} = ${cf} ${wsu}`,
+        stock: `${qty} ${wsu} on invoice → +${qty} ${wsu} in branch inventory (${whQty} ${wu})`,
+        prices:
+            price > 0
+                ? `SAR ${price.toFixed(2)}/${wsu} · SAR ${roundMoney2(price * cf).toFixed(2)}/${wu}`
+                : null,
+    };
+}
+
+/** Workshop PI line hint — plain text fallback. */
+export function formatWorkshopPurchaseLineUomHint(line, caps) {
+    const parts = parseWorkshopPurchaseLineUomHint(line, caps);
+    if (!parts) return '';
+    return [parts.rule, parts.stock, parts.prices].filter(Boolean).join(' · ');
+}
+
+export {
+    defaultUomForWarehouseProduct,
+    formatLineUomConversionPreview,
+    isWarehouseUomLine,
+    lineUomOptions,
+    normUomLabel,
+    roundMoney2,
+};
+
+/** Convert a unit price from one UOM label to another using supplier caps. */
+export function convertUnitPriceBetweenUoms(price, fromUom, toUom, caps) {
+    const p = Number(price);
+    if (!Number.isFinite(p) || p <= 0 || !caps) return p;
+    const cf = Number(caps.conversionFactor) || 1;
+    if (!(cf > 1)) return p;
+    const fromWh = normUomLabel(fromUom) === normUomLabel(caps.warehouseUnit);
+    const toWh = normUomLabel(toUom) === normUomLabel(caps.warehouseUnit);
+    if (fromWh === toWh) return roundMoney2(p);
+    return roundMoney2(fromWh ? p / cf : p * cf);
+}
+
+/** Typed qty → warehouse (Box) units using line UOM + caps. */
+export function qtyToWarehouseUnits(qty, line, caps) {
+    const n = Number(qty);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    if (!caps || !(Number(caps.conversionFactor) > 1)) return roundMoney2(n);
+    if (isWarehouseUomLine(line, caps)) return roundMoney2(n);
+    const cf = Number(caps.conversionFactor) || 1;
+    return cf > 0 ? roundMoney2(n / cf) : roundMoney2(n);
+}
+
+/** Warehouse qty → qty expressed in target UOM label. */
+export function qtyFromWarehouseUnits(whQty, targetUom, caps) {
+    const n = Number(whQty);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    if (!caps || !(Number(caps.conversionFactor) > 1)) return roundMoney2(n);
+    const targetIsWh = normUomLabel(targetUom) === normUomLabel(caps.warehouseUnit);
+    if (targetIsWh) return roundMoney2(n);
+    return roundMoney2(n * Number(caps.conversionFactor));
+}
+
+/** Convert user-typed return qty (selected UOM) → purchase invoice line UOM for API/ratio. */
+export function returnQtyInInvoiceLineUom(typedQty, lineState, invoiceItem, caps) {
+    const wh = qtyToWarehouseUnits(Number(typedQty), lineState, caps);
+    const invoiceUom = invoiceItem?.uom || caps?.warehouseUnit || 'piece';
+    return qtyFromWarehouseUnits(wh, invoiceUom, caps);
+}
+
+/** Max return qty the user can enter in the currently selected UOM. */
+export function maxReturnQtyInLineUom(invoiceItem, lineState, caps) {
+    const invoiceQty = Number(invoiceItem?.qty ?? 0);
+    if (!(invoiceQty > 0)) return null;
+    const invoiceLine = {
+        uom: invoiceItem.uom,
+        uomMode:
+            caps && normUomLabel(invoiceItem.uom) === normUomLabel(caps.warehouseUnit)
+                ? 'warehouse'
+                : 'workshop',
+    };
+    const wh = qtyToWarehouseUnits(invoiceQty, invoiceLine, caps);
+    const targetUom = lineState?.uom || invoiceItem.uom;
+    return qtyFromWarehouseUnits(wh, targetUom, caps);
+}
+
+/** When UOM dropdown changes, preserve physical qty across unit labels. */
+export function convertQtyWhenUomChanges(qty, oldLine, newLine, caps) {
+    const n = parseFloat(String(qty ?? '').replace(',', '.'));
+    if (!Number.isFinite(n) || n <= 0) return '';
+    const wh = qtyToWarehouseUnits(n, oldLine, caps);
+    const converted = qtyFromWarehouseUnits(wh, newLine?.uom, caps);
+    return converted > 0 ? String(converted) : '';
+}
+
+/**
+ * Prefill unit price for the selected line UOM.
+ * Catalog / branch prices are per workshop unit (Liter); last prices are per the UOM on that invoice line.
+ */
+export function prefillPriceForLineUom({
+    lineUom,
+    caps,
+    catalogUnit,
+    catalogEx,
+    catalogIncl,
+    lastRow,
+    amountsTaxInclusive,
+}) {
+    const cf = Number(caps?.conversionFactor) || 1;
+    const defaultWh = caps ? defaultUomForWarehouseProduct(caps, lineUom) : lineUom;
+    const targetUom = lineUom || defaultWh;
+
+    if (lastRow) {
+        const lastUom = lastRow.uom || caps?.workshopUnit || catalogUnit;
+        const base = amountsTaxInclusive
+            ? Number(lastRow.lastUnitPriceInclVat ?? 0)
+            : Number(lastRow.lastUnitPriceExVat ?? 0);
+        if (base > 0) {
+            return convertUnitPriceBetweenUoms(base, lastUom, targetUom, caps);
+        }
+    }
+
+    const catalogIsWorkshop =
+        caps &&
+        cf > 1 &&
+        normUomLabel(catalogUnit) === normUomLabel(caps.workshopUnit);
+    const lineIsWarehouse =
+        caps && cf > 1 && normUomLabel(targetUom) === normUomLabel(caps.warehouseUnit);
+
+    if (amountsTaxInclusive) {
+        if (lineIsWarehouse && catalogIsWorkshop && catalogIncl > 0) {
+            return roundMoney2(catalogIncl * cf);
+        }
+        return catalogIncl;
+    }
+    if (lineIsWarehouse && catalogIsWorkshop && catalogEx > 0) {
+        return roundMoney2(catalogEx * cf);
+    }
+    return catalogEx;
+}
