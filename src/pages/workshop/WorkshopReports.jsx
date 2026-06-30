@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { RefreshCw, MoreVertical } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
+import RowActionsMenu from '../../components/RowActionsMenu';
+import '../../styles/RowActionsMenu.css';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import Modal from '../../components/Modal';
 import WsTableScroll from '../../components/workshop/WsTableScroll';
@@ -484,7 +486,6 @@ export default function WorkshopReports({ selectedBranchId = 'all', branches = [
     const [recentOrderDetails, setRecentOrderDetails] = useState(null);
     const [recentOrderDetailsLoading, setRecentOrderDetailsLoading] = useState(false);
     const [recentOrderDetailsError, setRecentOrderDetailsError] = useState('');
-    const [openRecentOrderMenuId, setOpenRecentOrderMenuId] = useState('');
     const [recentOrderActionBusyId, setRecentOrderActionBusyId] = useState('');
     const [invoicePreviewData, setInvoicePreviewData] = useState(null);
     const [kpiProofModalId, setKpiProofModalId] = useState(null);
@@ -823,7 +824,6 @@ export default function WorkshopReports({ selectedBranchId = 'all', branches = [
             window.alert(error?.message || 'Failed to execute action.');
         } finally {
             setRecentOrderActionBusyId('');
-            setOpenRecentOrderMenuId('');
         }
     }, [selectedBranchId, rangeFromLocal, rangeToLocal, openRecentOrderDetails]);
 
@@ -2202,38 +2202,29 @@ export default function WorkshopReports({ selectedBranchId = 'all', branches = [
                                             </td>
                                             <td>{row.plateNo ? formatPlateLettersFirst(row.plateNo) : '—'}</td>
                                             <td className="ws-font-bold">SAR {toNumber(row.invoiceTotal).toLocaleString()}</td>
-                                            <td onClick={(e) => e.stopPropagation()} style={{ position: 'relative' }}>
-                                                <button
-                                                    type="button"
-                                                    className="ws-row-actions-trigger"
-                                                    onClick={() =>
-                                                        setOpenRecentOrderMenuId((prev) =>
-                                                            prev === rk ? '' : rk,
-                                                        )
-                                                    }
+                                            <td onClick={(e) => e.stopPropagation()}>
+                                                <RowActionsMenu
                                                     disabled={recentOrderActionBusyId === rk}
-                                                >
-                                                    <MoreVertical size={14} />
-                                                </button>
-                                                {openRecentOrderMenuId === rk && (
-                                                    <div
-                                                        className={`ws-row-actions-menu ${i >= Math.max(recentOrders.length - 3, 0) ? 'up' : ''}`}
-                                                    >
-                                                        <button type="button" className="ws-row-action-btn" onClick={() => handleRecentOrderAction(row, 'view')}>
-                                                            {isOpen ? 'View order' : 'View Invoice'}
-                                                        </button>
-                                                        {!isOpen ? (
-                                                            <>
-                                                                <button type="button" className="ws-row-action-btn" onClick={() => handleRecentOrderAction(row, 'download')}>
-                                                                    Download PDF
-                                                                </button>
-                                                                <button type="button" className="ws-row-action-btn" onClick={() => handleRecentOrderAction(row, 'whatsapp')}>
-                                                                    Send Invoice to WhatsApp (PDF)
-                                                                </button>
-                                                            </>
-                                                        ) : null}
-                                                    </div>
-                                                )}
+                                                    ariaLabel={isOpen ? 'Order actions' : 'Invoice actions'}
+                                                    items={[
+                                                        {
+                                                            label: isOpen ? 'View order' : 'View Invoice',
+                                                            onClick: () => handleRecentOrderAction(row, 'view'),
+                                                        },
+                                                        ...(!isOpen
+                                                            ? [
+                                                                  {
+                                                                      label: 'Download PDF',
+                                                                      onClick: () => handleRecentOrderAction(row, 'download'),
+                                                                  },
+                                                                  {
+                                                                      label: 'Send Invoice to WhatsApp (PDF)',
+                                                                      onClick: () => handleRecentOrderAction(row, 'whatsapp'),
+                                                                  },
+                                                              ]
+                                                            : []),
+                                                    ]}
+                                                />
                                             </td>
                                         </tr>
                                         );
