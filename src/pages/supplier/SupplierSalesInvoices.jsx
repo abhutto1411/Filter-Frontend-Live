@@ -437,6 +437,17 @@ const CASH_ACCOUNTS = ['Main Cash', 'Bank — Al Rajhi', 'Bank — SNB'];
 
 const SEARCH_QUICK_PICK = 15;
 const SEARCH_MAX_RESULTS = 50;
+/** stock-balances page size — backend allows up to 2000; search also hits API when typing. */
+const CATALOG_STOCK_BALANCES_LIMIT = 2000;
+const CATALOG_REMOTE_SEARCH_MIN_CHARS = 2;
+const CATALOG_REMOTE_SEARCH_DEBOUNCE_MS = 280;
+
+function matchesCatalogSearchQuery(item, queryLower) {
+    if (!queryLower) return true;
+    const name = String(item?.name ?? '').toLowerCase();
+    const sku = String(item?.sku ?? '').toLowerCase();
+    return name.includes(queryLower) || (sku && sku.includes(queryLower));
+}
 
 function roundMoney2(n) {
     return Math.round((Number(n) || 0) * 100) / 100;
@@ -937,6 +948,8 @@ export default function SupplierSalesInvoices() {
     const [showDropdown, setShowDropdown] = useState(false);
     const [selectedIndex, setSelectedIndex] = useState(-1);
     const [inventoryItems, setInventoryItems] = useState(INVENTORY_ITEMS);
+    /** Extra rows from server search (full catalog; not limited to the loaded page). */
+    const [catalogSearchRemote, setCatalogSearchRemote] = useState([]);
     const [inventoryInitialLoadDone, setInventoryInitialLoadDone] =
         useState(false);
     /** True while stock-balances (last-sale hints) refetch runs for the open invoice modal. */
@@ -1040,18 +1053,25 @@ export default function SupplierSalesInvoices() {
     const workshopPurchaseSourceIdRef = useRef(null);
     const workshopPurchasePrefillRef = useRef(null);
 
-    const getSearchSuggestions = (query) => {
-        const items = [...inventoryItems].sort((a, b) =>
-            String(a.name || '').localeCompare(String(b.name || ''), undefined, {
-                sensitivity: 'base',
-            }),
-        );
-        const q = query.trim().toLowerCase();
-        if (!q) return items.slice(0, SEARCH_QUICK_PICK);
-        return items
-            .filter((i) => String(i.name || '').toLowerCase().includes(q))
-            .slice(0, SEARCH_MAX_RESULTS);
-    };
+    const getSearchSuggestions = useCallback(
+        (query) => {
+            const pool = mergeInventoryLists(
+                inventoryItems,
+                mergeInventoryLists(catalogSearchRemote, []),
+            );
+            const items = [...pool].sort((a, b) =>
+                String(a.name || '').localeCompare(String(b.name || ''), undefined, {
+                    sensitivity: 'base',
+                }),
+            );
+            const q = query.trim().toLowerCase();
+            if (!q) return items.slice(0, SEARCH_QUICK_PICK);
+            return items
+                .filter((i) => matchesCatalogSearchQuery(i, q))
+                .slice(0, SEARCH_MAX_RESULTS);
+        },
+        [inventoryItems, catalogSearchRemote],
+    );
 
     const applySearchQuery = (value) => {
         setSearchQuery(value);
@@ -2413,7 +2433,7 @@ export default function SupplierSalesInvoices() {
             setListError('');
             try {
                 const [stockRes, branchesRes, invRes] = await Promise.all([
-                    getSupplierInventoryStockBalances({ limit: 200 }),
+                    getSupplierInventoryStockBalances({ limit: CATALOG_STOCK_BALANCES_LIMIT }),
                     getSupplierSalesInvoiceCustomerBranches().catch((be) => {
                         console.error('Supplier customer-branches failed:', be);
                         return { __error: be, branches: [] };
@@ -2491,7 +2511,7 @@ export default function SupplierSalesInvoices() {
     useEffect(() => {
         if (!modalOpen || !inventoryInitialLoadDone) return undefined;
         let cancelled = false;
-        const params = { limit: 200 };
+        const params = { limit: CATALOG_STOCK_BALANCES_LIMIT };
         const bid = selectedCustomer?.branchId ? String(selectedCustomer.branchId) : '';
         if (bid) {
             params.branchId = bid;
@@ -2549,8 +2569,67 @@ export default function SupplierSalesInvoices() {
     useEffect(() => {
         if (!modalOpen) {
             setLastSaleStockRefreshing(false);
+            setCatalogSearchRemote([]);
         }
     }, [modalOpen]);
+
+    /** Server catalog search — finds products outside the preloaded page (name + SKU on API). */
+    useEffect(() => {
+        if (!modalOpen) return undefined;
+        const q =
+            itemPickerLineId != null && itemPickerFilter.trim().length >= CATALOG_REMOTE_SEARCH_MIN_CHARS
+                ? itemPickerFilter.trim()
+                : searchQuery.trim().length >= CATALOG_REMOTE_SEARCH_MIN_CHARS
+                  ? searchQuery.trim()
+                  : '';
+        if (q.length < CATALOG_REMOTE_SEARCH_MIN_CHARS) {
+            setCatalogSearchRemote([]);
+            return undefined;
+        }
+        let cancelled = false;
+        const timer = setTimeout(async () => {
+            try {
+                const params = {
+                    limit: SEARCH_MAX_RESULTS,
+                    search: q,
+                };
+                const bid = selectedCustomer?.branchId
+                    ? String(selectedCustomer.branchId)
+                    : '';
+                if (bid) params.branchId = bid;
+                const stockRes = await getSupplierInventoryStockBalances(params);
+                if (cancelled) return;
+                const rows = Array.isArray(stockRes?.items)
+                    ? stockRes.items.map((raw) => normalizeStockCatalogRow(raw))
+                    : [];
+                setCatalogSearchRemote(rows);
+            } catch (err) {
+                if (!cancelled) {
+                    console.error('Supplier catalog search failed:', err);
+                    setCatalogSearchRemote([]);
+                }
+            }
+        }, CATALOG_REMOTE_SEARCH_DEBOUNCE_MS);
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [
+        modalOpen,
+        searchQuery,
+        itemPickerFilter,
+        itemPickerLineId,
+        selectedCustomer?.branchId,
+    ]);
+
+    useEffect(() => {
+        if (!showDropdown) return;
+        const results = getSearchSuggestions(searchQuery);
+        setSearchResults(results);
+        setSelectedIndex((prev) =>
+            results.length ? Math.min(prev < 0 ? 0 : prev, results.length - 1) : -1,
+        );
+    }, [catalogSearchRemote, showDropdown, searchQuery, getSearchSuggestions]);
 
     useEffect(() => {
         try {
@@ -3770,7 +3849,9 @@ export default function SupplierSalesInvoices() {
                                                                     {inventoryItems.length ===
                                                                     0
                                                                         ? 'No products loaded.'
-                                                                        : 'No matching products.'}
+                                                                        : itemPickerFilter.trim()
+                                                                          ? 'No matching products. Try SKU or more of the product name.'
+                                                                          : 'No matching products.'}
                                                                 </div>
                                                             );
                                                         })()}
@@ -4377,7 +4458,7 @@ export default function SupplierSalesInvoices() {
                                                         {inventoryItems.length === 0
                                                             ? 'No products loaded. Try again later or use “Add line” and type manually.'
                                                             : searchQuery.trim()
-                                                              ? 'No matching products.'
+                                                              ? 'No matching products. Try SKU, more letters, or check the product is active in your catalog.'
                                                               : 'No products available.'}
                                                     </div>
                                                 )}
