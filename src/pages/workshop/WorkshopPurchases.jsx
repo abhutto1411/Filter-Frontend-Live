@@ -158,6 +158,20 @@ function normalizeSupplierRow(s) {
     return { id, name: name || '—', raw: s };
 }
 
+function isNonAffiliatedPickerSupplier(row) {
+    return row?.__supplierType === 'local' || row?.raw?.__supplierType === 'local';
+}
+
+function isWorkshopPortalLocalSupplier(row) {
+    const raw = row?.raw ?? row;
+    const rt =
+        raw?.registrationType ??
+        raw?.registration_type ??
+        row?.registrationType ??
+        null;
+    return String(rt ?? '').toLowerCase() === 'workshop_local';
+}
+
 /**
  * Rows for the PI vendor dropdown (same branch scope as affiliated list).
  * Used on the main suppliers path and on the registered-suppliers fallback path.
@@ -1547,24 +1561,19 @@ export default function WorkshopPurchases({ tabState, clearTabState, selectedBra
         [linkedSuppliers, selectedVendor],
     );
 
-    const isModalLocalSupplier =
-        selectedSupplierRow?.__supplierType === 'local' ||
-        selectedSupplierRow?.raw?.__supplierType === 'local';
+    const isModalLocalSupplier = isNonAffiliatedPickerSupplier(selectedSupplierRow);
 
     /**
      * Detect supplier portal status — workshop_local suppliers do NOT need to
      * approve; we apply inventory at PI save time on the server. Used to swap
      * the AP alert message and skip "wait for approval" copy.
      */
-    const isSelectedSupplierWorkshopLocal = useMemo(() => {
-        const raw = selectedSupplierRow?.raw ?? selectedSupplierRow;
-        const rt =
-            raw?.registrationType ??
-            raw?.registration_type ??
-            selectedSupplierRow?.registrationType ??
-            null;
-        return String(rt ?? '').toLowerCase() === 'workshop_local';
-    }, [selectedSupplierRow]);
+    const isSelectedSupplierWorkshopLocal = useMemo(
+        () =>
+            isNonAffiliatedPickerSupplier(selectedSupplierRow) ||
+            isWorkshopPortalLocalSupplier(selectedSupplierRow),
+        [selectedSupplierRow],
+    );
 
     /**
      * Fetch supplier-scoped last purchase prices when the selected supplier
@@ -1737,7 +1746,7 @@ export default function WorkshopPurchases({ tabState, clearTabState, selectedBra
             draftSupplierSyncedRef.current = true;
             return;
         }
-        const isRowLocal = (s) => s?.__supplierType === 'local' || s?.raw?.__supplierType === 'local';
+        const isRowLocal = (s) => isNonAffiliatedPickerSupplier(s);
         const editingLocalPi = Boolean(editingLocalPiId);
         const row = linkedSuppliers.find((s) => {
             if (String(s.id) !== String(wantId)) return false;
@@ -2032,9 +2041,7 @@ export default function WorkshopPurchases({ tabState, clearTabState, selectedBra
         if (isDraftSave ? !canSavePurchaseInvoiceDraft : !canSubmitPurchaseInvoice) return;
         setSubmitInvoiceError('');
         const normalizedSubmitStatus = isDraftSave ? 'draft' : 'pending';
-        const isLocalSupplier =
-            selectedSupplierRow?.__supplierType === 'local' ||
-            selectedSupplierRow?.raw?.__supplierType === 'local';
+        const isLocalSupplier = isNonAffiliatedPickerSupplier(selectedSupplierRow);
         const selectedLineItems = isDraftSave
             ? lineItems
             : lineItems.filter((line) =>
