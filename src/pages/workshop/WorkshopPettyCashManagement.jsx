@@ -23,7 +23,10 @@ export default function WorkshopPettyCashManagement({
     branches: branchesProp = [],
     workshopId = null,
 }) {
-    const scopeQuery = workshopId ? { workshopId: String(workshopId) } : {};
+    const scopeQuery = useMemo(
+        () => (workshopId ? { workshopId: String(workshopId) } : {}),
+        [workshopId],
+    );
     const { hasPermission, user } = useAuth();
     // Owners bypass; otherwise role must explicitly grant the .issue code.
     const canIssue =
@@ -81,14 +84,6 @@ export default function WorkshopPettyCashManagement({
         listCashBankAccounts({})
             .then((r) => setCashAccounts(r?.accounts ?? r?.items ?? []))
             .catch(() => undefined);
-        if (!workshopId) {
-            getWorkshopBranches()
-                .then((r) => setBranches(unwrapWorkshopBranchesResponse(r)))
-                .catch(() => undefined);
-        } else if (branchesProp?.length) {
-            setBranches(branchesProp);
-        }
-
         try {
             await primary;
         } catch (e) {
@@ -96,7 +91,7 @@ export default function WorkshopPettyCashManagement({
         } finally {
             setLoading(false);
         }
-    }, [effectiveBranch, workshopId, branchesProp]);
+    }, [effectiveBranch, scopeQuery, workshopId]);
 
     useEffect(() => {
         const next =
@@ -105,6 +100,16 @@ export default function WorkshopPettyCashManagement({
                 : '';
         setBranchFilter(next);
     }, [selectedBranchId]);
+
+    useEffect(() => {
+        if (!workshopId) {
+            getWorkshopBranches()
+                .then((r) => setBranches(unwrapWorkshopBranchesResponse(r)))
+                .catch(() => undefined);
+            return;
+        }
+        setBranches(branchesProp?.length ? branchesProp : []);
+    }, [workshopId, branchesProp]);
 
     useEffect(() => {
         loadAll();
