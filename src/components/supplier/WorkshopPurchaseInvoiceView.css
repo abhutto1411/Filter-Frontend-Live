@@ -784,17 +784,52 @@
     max-width: 100%;
     box-shadow: none;
     border: 1px solid var(--tx-border);
-    /* 750px × A4 aspect — footer band sits on the page bottom when scaled */
-    min-height: calc(750px * 841.89 / 595.28) !important;
     height: auto !important;
     display: flex;
     flex-direction: column;
+}
+
+/* Only the final page (the one carrying the footer) is stretched to a full A4
+   so its footer band pins to the page bottom. Earlier pages size to their own
+   content — otherwise the leftover full-height space rendered as a blank gap at
+   the bottom of a page and pushed the next line item onto a fresh page. */
+.wpi-view.wpi-view--pdf-capture .wpi-view__sheet:has(> .wpi-view__corp-footer) {
+    /* 750px × A4 aspect — footer band sits on the page bottom when scaled */
+    min-height: calc(750px * 841.89 / 595.28) !important;
 }
 
 .wpi-view.wpi-view--pdf-capture .wpi-view__surface {
     flex: 0 0 auto;
     padding: 8px 12px 0;
     min-height: 0 !important;
+}
+
+/* Deterministic column widths for the PDF pages. With the default `auto` table
+   layout the Description column is sized from whichever rows are present, so a
+   row renders taller in the full measurement clone (narrow Description) than on
+   its own page (wider Description). That mismatch made the paginator over-
+   estimate tall rows and stop a few rows early, leaving a blank band before the
+   next page. `table-layout: fixed` makes every column content-independent, so
+   the pre-measured row heights match the rendered pages and each page packs
+   fully. Description is the only column without a set width, so it absorbs the
+   remaining space identically in the measurement clone and every page clone. */
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap table {
+    table-layout: fixed;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap th:first-child,
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap td:first-child {
+    width: 34px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap th.wpi-view__th-num,
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap td.wpi-view__td-num {
+    width: 92px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap td {
+    word-break: break-word;
+    overflow-wrap: anywhere;
 }
 
 .wpi-view.wpi-view--pdf-capture .wpi-view__corp-footer {
