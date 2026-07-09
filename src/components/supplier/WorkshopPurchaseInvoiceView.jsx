@@ -50,30 +50,421 @@ function measureCaptureHeight(el) {
     return Math.max(h, 1);
 }
 
-/** Fit invoice raster on one A4 page — max size, footer anchored to page bottom. */
-async function buildA4PdfFromPng(imgData, dims) {
+function collectPageBreakCandidates(captureEl, captureWidth) {
+    if (!captureEl) return [];
+    const rect = captureEl.getBoundingClientRect();
+    const scale = captureWidth / Math.max(rect.width || 1, 1);
+    const top = rect.top;
+    const points = new Set();
+
+    const pushBottom = (node) => {
+        if (!node) return;
+        const box = node.getBoundingClientRect();
+        const y = Math.round((box.bottom - top) * scale);
+        if (y > 0) points.add(y);
+    };
+    const pushTop = (node) => {
+        if (!node) return;
+        const box = node.getBoundingClientRect();
+        const y = Math.round((box.top - top) * scale);
+        if (y > 0) points.add(y);
+    };
+
+    const bodyRows = [...captureEl.querySelectorAll('.wpi-view__table-wrap tbody tr')];
+    bodyRows.forEach((row, idx) => {
+        if (idx > 0) pushTop(row);
+    });
+    [
+        '.wpi-view__bottom-grid',
+        '.wpi-view__panel',
+        '.wpi-view__closing-row',
+        '.wpi-view__corp-footer',
+    ].forEach((selector) => {
+        const node = captureEl.querySelector(selector);
+        pushTop(node);
+        pushBottom(node);
+    });
+
+    return [...points].sort((a, b) => a - b);
+}
+
+function collectTableRowBands(captureEl, captureWidth) {
+    if (!captureEl) return [];
+    const rect = captureEl.getBoundingClientRect();
+    const scale = captureWidth / Math.max(rect.width || 1, 1);
+    const top = rect.top;
+    return [...captureEl.querySelectorAll('.wpi-view__table-wrap tbody tr')]
+        .map((row) => {
+            const box = row.getBoundingClientRect();
+            return {
+                top: Math.round((box.top - top) * scale),
+                bottom: Math.round((box.bottom - top) * scale),
+            };
+        })
+        .filter((band) => band.bottom > band.top);
+}
+
+/** Split invoice raster across A4 pages without shrinking long invoices to one page. */
+async function buildA4PdfFromPng(imgData, dims, breakCandidates = [], rowBands = []) {
     const { jsPDF } = await import('jspdf');
     const pageWidth = 595.28;
     const pageHeight = 841.89;
     const margin = WPI_PDF_MARGIN_PT;
     const usableW = pageWidth - margin * 2;
     const usableH = pageHeight - margin * 2;
-    const aspect = dims.h / dims.w;
+    const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait', compress: true });
+    const img = await new Promise((resolve, reject) => {
+        const image = new Image();
+        image.onload = () => resolve(image);
+        image.onerror = () => reject(new Error('Invalid PNG from capture'));
+        image.src = imgData;
+    });
 
-    let displayW = usableW;
-    let displayH = displayW * aspect;
+    const scale = usableW / dims.w;
+    const pageSliceHeightPx = Math.max(1, Math.floor(usableH / scale));
+    const displayW = usableW;
+    // Leave a slightly larger safety gap before a new row starts.
+    // DOM row measurements and rasterized PNG pixels can differ by a few pixels.
+    const breakGapPx = 6;
 
-    if (displayH > usableH) {
-        displayH = usableH;
-        displayW = displayH / aspect;
+    let offsetYpx = 0;
+    let isFirstPage = true;
+    while (offsetYpx < dims.h) {
+        let contentHeightPx = Math.min(pageSliceHeightPx, dims.h - offsetYpx);
+        const targetBottom = offsetYpx + contentHeightPx;
+        const crossingRow = rowBands.find(
+            (band) => band.top > offsetYpx && band.top < targetBottom && band.bottom > targetBottom,
+        );
+        const minPreferredBottom = offsetYpx + Math.floor(pageSliceHeightPx * 0.82);
+        const preferredBreak = breakCandidates.find((point) => point > targetBottom);
+        const candidate = breakCandidates
+            .filter((point) => point > minPreferredBottom && point <= targetBottom)
+            .pop();
+        if (crossingRow) {
+            contentHeightPx = Math.max(1, crossingRow.top - offsetYpx - breakGapPx);
+        } else if (candidate) {
+            contentHeightPx = Math.max(1, candidate - offsetYpx - breakGapPx);
+        } else if (preferredBreak && preferredBreak - offsetYpx < Math.floor(pageSliceHeightPx * 1.04)) {
+            contentHeightPx = Math.max(1, preferredBreak - offsetYpx - breakGapPx);
+        }
+        contentHeightPx = Math.max(1, Math.min(contentHeightPx, dims.h - offsetYpx));
+        const drawHeightPx = Math.min(dims.h - offsetYpx, contentHeightPx);
+        const sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width = dims.w;
+        sliceCanvas.height = drawHeightPx;
+        const ctx = sliceCanvas.getContext('2d');
+        if (!ctx) {
+            throw new Error('Could not create PDF page canvas');
+        }
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+        ctx.drawImage(
+            img,
+            0,
+            offsetYpx,
+            dims.w,
+            drawHeightPx,
+            0,
+            0,
+            dims.w,
+            drawHeightPx,
+        );
+
+        if (!isFirstPage) pdf.addPage();
+        const displayH = drawHeightPx * scale;
+        pdf.addImage(
+            sliceCanvas.toDataURL('image/png'),
+            'PNG',
+            margin,
+            margin,
+            displayW,
+            displayH,
+            undefined,
+            'FAST',
+        );
+
+        offsetYpx += contentHeightPx;
+        isFirstPage = false;
+    }
+    return pdf;
+}
+
+function sumNodeHeights(nodes) {
+    return (nodes || []).reduce(
+        (sum, node) => sum + Math.ceil(node?.getBoundingClientRect?.().height || 0),
+        0,
+    );
+}
+
+/**
+ * Pack line-item rows into pages by height only. The closing block (totals,
+ * signatures, footer) is intentionally NOT reserved here — the caller places it
+ * separately (attached to the last row page if it fits, otherwise on its own
+ * trailing page). Reserving its height while packing rows made the last content
+ * page stop early and leave a blank band with a lone row orphaned onto the next
+ * page.
+ */
+function paginateTableRows(rowHeights, pageHeightPx, firstFixedHeight, middleFixedHeight) {
+    const totalRows = rowHeights.length;
+    if (totalRows === 0) {
+        return [{ start: 0, end: 0, isFirst: true }];
     }
 
-    const offsetX = margin + (usableW - displayW) / 2;
-    const offsetY = margin + usableH - displayH;
+    const pages = [];
+    let cursor = 0;
+    let isFirst = true;
+    while (cursor < totalRows) {
+        const fixed = isFirst ? firstFixedHeight : middleFixedHeight;
+        const capacity = Math.max(1, pageHeightPx - fixed);
 
+        let used = 0;
+        const start = cursor;
+        while (cursor < totalRows) {
+            const next = rowHeights[cursor];
+            if (cursor > start && used + next > capacity) break;
+            used += next;
+            cursor += 1;
+        }
+        pages.push({ start, end: cursor, isFirst });
+        isFirst = false;
+    }
+
+    return pages;
+}
+
+async function buildA4PdfFromPageImages(pageImages) {
+    const { jsPDF } = await import('jspdf');
+    const pageWidth = 595.28;
+    const pageHeight = 841.89;
+    const margin = WPI_PDF_MARGIN_PT;
+    const usableW = pageWidth - margin * 2;
     const pdf = new jsPDF({ unit: 'pt', format: 'a4', orientation: 'portrait', compress: true });
-    pdf.addImage(imgData, 'PNG', offsetX, offsetY, displayW, displayH, undefined, 'FAST');
+
+    pageImages.forEach((page, idx) => {
+        if (idx > 0) pdf.addPage();
+        const displayH = usableW * (page.h / page.w);
+        pdf.addImage(page.imgData, 'PNG', margin, margin, usableW, displayH, undefined, 'FAST');
+    });
+
     return pdf;
+}
+
+async function buildStructuredInvoicePdf(rootEl, captureWidth) {
+    if (!rootEl) throw new Error('Invoice preview is not ready.');
+    const { toPng } = await import('html-to-image');
+    const pageWidthPt = 595.28;
+    const pageHeightPt = 841.89;
+    const usableWPt = pageWidthPt - WPI_PDF_MARGIN_PT * 2;
+    const usableHPt = pageHeightPt - WPI_PDF_MARGIN_PT * 2;
+    const capturePageHeight = Math.max(1, Math.floor((captureWidth * usableHPt) / usableWPt));
+
+    const sandbox = document.createElement('div');
+    sandbox.style.position = 'fixed';
+    sandbox.style.left = '-20000px';
+    sandbox.style.top = '0';
+    sandbox.style.width = `${captureWidth}px`;
+    sandbox.style.background = '#ffffff';
+    sandbox.style.zIndex = '-1';
+    sandbox.style.pointerEvents = 'none';
+    document.body.appendChild(sandbox);
+
+    try {
+        const pageRoot = document.createElement('div');
+        pageRoot.className = `${rootEl.className} wpi-view--pdf-capture`;
+        pageRoot.style.width = `${captureWidth}px`;
+        pageRoot.style.maxWidth = `${captureWidth}px`;
+        pageRoot.style.background = '#ffffff';
+        const sheetClone = (rootEl.querySelector('.wpi-view__sheet') || rootEl).cloneNode(true);
+        pageRoot.appendChild(sheetClone);
+        sandbox.appendChild(pageRoot);
+        await waitForCaptureImages(pageRoot);
+
+        const sheet = pageRoot.querySelector('.wpi-view__sheet');
+        const surface = sheet?.querySelector('.wpi-view__surface');
+        const footer = sheet?.querySelector('.wpi-view__corp-footer');
+        const tableWrap = surface?.querySelector('.wpi-view__table-wrap');
+        const table = tableWrap?.querySelector('table');
+        const thead = table?.querySelector('thead');
+        const rows = [...(table?.querySelectorAll('tbody > tr') || [])];
+        const surfaceChildren = [...(surface?.children || [])];
+        const tableIndex = surfaceChildren.indexOf(tableWrap);
+
+        if (!sheet || !surface || !tableWrap || !table || !thead || tableIndex < 0) {
+            throw new Error('Could not prepare invoice pages');
+        }
+
+        const topNodes = surfaceChildren.slice(0, tableIndex);
+        const afterNodes = surfaceChildren.slice(tableIndex + 1);
+        const rowHeights = rows.map((row) => Math.ceil(row.getBoundingClientRect().height || 0));
+
+        const headerMeasure = tableWrap.cloneNode(false);
+        const headerMeasureTable = table.cloneNode(false);
+        const emptyBody = document.createElement('tbody');
+        headerMeasureTable.appendChild(thead.cloneNode(true));
+        headerMeasureTable.appendChild(emptyBody);
+        headerMeasure.appendChild(headerMeasureTable);
+        sandbox.appendChild(headerMeasure);
+
+        const tableHeaderHeight = Math.ceil(headerMeasure.getBoundingClientRect().height || 0);
+        headerMeasure.remove();
+
+        const firstFixedHeight = sumNodeHeights(topNodes) + tableHeaderHeight;
+        const middleFixedHeight = tableHeaderHeight;
+
+        /**
+         * Render one planned page.
+         * - `plan.isFirst` → include the top header/detail blocks.
+         * - `plan.closingOnly` → no line-item table (closing block on its own page).
+         * - `plan.withClosing` → append the totals/signature blocks + footer.
+         */
+        const buildPageNode = (plan) => {
+            const page = document.createElement('div');
+            page.className = `${rootEl.className} wpi-view--pdf-capture`;
+            page.style.width = `${captureWidth}px`;
+            page.style.maxWidth = `${captureWidth}px`;
+            page.style.background = '#ffffff';
+
+            const pageSheet = sheet.cloneNode(false);
+            const watermark = sheet.querySelector('.wpi-view__watermark-layer');
+            if (watermark) pageSheet.appendChild(watermark.cloneNode(true));
+
+            const pageSurface = surface.cloneNode(false);
+            if (plan.isFirst) {
+                topNodes.forEach((node) => pageSurface.appendChild(node.cloneNode(true)));
+            }
+
+            if (!plan.closingOnly) {
+                const pageTableWrap = tableWrap.cloneNode(false);
+                const pageTable = table.cloneNode(false);
+                const pageTHead = thead.cloneNode(true);
+                const pageTBody = document.createElement('tbody');
+                rows.slice(plan.start, plan.end).forEach((row) => pageTBody.appendChild(row.cloneNode(true)));
+                pageTable.appendChild(pageTHead);
+                pageTable.appendChild(pageTBody);
+                pageTableWrap.appendChild(pageTable);
+                pageSurface.appendChild(pageTableWrap);
+            }
+
+            if (plan.withClosing) {
+                afterNodes.forEach((node) => pageSurface.appendChild(node.cloneNode(true)));
+            }
+
+            pageSheet.appendChild(pageSurface);
+            if (plan.withClosing && footer) {
+                pageSheet.appendChild(footer.cloneNode(true));
+            }
+
+            page.appendChild(pageSheet);
+            return page;
+        };
+
+        const measurePlanHeight = (plan) => {
+            const probePage = buildPageNode(plan);
+            sandbox.appendChild(probePage);
+            const probeHeight = measureCaptureHeight(probePage.querySelector('.wpi-view__sheet') || probePage);
+            probePage.remove();
+            return probeHeight;
+        };
+
+        // 1) Pack rows into pages by height (closing block excluded for now).
+        const adjustedPlans = paginateTableRows(
+            rowHeights,
+            capturePageHeight,
+            firstFixedHeight,
+            middleFixedHeight,
+        ).map((plan) => ({ ...plan, withClosing: false, closingOnly: false }));
+
+        // 2) Stabilize row pages against their real rendered height — never
+        //    counting the closing block, so a page fills with rows only.
+        let stabilized = false;
+        while (!stabilized) {
+            stabilized = true;
+            for (let i = 0; i < adjustedPlans.length; i += 1) {
+                adjustedPlans[i].isFirst = i === 0;
+            }
+
+            for (let i = 0; i < adjustedPlans.length; i += 1) {
+                const plan = adjustedPlans[i];
+                if (measurePlanHeight(plan) <= capturePageHeight) continue;
+                if (plan.end - plan.start <= 1) continue;
+
+                let nextPlan = adjustedPlans[i + 1];
+                if (!nextPlan) {
+                    nextPlan = {
+                        start: plan.end - 1,
+                        end: plan.end,
+                        isFirst: false,
+                        withClosing: false,
+                        closingOnly: false,
+                    };
+                    adjustedPlans.push(nextPlan);
+                } else {
+                    nextPlan.start -= 1;
+                }
+                plan.end -= 1;
+                stabilized = false;
+                break;
+            }
+        }
+
+        // 3) Place the closing block: attach it under the last row page when it
+        //    still fits, otherwise give it its own trailing page so the rows
+        //    keep packing fully (no blank band + orphaned last row).
+        adjustedPlans.forEach((plan, i) => {
+            plan.isFirst = i === 0;
+        });
+        const lastRowPlan = adjustedPlans[adjustedPlans.length - 1];
+        lastRowPlan.withClosing = true;
+        if (
+            lastRowPlan.end > lastRowPlan.start &&
+            measurePlanHeight(lastRowPlan) > capturePageHeight
+        ) {
+            lastRowPlan.withClosing = false;
+            adjustedPlans.push({
+                start: lastRowPlan.end,
+                end: lastRowPlan.end,
+                isFirst: false,
+                withClosing: true,
+                closingOnly: true,
+            });
+        }
+
+        const pageImages = [];
+        for (const plan of adjustedPlans) {
+            const page = buildPageNode(plan);
+            sandbox.appendChild(page);
+            await waitForCaptureImages(page);
+            const captureTarget = page.querySelector('.wpi-view__sheet') || page;
+            const captureHeight = measureCaptureHeight(captureTarget);
+            const imgData = await toPng(captureTarget, {
+                backgroundColor: '#ffffff',
+                pixelRatio: 2,
+                cacheBust: true,
+                width: captureWidth,
+                height: captureHeight,
+                style: {
+                    overflow: 'hidden',
+                    width: `${captureWidth}px`,
+                    maxWidth: `${captureWidth}px`,
+                    height: `${captureHeight}px`,
+                    minHeight: '0',
+                    backgroundColor: '#ffffff',
+                },
+            });
+            const dims = await new Promise((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
+                img.onerror = () => reject(new Error('Invalid PNG from page capture'));
+                img.src = imgData;
+            });
+            pageImages.push({ imgData, ...dims });
+            page.remove();
+        }
+
+        return buildA4PdfFromPageImages(pageImages);
+    } finally {
+        sandbox.remove();
+    }
 }
 
 function money(n, currency = 'SAR') {
@@ -660,71 +1051,43 @@ const WorkshopPurchaseInvoiceView = forwardRef(function WorkshopPurchaseInvoiceV
         paid,
     ]);
 
-    /** Raster invoice sheet → A4 PDF (throws on failure). */
-    const captureInvoicePdf = useCallback(async () => {
+    /** Build preview PDF from page-wise rendered invoice sections. */
+    const buildInvoicePdf = useCallback(async () => {
         const el = printRootRef.current;
         if (!el) throw new Error('Invoice preview is not ready.');
-        el.classList.add('wpi-view--pdf-capture');
         try {
             await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-            const captureEl = el.querySelector('.wpi-view__sheet') || el;
-            await waitForCaptureImages(captureEl);
-
-            const { toPng } = await import('html-to-image');
-            const captureWidth = WPI_PDF_CAPTURE_WIDTH;
-            const captureHeight = measureCaptureHeight(captureEl);
-
-            const imgData = await toPng(captureEl, {
-                backgroundColor: '#ffffff',
-                pixelRatio: 2,
-                cacheBust: true,
-                width: captureWidth,
-                height: captureHeight,
-                style: {
-                    overflow: 'hidden',
-                    width: `${captureWidth}px`,
-                    maxWidth: `${captureWidth}px`,
-                    height: `${captureHeight}px`,
-                    minHeight: '0',
-                    backgroundColor: '#ffffff',
-                },
-            });
-
-            const dims = await new Promise((resolve, reject) => {
-                const img = new Image();
-                img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight });
-                img.onerror = () => reject(new Error('Invalid PNG from capture'));
-                img.src = imgData;
-            });
-
-            const pdf = await buildA4PdfFromPng(imgData, dims);
-            const safe = String(invoiceNo).replace(/[^\w.-]+/g, '_').replace(/^_|_$/g, '').slice(0, 96) || 'invoice';
-            pdf.save(
-                `${isSuperSupplier ? 'Filter-SSP' : isSupplierSales ? 'Filter-SINV' : isWorkshopReceive ? 'Filter-WPI-Recv' : 'Filter-WPI'}-${safe}.pdf`,
-            );
+            return buildStructuredInvoicePdf(el, WPI_PDF_CAPTURE_WIDTH);
         } catch (err) {
             console.error(err);
             throw err;
-        } finally {
-            el.classList.remove('wpi-view--pdf-capture');
         }
-    }, [invoiceNo, isSuperSupplier, isSupplierSales, isWorkshopReceive]);
+    }, []);
 
-    useImperativeHandle(imperativeRef, () => ({ downloadPdf: captureInvoicePdf }), [captureInvoicePdf]);
+    const downloadPdfFile = useCallback(async () => {
+        const pdf = await buildInvoicePdf();
+        const safe = String(invoiceNo).replace(/[^\w.-]+/g, '_').replace(/^_|_$/g, '').slice(0, 96) || 'invoice';
+        const filename = `${isSuperSupplier ? 'Filter-SSP' : isSupplierSales ? 'Filter-SINV' : isWorkshopReceive ? 'Filter-WPI-Recv' : 'Filter-WPI'}-${safe}.pdf`;
+        pdf.save(filename);
+    }, [buildInvoicePdf, invoiceNo, isSuperSupplier, isSupplierSales, isWorkshopReceive]);
+
+    useImperativeHandle(imperativeRef, () => ({ downloadPdf: downloadPdfFile }), [downloadPdfFile]);
 
     const handleDownloadPdf = useCallback(async () => {
         setPdfBusy(true);
         setPdfError('');
         try {
-            await captureInvoicePdf();
+            await downloadPdfFile();
         } catch (err) {
             setPdfError(
-                'Could not create PDF. Use your browser Print dialog on this page and choose Save as PDF.',
+                err instanceof Error && err.message
+                    ? err.message
+                    : 'Could not create PDF.',
             );
         } finally {
             setPdfBusy(false);
         }
-    }, [captureInvoicePdf]);
+    }, [downloadPdfFile]);
 
     return (
         <div
