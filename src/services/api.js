@@ -1,10 +1,10 @@
 import { notifyUserActivity } from '../utils/sessionIdle';
 
 //export const BASE_URL = "https://filterbackend-production.up.railway.app";
-export const BASE_URL = "http://localhost:3000";
+// export const BASE_URL = "http://localhost:3000";
 
 
-//export const BASE_URL = "https://api.filtercarservices.com";
+export const BASE_URL = "https://api.filtercarservices.com";
 
 const API_LOADING_EVENT = 'filter-api-loading';
 
