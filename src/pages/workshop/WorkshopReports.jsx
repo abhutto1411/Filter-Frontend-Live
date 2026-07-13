@@ -492,8 +492,13 @@ export default function WorkshopReports({ selectedBranchId = 'all', branches = [
     );
 
     const initialRange = useMemo(() => defaultLocalRangeLatest(), []);
+    // Applied range — what the fetches actually query.
     const [rangeFromLocal, setRangeFromLocal] = useState(initialRange.start);
     const [rangeToLocal, setRangeToLocal] = useState(initialRange.end);
+    // Draft range — what the date inputs edit; committed to the applied range
+    // only when the user clicks "Apply" (so typing a range doesn't auto-fetch).
+    const [draftRangeFrom, setDraftRangeFrom] = useState(initialRange.start);
+    const [draftRangeTo, setDraftRangeTo] = useState(initialRange.end);
     const [activeTab, setActiveTab] = useState(() => visibleReportTabIds[0] ?? 'recent_orders');
 
     // Auto-snap to first visible inner tab if current becomes hidden.
@@ -801,6 +806,25 @@ export default function WorkshopReports({ selectedBranchId = 'all', branches = [
             }
         }
     }, [selectedBranchId, rangeFromLocal, rangeToLocal, byProductTechnicianId, byServiceTechnicianId]);
+
+    /** True when the draft date range differs from the currently applied one. */
+    const rangeDirty =
+        draftRangeFrom !== rangeFromLocal || draftRangeTo !== rangeToLocal;
+
+    /**
+     * Commit the draft date range to the applied range. Changing the applied
+     * range re-runs `loadReports` (and the recent-orders / summary fetches) via
+     * their effects. If the range is unchanged, reload directly so the button
+     * still works as a manual refresh.
+     */
+    const applyDateRange = useCallback(() => {
+        if (rangeDirty) {
+            setRangeFromLocal(draftRangeFrom);
+            setRangeToLocal(draftRangeTo);
+        } else {
+            void loadReports();
+        }
+    }, [rangeDirty, draftRangeFrom, draftRangeTo, loadReports]);
 
     useEffect(() => {
         const t = setTimeout(() => {
@@ -1839,22 +1863,28 @@ export default function WorkshopReports({ selectedBranchId = 'all', branches = [
                     <div className="ws-date-input-group">
                         <input
                             type="datetime-local"
-                            value={rangeFromLocal}
-                            onChange={(e) => setRangeFromLocal(e.target.value)}
+                            value={draftRangeFrom}
+                            onChange={(e) => setDraftRangeFrom(e.target.value)}
                             step={60}
                             aria-label="From date and time"
                         />
                         <span className="ws-text-dim">to</span>
                         <input
                             type="datetime-local"
-                            value={rangeToLocal}
-                            onChange={(e) => setRangeToLocal(e.target.value)}
+                            value={draftRangeTo}
+                            onChange={(e) => setDraftRangeTo(e.target.value)}
                             step={60}
                             aria-label="To date and time"
                         />
                     </div>
-                    <button type="button" className="ws-btn-refresh" onClick={loadReports} disabled={isLoading}>
-                        <RefreshCw size={14} /> {isLoading ? 'Refreshing...' : 'Refresh'}
+                    <button
+                        type="button"
+                        className="ws-btn-refresh"
+                        onClick={applyDateRange}
+                        disabled={isLoading}
+                    >
+                        <RefreshCw size={14} />{' '}
+                        {isLoading ? 'Loading...' : rangeDirty ? 'Apply' : 'Refresh'}
                     </button>
                 </div>
                 <div className="ws-order-count">
