@@ -1,0 +1,278 @@
+import { notifyUserActivity } from '../utils/sessionIdle';
+
+// Production url
+ export const BASE_URL = "https://api.filtercarservices.com";
+// staging url (production default when VITE_API_BASE_URL is unset)
+// export const BASE_URL = 'https://filterbackend-production.up.railway.app';
+
+
+// development url
+// export const BASE_URL = 'http://localhost:3000';
+
+const API_LOADING_EVENT = 'filter-api-loading';
+
+/** Device UTC offset in minutes (e.g. 300 Pakistan, 240 UAE) for cashier order timestamps. */
+export function clientUtcOffsetMinutes() {
+  return -new Date().getTimezoneOffset();
+}
+
+let activeApiRequests = 0;
+
+function notifyApiLoading() {
+  if (typeof window === "undefined") return;
+
+  window.dispatchEvent(
+    new CustomEvent(API_LOADING_EVENT, {
+      detail: {
+        pending: activeApiRequests,
+        loading: activeApiRequests > 0,
+      },
+    })
+  );
+}
+
+export function getAuthToken() {
+  if (typeof localStorage === "undefined") return "";
+
+  return (
+    localStorage.getItem("filter_auth_token") ||
+    localStorage.getItem("token") ||
+    localStorage.getItem("accessToken") ||
+    localStorage.getItem("access_token") ||
+    localStorage.getItem("adminToken") ||
+    ""
+  );
+}
+
+export function clearAuthSession() {
+  if (typeof localStorage === "undefined") return;
+
+  localStorage.removeItem("filter_auth_token");
+  localStorage.removeItem("filter_auth_user");
+  localStorage.removeItem("filter_auth_workshop");
+  localStorage.removeItem("token");
+  localStorage.removeItem("accessToken");
+  localStorage.removeItem("access_token");
+  localStorage.removeItem("adminToken");
+}
+
+function buildUrl(path) {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  return `${BASE_URL}${normalized}`;
+}
+
+function getLoginRedirectPath() {
+  if (typeof window === "undefined") return "/";
+
+  const pathname = window.location.pathname.toLowerCase();
+
+  if (pathname.startsWith("/admin")) return "/admin/login";
+  if (pathname.startsWith("/workshop")) return "/workshop/login";
+  if (pathname.startsWith("/supplier")) return "/supplier/login";
+  if (pathname.startsWith("/marketing")) return "/marketing/login";
+  if (pathname.startsWith("/locker")) return "/locker/login";
+  if (pathname.startsWith("/technician")) return "/technician/login";
+  if (pathname.startsWith("/corporate")) return "/corporate/login";
+
+  return "/";
+}
+
+function shouldRedirectToLogin() {
+  if (typeof window === "undefined") return false;
+
+  const pathname = window.location.pathname.toLowerCase();
+
+  return !(
+    pathname.includes("login") ||
+    pathname.includes("signin") ||
+    pathname === "/"
+  );
+}
+
+function getErrorMessage(errorBody, status, statusText, method, path) {
+  const rawMessage = errorBody?.message;
+
+  if (Array.isArray(rawMessage)) {
+    const message = rawMessage.filter(Boolean).map(String).join(" ");
+    if (message.trim()) return message;
+  }
+
+  if (typeof rawMessage === "string" && rawMessage.trim()) {
+    return rawMessage.trim();
+  }
+
+  if (typeof errorBody?.error === "string" && errorBody.error.trim()) {
+    return errorBody.error.trim();
+  }
+
+  return `Request failed: ${status} ${statusText} (${method} ${path})`;
+}
+
+function isInvalidSession401(errorBody) {
+  const msg = (
+    getErrorMessage(errorBody, 401, "Unauthorized", "GET", "") || ""
+  ).toLowerCase();
+
+  // Workshop scope / missing workshop context — session is still valid for platform admin.
+  if (
+    msg.includes("associated with a workshop") ||
+    msg.includes("bound to a workshop") ||
+    msg.includes("not linked to a workshop") ||
+    msg.includes("workshopid query param is required") ||
+    msg.includes("workshopid is required") ||
+    msg.includes("super admin access only") ||
+    msg.includes("missing permission:") ||
+    msg.includes("supplier access only")
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+function readStoredAuthUser() {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem("filter_auth_user");
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function shouldRedirectWrongPortalFromAdmin(errorBody, status) {
+  if (typeof window === "undefined") return false;
+  if (!window.location.pathname.toLowerCase().startsWith("/admin")) return false;
+  if (status !== 401 && status !== 403) return false;
+
+  const msg = (
+    getErrorMessage(errorBody, status, "Forbidden", "GET", "") || ""
+  ).toLowerCase();
+  if (!msg.includes("super admin access only")) return false;
+
+  const user = readStoredAuthUser();
+  const t = String(user?.userType || user?.type || "").trim().toLowerCase();
+  const isAdmin =
+    t === "platform_admin" ||
+    t === "admin" ||
+    t === "super_admin" ||
+    t === "admin_user";
+  return !isAdmin;
+}
+
+function wrongPortalRedirectPath() {
+  const user = readStoredAuthUser();
+  const t = String(user?.userType || user?.type || "").trim().toLowerCase();
+  if (
+    t === "platform_admin" ||
+    t === "admin" ||
+    t === "super_admin" ||
+    t === "admin_user"
+  ) {
+    return "/admin/dashboard";
+  }
+  if (t === "workshop_user" || t === "workshop_owner") return "/workshop";
+  if (t === "supplier_user" || t === "supplier") return "/supplier";
+  if (t === "corporate_user") return "/corporate";
+  if (t === "technician_user") return "/technician";
+  if (t === "cashier_user") return "/pos";
+  if (t === "marketing_user") return "/marketing/dashboard";
+  return "/";
+}
+
+/**
+ * Central secure API client.
+ * - Uses VITE_API_BASE_URL
+ * - Adds Bearer token automatically
+ * - Supports JSON and FormData
+ * - Handles 401 globally
+ */
+export async function apiFetch(path, options = {}) {
+  activeApiRequests += 1;
+  notifyApiLoading();
+
+  const method = options.method || "GET";
+  const token = getAuthToken();
+  const customHeaders = options.headers || {};
+  const isFormData =
+    typeof FormData !== "undefined" && options.body instanceof FormData;
+
+  const headers = {
+    Accept: "application/json",
+    ...(token ? { Authorization: `Bearer ${token.trim()}` } : {}),
+    ...(!isFormData ? { "Content-Type": "application/json" } : {}),
+    ...customHeaders,
+  };
+
+  const url = buildUrl(path);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
+
+    const contentType = response.headers.get("content-type") || "";
+
+    const responseBody = contentType.includes("application/json")
+      ? await response.json().catch(() => null)
+      : await response.text().catch(() => "");
+
+    if (!response.ok) {
+      if (shouldRedirectWrongPortalFromAdmin(responseBody, response.status)) {
+        window.location.replace(wrongPortalRedirectPath());
+      } else if (response.status === 401 && isInvalidSession401(responseBody)) {
+        clearAuthSession();
+
+        if (shouldRedirectToLogin()) {
+          window.location.replace(getLoginRedirectPath());
+        }
+      }
+
+      const detail = {
+        path,
+        method,
+        status: response.status,
+        statusText: response.statusText,
+        response: responseBody,
+        requestBody:
+          options.body instanceof FormData
+            ? "[FormData]"
+            : options.body
+              ? safeJsonParse(options.body)
+              : undefined,
+      };
+
+      console.error("[apiFetch] Request failed", detail);
+
+      throw new Error(
+        getErrorMessage(
+          responseBody,
+          response.status,
+          response.statusText,
+          method,
+          path
+        )
+      );
+    }
+
+    if (token) {
+      notifyUserActivity();
+    }
+
+    return responseBody;
+  } finally {
+    activeApiRequests = Math.max(0, activeApiRequests - 1);
+    notifyApiLoading();
+  }
+}
+
+function safeJsonParse(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+export default apiFetch;
