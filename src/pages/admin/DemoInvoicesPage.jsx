@@ -389,7 +389,9 @@ function DemoInvoiceViewPage({ invoiceId, onClose }) {
             ) : mapped ? (
                 <div className="demo-invoice-view-body">
                     <div className="demo-invoice-view-scroll">
-                        <CashierTaxInvoiceView invoice={mapped} />
+                        <div className="demo-invoice-print-root">
+                            <CashierTaxInvoiceView invoice={mapped} />
+                        </div>
                     </div>
                 </div>
             ) : (
