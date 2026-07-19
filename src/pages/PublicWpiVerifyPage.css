@@ -1,8 +1,0 @@
-@keyframes wpi-verify-spin {
-    to {
-        transform: rotate(360deg);
-    }
-}
-.wpi-verify-spin {
-    animation: wpi-verify-spin 0.9s linear infinite;
-}
