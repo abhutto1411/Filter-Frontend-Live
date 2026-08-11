@@ -1,0 +1,51 @@
+﻿Service,Arabic Name,SKU,Description,Department,Category,UOM,Sale Price Inclusive VAT 15%,Sale Price Enclusive VAT 15%,Allow Price Change,Min Corporate Price,Max Corporate price,Department ID,Category ID
+5ml plastic floor,بلاستيك أرضيه 5 مل,UPH-201,5ml plastic floor service under Upholstery (Each (ea)),Upholstery Department,Upholstery,Each (ea),Prices Not Fixed,Prices Not Fixed,TRUE,0,0,23,29
+ADDITION WASHING,غسيل اضافي,WSH-202,ADDITION WASHING service under Normal Wash (Each (ea)),Washing Department,Normal Wash,Each (ea),8,6.956521739,,6,16,21,24
+ADITION WAX SOAP,شامبو واكس اضافي,WSH-203,ADITION WAX SOAP service under Normal Wash (Each (ea)),Washing Department,Normal Wash,Each (ea),10,8.695652174,,8,20,21,24
+Car Full Inspection √,فحص كامل للسيارة √,SRV-204,Car Full Inspection √ service under Inspection (Each (ea)),Oil Change Department,Inspection,Each (ea),Free,Free,,0,0,20,23
+CAR INSPECTION,فحص السيارة,SRV-205,CAR INSPECTION service under Inspection (Each (ea)),Oil Change Department,Inspection,Each (ea),Free,Free,,0,0,20,23
+CAR INSPECTION,فحص السيارة,SRV-206,CAR INSPECTION service under Inspection (Each (ea)),Oil Change Department,Inspection,Each (ea),Free,Free,,0,0,20,23
+CAR WASH BIG,غسيل سيارة كبيرة,WSH-207,CAR WASH BIG service under Normal Wash (Each (ea)),Washing Department,Normal Wash,Each (ea),30,26.08695652,,28,60,21,24
+CAR WASH MEDIUM,غسيل سيارة وسط,WSH-208,CAR WASH MEDIUM service under Normal Wash (Each (ea)),Washing Department,Normal Wash,Each (ea),25,21.73913043,,23,50,21,24
+CAR WASH SMALL,غسيل سيارة صغيرة,WSH-209,CAR WASH SMALL service under Normal Wash (Each (ea)),Washing Department,Normal Wash,Each (ea),20,17.39130435,,18,40,21,24
+Car Wash VIP Big,VIP غسيل سيارات كبير,WSH-210,Car Wash VIP Big service under Car Wash VIP (Each (ea)),Washing Department,Car Wash VIP,Each (ea),50,43.47826087,,48,100,21,22
+Car Wash VIP Medium,VIP غسيل سيارات وسط,WSH-211,Car Wash VIP Medium service under Car Wash VIP (Each (ea)),Washing Department,Car Wash VIP,Each (ea),40,34.7826087,,38,80,21,22
+Car Wash VIP Small,VIP غسيل سيارات صغير,WSH-212,Car Wash VIP Small service under Car Wash VIP (Each (ea)),Washing Department,Car Wash VIP,Each (ea),35,30.43478261,,33,70,21,22
+Car Wind Shield Inspection √,فحص زجاج السيارة الأمامي √,SRV-213,Car Wind Shield Inspection √ service under Inspection (Each (ea)),Oil Change Department,Inspection,Each (ea),Free,Free,,0,0,20,23
+CHANGE OIL AND FILTER THE CUSTOMER,خدمة غيار زيت وسيفون العميل,OIL-214,CHANGE OIL AND FILTER THE CUSTOMER service under Oil Change services (Each (ea)),Oil Change Department,Oil Change services,Each (ea),25,21.73913043,,23,50,20,25
+CHANGE OIL BRAKES SERVICE,خدمة غيار زيت الفرامل,OIL-215,CHANGE OIL BRAKES SERVICE service under Oil Change services (Each (ea)),Oil Change Department,Oil Change services,Each (ea),9,7.826086957,,7,18,20,25
+CHANGE OIL SERVICE FROM CUSTOMER,خدمة غيار زيت مع العميل,OIL-216,CHANGE OIL SERVICE FROM CUSTOMER service under Oil Change services (Each (ea)),Oil Change Department,Oil Change services,Each (ea),20,17.39130435,,18,40,20,25
+CHANGE OIL SERVICES,خدمة غيار الزيت الاساسية,OIL-217,CHANGE OIL SERVICES service under Oil Change services (Each (ea)),Oil Change Department,Oil Change services,Each (ea),9,7.826086957,,7,18,20,25
+CHEMICAL WHITENING,ملمع جنوط,WSH-218,CHEMICAL WHITENING service under add-on services (Each (ea)),Washing Department,add-on services,Each (ea),8,6.956521739,,6,16,21,20
+COVERING CAR MATTRESS,تلبيس دعاسات اضافي,WSH-219,COVERING CAR MATTRESS service under add-on services (Each (ea)),Washing Department,add-on services,Each (ea),10,8.695652174,,8,20,21,20
+Diesel filter replacement service,خدمة غيار فلتر الديزل,OIL-220,Diesel filter replacement service service under Oil Change services (Each (ea)),Oil Change Department,Oil Change services,Each (ea),15,13.04347826,,13,30,20,25
+Exterior polishing,تلميع خارجي,POL-221,Exterior polishing service under Polishing Services (Each (ea)),Polishing Department,Polishing Services,Each (ea),Prices Not Fixed,Prices Not Fixed,TRUE,0,0,22,26
+Fabric mattress upholstery,تنجيد مراتب قماش,UPH-222,Fabric mattress upholstery service under Upholstery (Each (ea)),Upholstery Department,Upholstery,Each (ea),Prices Not Fixed,Prices Not Fixed,TRUE,0,0,23,29
+Filtering machine,تصفية ماكينة,SRV-223,Filtering machine service under add-on services (Each (ea)),Oil Change Department,add-on services,Each (ea),10,8.695652174,,8,20,20,21
+Front and rear brake pad replacement service,خدمة تغير الفحمات الأمامية والخلفية,OIL-224,Front and rear brake pad replacement service service under Oil Change services (Each (ea)),Oil Change Department,Oil Change services,Each (ea),40,34.7826087,TRUE,38,80,20,25
+Gear Oil change service,خدمة تغيير زيت القير,OIL-225,Gear Oil change service service under Gear Oil Change Services (Each (ea)),Oil Change Department,Gear Oil Change Services,Each (ea),100,86.95652174,TRUE,98,200,20,17
+Interior polishing,تلميع داخلي,POL-226,Interior polishing service under Polishing Services (Each (ea)),Polishing Department,Polishing Services,Each (ea),Prices Not Fixed,Prices Not Fixed,TRUE,0,0,22,26
+Jeep leather floor upholstery,تنجيد أرضية جلد Jeeb,UPH-227,Jeep leather floor upholstery service under Upholstery (Each (ea)),Upholstery Department,Upholstery,Each (ea),Prices Not Fixed,Prices Not Fixed,TRUE,0,0,23,29
+Jeep leather mattress upholstery,تنجيد مراتب جلد Jeeb,UPH-228,Jeep leather mattress upholstery service under Upholstery (Each (ea)),Upholstery Department,Upholstery,Each (ea),Prices Not Fixed,Prices Not Fixed,TRUE,0,0,23,29
+KAWA POLISH,تلميع كاوا,WSH-229,KAWA POLISH service under add-on services (Each (ea)),Washing Department,add-on services,Each (ea),5,4.347826087,,3,10,21,20
+Leather steering wheel upholstery (original),تنجيد طارة جلد وكالة,UPH-230,Leather steering wheel upholstery (original) service under Upholstery (Each (ea)),Upholstery Department,Upholstery,Each (ea),Prices Not Fixed,Prices Not Fixed,TRUE,0,0,23,29
+Lubrication,تشحيم,SRV-231,Lubrication service under add-on services (Each (ea)),Oil Change Department,add-on services,Each (ea),5,4.347826087,,3,10,20,21
+Mattress cleaning,تنظيف مراتب,WSH-232,Mattress cleaning service under Seat Cover Washing (Each (ea)),Washing Department,Seat Cover Washing,Each (ea),Prices Not Fixed,Prices Not Fixed,TRUE,0,0,21,27
+Nano,نانو,WSH-233,Nano service under add-on services (Each (ea)),Washing Department,add-on services,Each (ea),5,4.347826087,,3,10,21,20
+Oil change service with filter,خدمة تغيير الزيت مع الفلتر,OIL-234,Oil change service with filter service under Oil Change services (Each (ea)),Oil Change Department,Oil Change services,Each (ea),15,13.04347826,,13,30,20,25
+OUTSIDE WASH B + M,غسيل خارجي و + ك,WSH-235,OUTSIDE WASH B + M service under Normal Wash (Each (ea)),Washing Department,Normal Wash,Each (ea),15,13.04347826,,13,30,21,24
+OUTSIDE WASH S,غسيل خارجي ص,WSH-236,OUTSIDE WASH S service under Normal Wash (Each (ea)),Washing Department,Normal Wash,Each (ea),10,8.695652174,,8,20,21,24
+Polishing lights,تلميع انوار,POL-237,Polishing lights service under Polishing Services (Each (ea)),Polishing Department,Polishing Services,Each (ea),Prices Not Fixed,Prices Not Fixed,TRUE,0,0,22,26
+Reefer unit service,خدمة غيار زيت الثلاجة,OIL-238,Reefer unit service service under Oil Change services (Each (ea)),Oil Change Department,Oil Change services,Each (ea),35,30.43478261,,33,70,20,25
+Regular steering wheel upholstery,تنجيد طاره عادي,UPH-239,Regular steering wheel upholstery service under Upholstery (Each (ea)),Upholstery Department,Upholstery,Each (ea),Prices Not Fixed,Prices Not Fixed,TRUE,0,0,23,29
+Service charge difference,فرق رسوم الخدمة,SRV-240,Service charge difference service under add-on services (Each (ea)),Oil Change Department,add-on services,Each (ea),2,1.739130435,TRUE,0,4,20,21
+Small car leather floor upholstery,تنجيد أرضية جلد سياره صغيره,UPH-241,Small car leather floor upholstery service under Upholstery (Each (ea)),Upholstery Department,Upholstery,Each (ea),Prices Not Fixed,Prices Not Fixed,TRUE,0,0,23,29
+Special Wash,غسيل متخصص,WSH-242,Special Wash service under Special Wash (Each (ea)),Washing Department,Special Wash,Each (ea),Prices Not Fixed,Prices Not Fixed,TRUE,0,0,21,28
+Spray the belly of the car,رش بطن السيارة,WSH-243,Spray the belly of the car service under add-on services (Each (ea)),Washing Department,add-on services,Each (ea),5,4.347826087,,3,10,21,20
+Upholstery,تنجيد,UPH-244,Upholstery service under Upholstery (Each (ea)),Upholstery Department,Upholstery,Each (ea),Prices Not Fixed,Prices Not Fixed,TRUE,0,0,23,29
+Upholstery of a part of the car,تنجيد جزء من السيارة,UPH-245,Upholstery of a part of the car service under Upholstery (Each (ea)),Upholstery Department,Upholstery,Each (ea),Prices Not Fixed,Prices Not Fixed,TRUE,0,0,23,29
+Upholstery of small or sedan leather seats,تنجيد مراتب جلد صغير أو سيدان,UPH-246,Upholstery of small or sedan leather seats service under Upholstery (Each (ea)),Upholstery Department,Upholstery,Each (ea),Prices Not Fixed,Prices Not Fixed,TRUE,0,0,23,29
+"WASHING ""WATER ONLY",غسيل ماء,WSH-247,"WASHING ""WATER ONLY service under Normal Wash (Each (ea))",Washing Department,Normal Wash,Each (ea),10,8.695652174,,8,20,21,24
+Washing service with oil change,خدمة الغسيل مع تغيير زيت التروس,WSH-248,Washing service with oil change service under Gear Oil Change Services (Each (ea)),Oil Change Department,Gear Oil Change Services,Each (ea),150,130.4347826,TRUE,148,300,20,17
+hydraulic lifter washing,غسيل بستم,WSH-249,hydraulic lifter washing service under Normal Wash (Each (ea)),Washing Department,Normal Wash,Each (ea),40,34.7826087,,38,80,21,24
+Dayana Lorry washing,غسيل دينا,WSH-250,Dayana Lorry washing service under Normal Wash (Each (ea)),Washing Department,Normal Wash,Each (ea),50,43.47826087,,48,100,21,24
