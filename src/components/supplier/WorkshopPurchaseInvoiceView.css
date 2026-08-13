@@ -1,0 +1,1391 @@
+/**
+ * Workshop purchase invoice — GCC-style bilingual tax invoice (print-friendly).
+ * Forest green accents (#2e7d32 family), bilingual labels, dark green table head.
+ */
+
+.wpi-view {
+    --tx-green: #2e7d32;
+    --tx-green-dark: #1b5e20;
+    --tx-green-light: #e8f5e9;
+    --tx-green-mid: #c8e6c9;
+    --tx-red: #c62828;
+    --tx-ink: #1a1a1a;
+    --tx-muted: #546e7a;
+    --tx-border: #cfd8dc;
+    --tx-paper: #ffffff;
+
+    position: relative;
+    font-family: 'Poppins', 'Noto Sans Arabic', sans-serif;
+    color: var(--tx-ink);
+    font-size: 13px;
+    line-height: 1.45;
+    background: #eceff1;
+    border-radius: 0;
+    border: none;
+    padding: 0;
+    box-shadow: none;
+    overflow: visible;
+}
+
+/* ─── Action bar (hidden from PDF capture) ─── */
+.wpi-view__toolbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 0 0 12px 0;
+    background: transparent;
+}
+
+.wpi-view__toolbar .wpi-view__pdf-error {
+    flex: 1 1 100%;
+    text-align: right;
+    margin: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: #c62828;
+}
+
+.wpi-view__btn-download {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--tx-green-dark);
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.wpi-view__btn-download:hover:not(:disabled) {
+    filter: brightness(1.08);
+}
+
+.wpi-view__btn-download:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
+.wpi-view__badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: capitalize;
+    border: 1px solid var(--tx-border);
+    background: #fff;
+}
+
+.wpi-view__badge--pending {
+    background: #f5f5f5;
+    color: var(--tx-ink);
+}
+.wpi-view__badge--approved {
+    background: var(--tx-green-light);
+    color: var(--tx-green-dark);
+    border-color: var(--tx-green-mid);
+}
+.wpi-view__badge--rejected {
+    background: #ffebee;
+    color: #b71c1c;
+    border-color: #ffcdd2;
+}
+
+/* ─── Invoice sheet ─── */
+.wpi-view__sheet {
+    position: relative;
+    background: var(--tx-paper);
+    border: 1px solid var(--tx-border);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+    padding: 0;
+    overflow: hidden;
+}
+
+.wpi-view__watermark-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.wpi-view__wm--primary {
+    position: absolute;
+    left: 50%;
+    top: 42%;
+    transform: translate(-50%, -50%) rotate(-12deg);
+    font-size: clamp(3rem, 14vw, 7rem);
+    font-weight: 800;
+    letter-spacing: 0.2em;
+    color: rgba(46, 125, 50, 0.06);
+    white-space: nowrap;
+    user-select: none;
+}
+
+.wpi-view__surface {
+    position: relative;
+    z-index: 1;
+    padding: 20px 22px 0;
+}
+
+/* ─── Corporate header (triptych) ─── */
+.wpi-view__corp-header {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 12px;
+    align-items: start;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--tx-green);
+}
+
+.wpi-view__corp-header--with-qr {
+    grid-template-columns: 1fr auto auto 1fr;
+}
+
+.wpi-view__header-qr {
+    align-self: start;
+}
+
+.wpi-view__qr-block--header {
+    padding: 8px;
+    min-width: 132px;
+}
+
+.wpi-view__qr-block--header img {
+    width: 108px;
+    height: 108px;
+}
+
+.wpi-view__corp-left {
+    min-width: 0;
+}
+
+.wpi-view__corp-name {
+    margin: 0 0 6px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--tx-red);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+}
+
+.wpi-view__corp-tagline {
+    margin: 0 0 8px;
+    font-size: 11px;
+    color: var(--tx-muted);
+    line-height: 1.4;
+    max-width: 34ch;
+}
+
+.wpi-view__corp-vat {
+    margin: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--tx-ink);
+}
+
+.wpi-view__corp-vat-ar {
+    margin: 8px 0 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--tx-ink);
+}
+
+.wpi-view__corp-logo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0 8px;
+}
+
+.wpi-view__corp-logo-ring {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, var(--tx-green-light), #fff);
+    border: 3px solid var(--tx-green);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 8px rgba(46, 125, 50, 0.2);
+}
+
+.wpi-view__corp-logo-letter {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--tx-green-dark);
+    line-height: 1;
+}
+
+.wpi-view__corp-right {
+    min-width: 0;
+    text-align: right;
+}
+
+.wpi-view__corp-name-ar {
+    margin: 0 0 6px;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--tx-red);
+    line-height: 1.35;
+}
+
+.wpi-view__corp-tagline-ar {
+    margin: 0 0 8px;
+    font-size: 11px;
+    color: var(--tx-muted);
+    line-height: 1.5;
+}
+
+/* Brand strip (decorative) */
+.wpi-view__brands {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    padding: 10px 4px 14px;
+    border-bottom: 1px solid var(--tx-border);
+}
+
+.wpi-view__brand-pill {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-radius: 3px;
+    background: #f5f5f5;
+    border: 1px solid #e0e0e0;
+    color: #616161;
+}
+
+/* Tax invoice title strip */
+.wpi-view__title-ribbon {
+    margin: 14px auto 16px;
+    max-width: 420px;
+    text-align: center;
+    padding: 8px 16px;
+    background: var(--tx-green-light);
+    border: 1px solid var(--tx-green-mid);
+    border-radius: 4px;
+}
+
+.wpi-view__title-ribbon-ar {
+    display: block;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--tx-green-dark);
+    margin-bottom: 2px;
+}
+
+.wpi-view__title-ribbon-en {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--tx-green-dark);
+}
+
+/* Customer + invoice meta row */
+.wpi-view__meta-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+@media (max-width: 640px) {
+    .wpi-view__meta-split {
+        grid-template-columns: 1fr;
+    }
+
+    .wpi-view__corp-header {
+        grid-template-columns: 1fr;
+        text-align: center;
+    }
+
+    .wpi-view__corp-left,
+    .wpi-view__corp-right {
+        text-align: center;
+    }
+
+    .wpi-view__corp-logo {
+        order: -1;
+    }
+
+    .wpi-view__corp-tagline,
+    .wpi-view__corp-tagline-ar {
+        margin-left: auto;
+        margin-right: auto;
+    }
+}
+
+.wpi-view__panel {
+    border: 1px solid var(--tx-border);
+    padding: 12px 14px;
+    background: #fafafa;
+}
+
+.wpi-view__panel-title {
+    margin: 0 0 10px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--tx-green-dark);
+    border-bottom: 1px solid var(--tx-border);
+    padding-bottom: 6px;
+}
+
+.wpi-view__field {
+    margin-bottom: 8px;
+    font-size: 12px;
+}
+
+.wpi-view__field:last-child {
+    margin-bottom: 0;
+}
+
+.wpi-view__field-label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--tx-muted);
+    margin-bottom: 2px;
+}
+
+.wpi-view__field-label-bi {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.wpi-view__field-label-bi-en {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--tx-muted);
+}
+
+.wpi-view__field-label-bi-ar {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--tx-muted);
+}
+
+.wpi-view__field-value {
+    font-weight: 600;
+    color: var(--tx-ink);
+    word-break: break-word;
+}
+
+.wpi-view__details-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 24px;
+}
+
+@media (max-width: 640px) {
+    .wpi-view__details-grid {
+        grid-template-columns: 1fr;
+        column-gap: 0;
+    }
+}
+
+/* Table */
+.wpi-view__table-wrap {
+    margin-bottom: 16px;
+    border: 1px solid var(--tx-border);
+    overflow: hidden;
+}
+
+.wpi-view__table-wrap table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.wpi-view__table-wrap thead {
+    background: var(--tx-green-dark);
+    color: #fff;
+}
+
+.wpi-view__table-wrap th {
+    padding: 10px 8px;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: left;
+    border-right: 1px solid rgba(255, 255, 255, 0.2);
+    vertical-align: top;
+}
+
+.wpi-view__table-wrap th:last-child {
+    border-right: none;
+}
+
+.wpi-view__table-wrap th.wpi-view__th-num,
+.wpi-view__table-wrap td.wpi-view__td-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.wpi-view__th-sub {
+    display: block;
+    font-size: 9px;
+    font-weight: 600;
+    opacity: 0.95;
+    margin-top: 3px;
+}
+
+.wpi-view__table-wrap td {
+    padding: 10px 8px;
+    border-bottom: 1px solid #eceff1;
+    border-right: 1px solid #eceff1;
+    vertical-align: top;
+    background: #fff;
+}
+
+.wpi-view__table-wrap td:last-child {
+    border-right: none;
+}
+
+.wpi-view__table-wrap tbody tr:nth-child(even) td {
+    background: #fafafa;
+}
+
+.wpi-view__table-empty {
+    text-align: center;
+    padding: 28px;
+    color: var(--tx-muted);
+    font-style: italic;
+}
+
+/* Bottom: policy | totals */
+.wpi-view__bottom-grid {
+    display: grid;
+    grid-template-columns: 1fr 260px;
+    gap: 14px;
+    align-items: start;
+    margin-bottom: 16px;
+}
+
+@media (max-width: 900px) {
+    .wpi-view__bottom-grid {
+        grid-template-columns: 1fr;
+        justify-items: center;
+    }
+
+    .wpi-view__sum-box {
+        max-width: 100%;
+        width: 100%;
+    }
+}
+
+.wpi-view__policy {
+    border: 1px solid var(--tx-border);
+    padding: 12px;
+    font-size: 11px;
+    line-height: 1.55;
+    color: var(--tx-muted);
+    background: #fff;
+}
+
+.wpi-view__policy strong {
+    display: block;
+    color: var(--tx-green-dark);
+    margin-bottom: 6px;
+    font-size: 11px;
+}
+
+.wpi-view__policy-notes {
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--tx-body, #334155);
+}
+
+.wpi-view__policy-ar {
+    margin-top: 8px;
+    direction: rtl;
+    text-align: right;
+}
+
+.wpi-view__qr-block {
+    text-align: center;
+    padding: 10px;
+    border: 2px dashed var(--tx-green-mid);
+    background: #fff;
+    border-radius: 4px;
+}
+
+.wpi-view__qr-block img {
+    display: block;
+    margin: 0 auto;
+    width: 120px;
+    height: 120px;
+}
+
+.wpi-view__qr-caption {
+    font-size: 9px;
+    color: var(--tx-muted);
+    margin-top: 8px;
+    line-height: 1.35;
+}
+
+.wpi-view__verify-link {
+    display: block;
+    margin-top: 6px;
+    font-size: 9px;
+    word-break: break-all;
+    color: var(--tx-green-dark);
+}
+
+.wpi-view__qr-fallback {
+    width: 120px;
+    height: 120px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    text-align: center;
+    font-size: 10px;
+    background: #f5f5f5;
+    border: 1px dashed #bdbdbd;
+}
+
+.wpi-view__zatca-qr {
+    margin: 0 0 16px;
+    padding: 14px;
+    border: 2px dashed var(--tx-green-mid);
+    border-radius: 6px;
+    background: #fff;
+    text-align: center;
+}
+
+.wpi-view__zatca-qr-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--tx-green-dark);
+    margin-bottom: 10px;
+}
+
+.wpi-view__zatca-qr-img {
+    display: block;
+    margin: 0 auto;
+}
+
+.wpi-view__zatca-qr-caption {
+    margin: 8px 0 0;
+    font-size: 9px;
+    color: var(--tx-muted);
+}
+
+.wpi-view__zatca-qr-placeholder {
+    font-size: 10px;
+    color: var(--tx-muted);
+    line-height: 1.45;
+}
+
+.wpi-view__zatca-qr-placeholder-box {
+    width: 120px;
+    height: 120px;
+    margin: 0 auto 10px;
+    border: 2px dashed #cbd5e1;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: #94a3b8;
+    background: #f8fafc;
+}
+
+/* Totals column */
+.wpi-view__sum-box {
+    border: 1px solid var(--tx-border);
+    background: #fff;
+    padding: 0;
+    overflow: hidden;
+}
+
+.wpi-view__sum-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    font-size: 12px;
+    border-bottom: 1px solid #eceff1;
+}
+
+.wpi-view__sum-row-label {
+    color: var(--tx-muted);
+    font-weight: 600;
+}
+
+.wpi-view__sum-row-val {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.wpi-view__sum-row--net {
+    background: var(--tx-green-light);
+    border-bottom: none;
+    padding: 12px;
+}
+
+.wpi-view__sum-row--net .wpi-view__sum-row-label {
+    font-weight: 700;
+    color: var(--tx-green-dark);
+    text-transform: uppercase;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+}
+
+.wpi-view__sum-row--net .wpi-view__sum-row-val {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--tx-green-dark);
+}
+
+.wpi-view__sum-words {
+    padding: 8px 12px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--tx-green-dark);
+    text-align: center;
+    border-top: 1px solid var(--tx-green-mid);
+    direction: rtl;
+}
+
+.wpi-view__memo-inline {
+    margin: 12px 0;
+    padding: 8px 12px;
+    font-size: 11px;
+    background: #fffde7;
+    border: 1px solid #ffe082;
+    border-radius: 4px;
+}
+
+.wpi-view__memo-inline strong {
+    margin-right: 6px;
+}
+
+/* Signatures + ZATCA — default stacked; PDF capture uses side-by-side grid */
+.wpi-view__closing-row {
+    margin-top: 4px;
+}
+
+.wpi-view__signatures {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    padding: 16px 0 12px;
+    border-top: 1px solid var(--tx-border);
+    margin-top: 4px;
+}
+
+.wpi-view__sig {
+    font-size: 11px;
+}
+
+.wpi-view__sig-line {
+    margin-top: 28px;
+    border-top: 1px solid var(--tx-ink);
+    padding-top: 6px;
+    font-weight: 600;
+}
+
+.wpi-view__sig-ar {
+    font-size: 10px;
+    color: var(--tx-muted);
+    margin-top: 2px;
+}
+
+/* Footer band */
+.wpi-view__corp-footer {
+    background: var(--tx-green-dark);
+    color: #fff;
+    padding: 14px 22px;
+    font-size: 11px;
+    line-height: 1.55;
+}
+
+.wpi-view__corp-footer-inner {
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+}
+
+.wpi-view__corp-footer-contact {
+    flex: 1 1 220px;
+}
+
+.wpi-view__corp-footer-contact-ar {
+    direction: rtl;
+    text-align: right;
+    flex: 1 1 220px;
+    opacity: 0.95;
+}
+
+.wpi-view__corp-footer-qr-small {
+    flex-shrink: 0;
+}
+
+.wpi-view__corp-footer-qr-small img {
+    width: 56px;
+    height: 56px;
+    display: block;
+    background: #fff;
+    padding: 2px;
+    border-radius: 2px;
+}
+
+/* Off-screen mount for list-row PDF export (fixed off-viewport, not at 0,0). */
+.sales-invoice-pdf-export-mount {
+    position: fixed;
+    left: -10000px;
+    top: 0;
+    width: 750px;
+    padding: 0;
+    background: #fff;
+    pointer-events: none;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+
+/* PDF capture — A4 portrait aspect so raster fills one printed page */
+.wpi-view.wpi-view--pdf-capture {
+    width: 750px !important;
+    max-width: 750px !important;
+    background: #fff !important;
+    overflow: hidden;
+    box-sizing: border-box;
+    font-size: 14px;
+    line-height: 1.35;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__toolbar {
+    display: none !important;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__sheet {
+    width: 100%;
+    max-width: 100%;
+    box-shadow: none;
+    border: 1px solid var(--tx-border);
+    height: auto !important;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Only the final page (the one carrying the footer) is stretched to a full A4
+   so its footer band pins to the page bottom. Earlier pages size to their own
+   content — otherwise the leftover full-height space rendered as a blank gap at
+   the bottom of a page and pushed the next line item onto a fresh page. */
+.wpi-view.wpi-view--pdf-capture .wpi-view__sheet:has(> .wpi-view__corp-footer) {
+    /* 750px × A4 aspect — footer band sits on the page bottom when scaled */
+    min-height: calc(750px * 841.89 / 595.28) !important;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__surface {
+    flex: 0 0 auto;
+    padding: 8px 12px 0;
+    min-height: 0 !important;
+}
+
+/* Deterministic column widths for the PDF pages. With the default `auto` table
+   layout the Description column is sized from whichever rows are present, so a
+   row renders taller in the full measurement clone (narrow Description) than on
+   its own page (wider Description). That mismatch made the paginator over-
+   estimate tall rows and stop a few rows early, leaving a blank band before the
+   next page. `table-layout: fixed` makes every column content-independent, so
+   the pre-measured row heights match the rendered pages and each page packs
+   fully. Description is the only column without a set width, so it absorbs the
+   remaining space identically in the measurement clone and every page clone. */
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap table {
+    table-layout: fixed;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap th:first-child,
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap td:first-child {
+    width: 34px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap th.wpi-view__th-num,
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap td.wpi-view__td-num {
+    width: 92px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap td {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__corp-footer {
+    margin-top: auto;
+    flex-shrink: 0;
+    padding: 10px 14px;
+    font-size: 11px;
+    line-height: 1.45;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__watermark-layer,
+.wpi-view.wpi-view--pdf-capture .wpi-view__wm--primary {
+    display: none !important;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__corp-header {
+    gap: 6px;
+    padding-bottom: 4px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__corp-name,
+.wpi-view.wpi-view--pdf-capture .wpi-view__corp-name-ar {
+    font-size: 17px;
+    margin-bottom: 3px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__corp-tagline,
+.wpi-view.wpi-view--pdf-capture .wpi-view__corp-tagline-ar {
+    font-size: 11px;
+    margin-bottom: 4px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__corp-vat,
+.wpi-view.wpi-view--pdf-capture .wpi-view__corp-vat-ar {
+    font-size: 12px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__corp-logo-ring {
+    width: 40px;
+    height: 40px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__corp-logo-letter {
+    font-size: 20px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__qr-block--header {
+    min-width: 0;
+    padding: 3px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__qr-block--header img,
+.wpi-view.wpi-view--pdf-capture .wpi-view__qr-block--header .wpi-view__qr-fallback {
+    width: 60px !important;
+    height: 60px !important;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__brands {
+    gap: 3px;
+    margin-bottom: 4px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__brand-pill {
+    padding: 3px 6px;
+    font-size: 10px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__title-ribbon {
+    padding: 6px 10px;
+    margin-bottom: 6px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__title-ribbon-en {
+    font-size: 13px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__title-ribbon-ar {
+    font-size: 18px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__meta-split {
+    gap: 6px;
+    margin-bottom: 5px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__panel {
+    padding: 5px 8px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__panel-title {
+    font-size: 12px;
+    margin-bottom: 5px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__field {
+    margin-bottom: 4px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__field-label,
+.wpi-view.wpi-view--pdf-capture .wpi-view__field-label-bi-en,
+.wpi-view.wpi-view--pdf-capture .wpi-view__field-label-bi-ar {
+    font-size: 11px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__field-value {
+    font-size: 13px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__details-grid {
+    gap: 4px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap {
+    overflow: hidden !important;
+    max-width: 100%;
+    margin-bottom: 5px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap table {
+    table-layout: fixed;
+    width: 100% !important;
+    max-width: 100%;
+    font-size: 11px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap th {
+    padding: 4px 3px;
+    font-size: 10px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__th-sub {
+    font-size: 9px;
+    margin-top: 2px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap td {
+    padding: 4px 3px;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    font-size: 11px;
+    line-height: 1.3;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__table-wrap td div,
+.wpi-view.wpi-view--pdf-capture .wpi-view__line-sub {
+    font-size: 10px !important;
+    line-height: 1.3 !important;
+    margin-top: 2px !important;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__bottom-grid {
+    grid-template-columns: 1fr 170px;
+    gap: 6px;
+    margin-bottom: 5px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__policy {
+    padding: 6px 8px;
+    font-size: 10px;
+    line-height: 1.4;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__policy strong {
+    font-size: 11px;
+    margin-bottom: 4px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__qr-block img,
+.wpi-view.wpi-view--pdf-capture .wpi-view__qr-fallback {
+    width: 56px;
+    height: 56px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__qr-caption,
+.wpi-view.wpi-view--pdf-capture .wpi-view__verify-link {
+    font-size: 9px;
+    margin-top: 4px;
+}
+
+/* Totals box only — keep compact; rest of invoice stays larger */
+.wpi-view.wpi-view--pdf-capture .wpi-view__sum-box .wpi-view__sum-row {
+    padding: 3px 8px;
+    font-size: 8px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__sum-box .wpi-view__sum-row--net {
+    padding: 5px 8px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__sum-box .wpi-view__sum-row--net .wpi-view__sum-row-label {
+    font-size: 8px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__sum-box .wpi-view__sum-row--net .wpi-view__sum-row-val {
+    font-size: 10px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__sum-box .wpi-view__sum-words {
+    font-size: 7px;
+    padding: 4px 8px 5px;
+    margin-top: 0;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__panel .wpi-view__sum-row {
+    padding: 3px 0;
+    font-size: 10px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__memo-inline {
+    font-size: 11px;
+    margin-bottom: 5px;
+    line-height: 1.35;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__panel p[style],
+.wpi-view.wpi-view--pdf-capture .wpi-view__sum-row span[style] {
+    font-size: 10px !important;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__signatures {
+    gap: 10px;
+    margin-bottom: 0;
+    padding: 0;
+    border-top: none;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__sig-line {
+    margin-top: 8px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__closing-row {
+    margin-top: 4px;
+    margin-bottom: 6px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__closing-row .wpi-view__signatures {
+    border-top: 1px solid var(--tx-border);
+    padding-top: 6px;
+    margin-top: 0;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__corp-footer-qr-small img {
+    width: 32px;
+    height: 32px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__zatca-qr {
+    padding: 6px;
+    margin: 8px 0 0;
+    border-width: 1px;
+    text-align: center;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__sig,
+.wpi-view.wpi-view--pdf-capture .wpi-view__sig-line {
+    font-size: 11px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__zatca-qr-title {
+    font-size: 10px;
+    line-height: 1.3;
+    margin-bottom: 5px;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__zatca-qr-img {
+    width: 84px !important;
+    height: 84px !important;
+}
+
+.wpi-view.wpi-view--pdf-capture .wpi-view__sig-ar {
+    font-size: 10px;
+}
+
+@media print {
+    .wpi-view__toolbar {
+        display: none !important;
+    }
+
+    .wpi-view {
+        background: #fff;
+    }
+
+    .wpi-view__sheet {
+        box-shadow: none;
+        border: none;
+    }
+}
+
+/* ─── Compact layout (e.g. supplier sales invoice modal) ─── */
+.wpi-view--compact {
+    font-size: 14px;
+    line-height: 1.45;
+}
+
+.wpi-view--compact .wpi-view__toolbar {
+    padding: 0 0 8px;
+    gap: 8px;
+}
+
+.wpi-view--compact .wpi-view__btn-download {
+    padding: 6px 12px;
+    font-size: 11px;
+}
+
+.wpi-view--compact .wpi-view__badge {
+    padding: 4px 10px;
+    font-size: 10px;
+}
+
+.wpi-view--compact .wpi-view__surface {
+    padding: 12px 14px 0;
+}
+
+.wpi-view--compact .wpi-view__corp-header {
+    gap: 8px;
+    padding-bottom: 8px;
+}
+
+.wpi-view--compact .wpi-view__corp-name,
+.wpi-view--compact .wpi-view__corp-name-ar {
+    font-size: 16px;
+    margin: 0 0 4px;
+}
+
+.wpi-view--compact .wpi-view__corp-tagline,
+.wpi-view--compact .wpi-view__corp-tagline-ar {
+    margin: 0 0 4px;
+    font-size: 12px;
+}
+
+.wpi-view--compact .wpi-view__corp-vat {
+    font-size: 13px;
+}
+
+.wpi-view--compact .wpi-view__corp-vat-ar {
+    margin: 2px 0 0;
+    font-size: 12px;
+}
+
+.wpi-view--compact .wpi-view__corp-logo-ring {
+    width: 56px;
+    height: 56px;
+    border-width: 2px;
+}
+
+.wpi-view--compact .wpi-view__corp-logo-letter {
+    font-size: 22px;
+}
+
+.wpi-view--compact .wpi-view__brands {
+    padding: 6px 4px 8px;
+    gap: 4px;
+}
+
+.wpi-view--compact .wpi-view__brand-pill {
+    padding: 3px 7px;
+    font-size: 10px;
+}
+
+.wpi-view--compact .wpi-view__title-ribbon {
+    margin: 8px auto 10px;
+    padding: 5px 12px;
+    max-width: 380px;
+}
+
+.wpi-view--compact .wpi-view__title-ribbon-ar {
+    font-size: 18px;
+}
+
+.wpi-view--compact .wpi-view__title-ribbon-en {
+    font-size: 12px;
+}
+
+.wpi-view--compact .wpi-view__meta-split {
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.wpi-view--compact .wpi-view__panel {
+    padding: 8px 10px;
+}
+
+.wpi-view--compact .wpi-view__panel-title {
+    margin: 0 0 6px;
+    padding-bottom: 4px;
+    font-size: 11px;
+}
+
+.wpi-view--compact .wpi-view__field {
+    margin-bottom: 5px;
+    font-size: 13px;
+}
+
+.wpi-view--compact .wpi-view__field-label,
+.wpi-view--compact .wpi-view__field-label-bi-en,
+.wpi-view--compact .wpi-view__field-label-bi-ar {
+    font-size: 11px;
+}
+
+.wpi-view--compact .wpi-view__field-value {
+    font-size: 13px;
+}
+
+.wpi-view--compact .wpi-view__details-grid {
+    column-gap: 14px;
+}
+
+.wpi-view--compact .wpi-view__table-wrap {
+    margin-bottom: 10px;
+}
+
+.wpi-view--compact .wpi-view__table-wrap table {
+    font-size: 13px;
+}
+
+.wpi-view--compact .wpi-view__table-wrap th {
+    padding: 7px 6px;
+    font-size: 11px;
+}
+
+.wpi-view--compact .wpi-view__th-sub {
+    margin-top: 2px;
+    font-size: 10px;
+}
+
+.wpi-view--compact .wpi-view__table-wrap td {
+    padding: 7px 6px;
+    font-size: 13px;
+}
+
+.wpi-view--compact .wpi-view__table-wrap td div,
+.wpi-view--compact .wpi-view__line-sub {
+    font-size: 12px !important;
+    line-height: 1.35 !important;
+}
+
+.wpi-view--compact .wpi-view__table-empty {
+    padding: 16px;
+}
+
+.wpi-view--compact .wpi-view__bottom-grid {
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.wpi-view--compact .wpi-view__policy {
+    padding: 8px;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.wpi-view--compact .wpi-view__policy strong {
+    margin-bottom: 4px;
+    font-size: 12px;
+}
+
+.wpi-view--compact .wpi-view__qr-block {
+    padding: 6px;
+}
+
+.wpi-view--compact .wpi-view__qr-block img,
+.wpi-view--compact .wpi-view__qr-fallback {
+    width: 96px;
+    height: 96px;
+}
+
+.wpi-view--compact .wpi-view__qr-caption {
+    margin-top: 4px;
+    font-size: 10px;
+}
+
+.wpi-view--compact .wpi-view__verify-link {
+    margin-top: 4px;
+    font-size: 10px;
+}
+
+.wpi-view--compact .wpi-view__sum-box .wpi-view__sum-row {
+    padding: 5px 8px;
+    font-size: 10px;
+    gap: 6px;
+}
+
+.wpi-view--compact .wpi-view__sum-box .wpi-view__sum-row--net {
+    padding: 6px 8px;
+}
+
+.wpi-view--compact .wpi-view__sum-box .wpi-view__sum-row--net .wpi-view__sum-row-label {
+    font-size: 9px;
+}
+
+.wpi-view--compact .wpi-view__sum-box .wpi-view__sum-row--net .wpi-view__sum-row-val {
+    font-size: 13px;
+}
+
+.wpi-view--compact .wpi-view__sum-box .wpi-view__sum-words {
+    padding: 5px 8px 6px;
+    font-size: 9px;
+}
+
+.wpi-view--compact .wpi-view__panel .wpi-view__sum-row {
+    padding: 4px 0;
+    font-size: 12px;
+    gap: 8px;
+}
+
+.wpi-view--compact .wpi-view__memo-inline {
+    margin: 8px 0;
+    padding: 6px 10px;
+    font-size: 12px;
+}
+
+.wpi-view--compact .wpi-view__panel p[style],
+.wpi-view--compact .wpi-view__sum-row span[style] {
+    font-size: 11px !important;
+}
+
+.wpi-view--compact .wpi-view__sig {
+    font-size: 12px;
+}
+
+.wpi-view--compact .wpi-view__sig-ar {
+    font-size: 11px;
+}
+
+.wpi-view--compact .wpi-view__zatca-qr-title {
+    font-size: 11px;
+}
+
+.wpi-view--compact .wpi-view__signatures {
+    gap: 16px;
+    padding: 10px 0 8px;
+    margin-top: 2px;
+}
+
+.wpi-view--compact .wpi-view__sig-line {
+    margin-top: 20px;
+}
+
+.wpi-view--compact .wpi-view__corp-footer {
+    padding: 10px 14px;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.wpi-view--compact .wpi-view__corp-footer-inner {
+    gap: 8px;
+}
+
+.wpi-view--compact .wpi-view__corp-footer-qr-small img {
+    width: 48px;
+    height: 48px;
+}
+
+/* Invoice preview modals (sales / workshop PI / etc.): slightly tighter modal padding */
+.app-modal-content.wpi-invoice-preview-modal .app-modal-body {
+    padding-top: 8px;
+    padding-bottom: 14px;
+}
