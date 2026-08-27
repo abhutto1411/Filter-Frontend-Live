@@ -1,0 +1,140 @@
+.sf-entity-combobox-anchor {
+    position: relative;
+    width: 100%;
+}
+
+.sf-entity-combobox-anchor .pi-search-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 0 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+    min-height: 42px;
+    box-sizing: border-box;
+}
+
+.sf-entity-combobox-anchor .pi-search-box svg {
+    flex-shrink: 0;
+    color: #94a3b8;
+}
+
+.sf-entity-combobox-anchor .pi-search-box input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 0.875rem;
+    color: #0f172a;
+    padding: 10px 0;
+}
+
+.sf-entity-dropdown-portal {
+    position: fixed !important;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    box-sizing: border-box;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow:
+        0 10px 25px -5px rgba(0, 0, 0, 0.12),
+        0 8px 10px -6px rgba(0, 0, 0, 0.08);
+    overflow-x: hidden;
+    overflow-y: auto;
+    animation: sfComboboxSlideIn 0.15s ease-out;
+}
+
+@keyframes sfComboboxSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.sf-entity-dropdown-portal .pi-result-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 14px;
+    cursor: pointer;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background 0.15s ease;
+}
+
+.sf-entity-dropdown-portal .pi-result-item:last-of-type {
+    border-bottom: none;
+}
+
+.sf-entity-dropdown-portal .pi-result-item.selected,
+.sf-entity-dropdown-portal .pi-result-item:hover {
+    background: #f8fafc;
+}
+
+.sf-entity-dropdown-portal .pi-item-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.sf-entity-dropdown-portal .pi-item-meta {
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-top: 2px;
+    white-space: pre-line;
+    line-height: 1.45;
+    word-break: break-word;
+}
+
+.sf-entity-dropdown-portal .pi-result-info {
+    min-width: 0;
+    flex: 1;
+}
+
+.sf-entity-dropdown-portal .pi-result-trailing {
+    flex-shrink: 0;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: #0f172a;
+    white-space: nowrap;
+    padding-left: 8px;
+    align-self: center;
+}
+
+.supplier-invoice-combobox-menu .pi-result-item.selected {
+    background: #fff7ed;
+    box-shadow: inset 3px 0 0 #f97316;
+}
+
+.supplier-invoice-combobox-menu .pi-item-name {
+    font-size: 0.9375rem;
+    letter-spacing: 0.01em;
+}
+
+.sf-combobox-empty {
+    padding: 14px 16px;
+    font-size: 0.8125rem;
+    color: #64748b;
+    text-align: center;
+}
+
+.sf-combobox-footer {
+    padding: 8px 12px;
+    font-size: 0.6875rem;
+    color: #94a3b8;
+    border-top: 1px solid #f1f5f9;
+    background: #fafafa;
+}
+
+.ws-filter-combobox.sf-entity-combobox-anchor {
+    min-width: 220px;
+}
