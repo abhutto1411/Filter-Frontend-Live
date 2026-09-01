@@ -1,0 +1,3938 @@
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Search, Package, AlertCircle, Wallet, RefreshCw, History, X, FileSpreadsheet, FileText } from 'lucide-react';
+import './Workshop.css';
+
+import { AnimatePresence } from 'framer-motion';
+import Modal from '../../components/Modal';
+import WorkshopSubScreen from '../../components/workshop/WorkshopSubScreen';
+import WsTableScroll from '../../components/workshop/WsTableScroll';
+import { ShimmerTableBodyRows } from '../../components/supplier/Shimmer';
+import { MOCK_SUPPLIERS_CATALOG } from './constants';
+import { getMyProducts, getBranchProducts, patchBranchProduct } from '../../services/workshopCatalogApi';
+import {
+    getWorkshopStaffBranchProducts,
+    getWorkshopStaffProducts,
+    unwrapWorkshopBranchListResponse,
+} from '../../services/workshopStaffApi';
+import {
+    postBranchProductInventoryAdjustment,
+    postBranchBulkInventoryAdjustment,
+    getBranchProductInventoryAdjustments,
+} from '../../services/workshopInventoryApi';
+import { useAuth } from '../../context/AuthContext';
+import { wiT, wiReasonLabel } from '../../utils/workshopInventoryI18n';
+import { catalogDisplayName } from '../../utils/catalogDisplayName';
+import { formatStockOnHandDisplay, formatUomRule, productEffectiveUom } from './workshopUomUtils';
+import {
+    exportWorkshopTimelineExcel,
+    exportWorkshopTimelinePdf,
+} from './workshopInventoryTimelineExport';
+import {
+    exportWorkshopInventoryExcel,
+    exportWorkshopInventoryPdf,
+    workshopInventoryHasStock,
+} from './workshopInventoryExport';
+
+const timelineExportBtnStyle = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '8px 14px',
+    borderRadius: 8,
+    border: '1px solid var(--color-border-light)',
+    background: '#fff',
+    fontSize: '0.8125rem',
+    fontWeight: 700,
+    color: 'var(--color-text-dark)',
+    cursor: 'pointer',
+};
+
+const exportToolbarBtnStyle = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '8px 14px',
+    borderRadius: 8,
+    border: '1px solid var(--color-border)',
+    background: '#fff',
+    fontSize: '0.8125rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+    color: 'var(--color-text-dark)',
+};
+
+/** Match WorkshopDashboard / WorkshopDepartments response shapes. */
+function extractProducts(res) {
+    return unwrapWorkshopBranchListResponse(res, 'products');
+}
+
+/**
+ * GET /workshop-staff/branches/:id/products (and workshop-wide `getProducts`) return nested
+ * `categories` / `uncategorizedProducts`. Flatten so each row carries server `qtyOnHand` /
+ * `currentQty` for that branch (or all-branches sum), matching `branch_inventory` used by the timeline.
+ */
+function flattenWorkshopStaffBranchProductsResponse(res) {
+    if (res == null) return [];
+    if (Array.isArray(res)) return res;
+    if (typeof res !== 'object') return [];
+    const out = [];
+    const uncategorized =
+        res.uncategorizedProducts ??
+        res.uncategorized_products ??
+        res?.data?.uncategorizedProducts;
+    if (Array.isArray(uncategorized)) {
+        for (const p of uncategorized) {
+            if (p && typeof p === 'object') out.push(p);
+        }
+    }
+    const categories = res.categories ?? res?.data?.categories;
+    if (Array.isArray(categories)) {
+        for (const c of categories) {
+            if (!c || typeof c !== 'object') continue;
+            const subs = c.subCategories ?? c.sub_categories ?? [];
+            if (Array.isArray(subs)) {
+                for (const s of subs) {
+                    if (s?.products && Array.isArray(s.products)) {
+                        for (const p of s.products) {
+                            if (p && typeof p === 'object') out.push(p);
+                        }
+                    }
+                }
+            }
+            const direct = c.productsWithoutSub ?? c.products_without_sub;
+            if (Array.isArray(direct)) {
+                for (const p of direct) {
+                    if (p && typeof p === 'object') out.push(p);
+                }
+            }
+        }
+    }
+    if (out.length > 0) return out;
+    return unwrapWorkshopBranchListResponse(res, 'products');
+}
+
+/** Single branch_inventory qty when API nests an object or an array (Prisma include). */
+function pickBranchInventoryQtyFromRow(r) {
+    if (!r || typeof r !== 'object') return null;
+    const bi = r.branchInventory ?? r.branch_inventory;
+    if (bi == null) return null;
+    if (Array.isArray(bi)) {
+        const first = bi[0];
+        if (!first || typeof first !== 'object') return null;
+        const v = first.qtyOnHand ?? first.qty_on_hand;
+        return v != null && v !== '' ? Number(v) : null;
+    }
+    const v = bi.qtyOnHand ?? bi.qty_on_hand;
+    return v != null && v !== '' ? Number(v) : null;
+}
+
+function pickNumber(...vals) {
+    for (const v of vals) {
+        if (v == null || v === '') continue;
+        const n = Number(v);
+        if (Number.isFinite(n)) return n;
+    }
+    return 0;
+}
+
+function formatSar(amount, t, { decimals = 0 } = {}) {
+    const n = Number(amount);
+    if (!Number.isFinite(n)) return t('money.sarDash');
+    const amountStr = n.toLocaleString(undefined, {
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals,
+    });
+    return t('money.sar', { amount: amountStr });
+}
+
+/**
+ * Branch adoption opening from `workshop_products` (or top-level list fields).
+ * Never use global catalog `products.opening_qty` — that is not the branch adoption baseline.
+ */
+function pickBranchAdoptionOpeningQty(row) {
+    if (!row || typeof row !== 'object') return null;
+    const wps = row.workshopProducts ?? row.workshop_products;
+    if (Array.isArray(wps)) {
+        for (const wp of wps) {
+            const v = wp?.openingQty ?? wp?.opening_qty;
+            if (v != null && v !== '') {
+                const n = Number(v);
+                if (Number.isFinite(n)) return n;
+            }
+        }
+    }
+    for (const v of [row.openingQty, row.opening_qty]) {
+        if (v != null && v !== '') {
+            const n = Number(v);
+            if (Number.isFinite(n)) return n;
+        }
+    }
+    return null;
+}
+
+/** First numeric value, or `null` if none set (so we can fall back to opening qty). */
+function firstFiniteNumber(values) {
+    for (const v of values) {
+        if (v == null || v === '') continue;
+        const n = Number(v);
+        if (Number.isFinite(n)) return n;
+    }
+    return null;
+}
+
+export const INVENTORY_ADJUSTMENT_REASON_OPENING_QTY = 'Opening qty';
+export const INVENTORY_ADJUSTMENT_REASON_INFINITE_QTY = 'Infinite qty';
+
+const INVENTORY_ADJUST_REASON_OPTIONS = [
+    { value: INVENTORY_ADJUSTMENT_REASON_OPENING_QTY, labelKey: 'reason.openingQty' },
+    { value: INVENTORY_ADJUSTMENT_REASON_INFINITE_QTY, labelKey: 'reason.infiniteQty' },
+    { value: 'Damaged Stock', labelKey: 'reason.damaged' },
+    { value: 'Inventory Count Correction', labelKey: 'reason.countCorrection' },
+    { value: 'Expired Item', labelKey: 'reason.expired' },
+    { value: 'Returns/Exchanges', labelKey: 'reason.returns' },
+    { value: 'Other', labelKey: 'reason.other' },
+];
+
+function formatInventoryQty(value, isInfiniteQty = false) {
+    if (isInfiniteQty) return '∞';
+    if (value == null || value === '') return '—';
+    const n = Number(value);
+    return Number.isFinite(n) ? n : '—';
+}
+
+function computeBulkAdjustmentRow(item, amount, reasonKind) {
+    if (reasonKind === 'infinite') {
+        const prevCurrent = Number(item.qty) || 0;
+        return {
+            id: String(item.id),
+            name: item.name || '—',
+            sku: item.sku || '—',
+            isOpening: false,
+            isInfinite: true,
+            prevQty: prevCurrent,
+            prevOpening: item.openingQty != null ? Number(item.openingQty) : null,
+            prevCurrent,
+            newQty: prevCurrent,
+            newOpening: null,
+            newCurrent: prevCurrent,
+            unchanged: Boolean(item.isInfiniteQty),
+        };
+    }
+    const isOpeningReason = reasonKind === 'opening';
+    const rawAmt = Math.round(Number(amount) || 0);
+    const amt = item.allowMinusQty && !isOpeningReason ? rawAmt : Math.max(0, rawAmt);
+    if (isOpeningReason) {
+        const prevOpening =
+            item.openingQty != null && item.openingQty !== ''
+                ? Number(item.openingQty)
+                : Number(item.qty) || 0;
+        const prevCurrent = Number(item.qty) || 0;
+        return {
+            id: String(item.id),
+            name: item.name || '—',
+            sku: item.sku || '—',
+            isOpening: true,
+            prevQty: prevOpening,
+            prevOpening,
+            prevCurrent,
+            newQty: amt,
+            newOpening: amt,
+            newCurrent: amt,
+            unchanged: prevOpening === amt && prevCurrent === amt,
+        };
+    }
+    const prevQty = Number(item.qty) || 0;
+    return {
+        id: String(item.id),
+        name: item.name || '—',
+        sku: item.sku || '—',
+        isOpening: false,
+        prevQty,
+        prevOpening: item.openingQty != null ? Number(item.openingQty) : null,
+        prevCurrent: prevQty,
+        newQty: amt,
+        newOpening: null,
+        newCurrent: amt,
+        unchanged: amt === prevQty,
+    };
+}
+
+function isInfiniteQtyAdjustmentEntry(entry) {
+    if (!entry) return false;
+    const reason = String(entry.reason ?? '').trim();
+    const source = String(entry.source ?? '').toLowerCase();
+    return (
+        reason === INVENTORY_ADJUSTMENT_REASON_INFINITE_QTY ||
+        source === 'manual_infinite_qty' ||
+        entry.isInfiniteQty === true ||
+        entry.affectsInfinite === true
+    );
+}
+
+function isOpeningQtyAdjustmentEntry(entry) {
+    if (!entry) return false;
+    const reason = String(entry.reason ?? '').trim();
+    const source = String(entry.source ?? '').toLowerCase();
+    return (
+        reason === INVENTORY_ADJUSTMENT_REASON_OPENING_QTY ||
+        source === 'manual_opening_qty' ||
+        source === 'super_admin_starting_stock'
+    );
+}
+
+function humanizeInventoryLogSource(source, t) {
+    const s = String(source || 'manual').toLowerCase();
+    if (s === 'manual_opening_qty') return t('source.manualOpening');
+    if (s === 'manual_infinite_qty') return t('source.manualInfinite');
+    if (s === 'supplier_purchase_invoice') return t('source.supplierPurchase');
+    if (s === 'local_supplier_purchase_invoice') return t('source.localSupplierPurchase');
+    if (s === 'supplier_purchase_return') return t('source.supplierReturn');
+    if (s === 'local_supplier_purchase_return') return t('source.localReturn');
+    if (s === 'super_admin_starting_stock') return t('source.superAdmin');
+    if (s === 'pos') return t('source.pos');
+    if (s === 'purchase_receipt') return t('source.purchaseReceipt');
+    return s.replace(/_/g, ' ');
+}
+
+function humanizeInventoryLogReferenceType(type, t) {
+    const ty = String(type || '').toLowerCase();
+    if (ty === 'workshop_supplier_purchase_invoice') return t('ref.wpi');
+    if (ty === 'workshop_local_supplier_purchase_invoice') return t('ref.localWpi');
+    if (ty === 'workshop_local_supplier_purchase_return') return t('ref.localDebit');
+    return ty.replace(/_/g, ' ');
+}
+
+function normalizeAdjustmentEntry(raw) {
+    if (!raw) return null;
+    const at = raw.at ?? raw.createdAt ?? raw.created_at ?? raw.occurredAt;
+    if (!at) return null;
+    const movementType = String(raw.movementType ?? raw.movement_type ?? '').toLowerCase();
+    let source = String(raw.source ?? 'manual').toLowerCase();
+    if (
+        (source === 'manual' || source === '') &&
+        (movementType === 'workshop_supplier_purchase_received' ||
+            movementType === 'workshop_local_supplier_purchase_received' ||
+            movementType === 'workshop_local_supplier_purchase_return' ||
+            movementType.includes('supplier_purchase'))
+    ) {
+        source =
+            movementType === 'workshop_local_supplier_purchase_received'
+                ? 'local_supplier_purchase_invoice'
+                : movementType === 'workshop_local_supplier_purchase_return'
+                  ? 'local_supplier_purchase_return'
+                  : movementType === 'workshop_supplier_purchase_return'
+                    ? 'supplier_purchase_return'
+                    : 'supplier_purchase_invoice';
+    }
+    const id = String(
+        raw.id ?? raw.logId ?? raw.movementId ?? raw.movement_id ?? `${at}-${raw.previousQty}-${raw.newQty}`,
+    );
+    const previousQty =
+        raw.previousQty != null
+            ? Number(raw.previousQty)
+            : raw.previous_qty != null
+              ? Number(raw.previous_qty)
+              : null;
+    const newQty =
+        raw.newQty != null ? Number(raw.newQty) : raw.new_qty != null ? Number(raw.new_qty) : null;
+    let delta = 0;
+    if (raw.delta != null) delta = Number(raw.delta);
+    else if (raw.qty != null) delta = Number(raw.qty);
+    else if (previousQty != null && newQty != null) delta = newQty - previousQty;
+    const referenceRaw = raw.reference ?? raw.reference_json;
+    const reference =
+        referenceRaw && typeof referenceRaw === 'object' && !Array.isArray(referenceRaw)
+            ? {
+                  type: referenceRaw.type ? String(referenceRaw.type) : '',
+                  id: referenceRaw.id != null ? String(referenceRaw.id) : '',
+                  invoiceNumber:
+                      referenceRaw.invoiceNumber != null
+                          ? String(referenceRaw.invoiceNumber)
+                          : referenceRaw.invoice_number != null
+                            ? String(referenceRaw.invoice_number)
+                            : undefined,
+              }
+            : null;
+    const reason =
+        raw.reason ||
+        (source === 'supplier_purchase_invoice' ? 'Supplier purchase (approved)' : null) ||
+        (source === 'local_supplier_purchase_invoice' ? 'Non-affiliated supplier purchase' : null) ||
+        (source === 'local_supplier_purchase_return' ? 'Non-affiliated purchase return' : null) ||
+        (source === 'supplier_purchase_return' ? 'Supplier purchase return' : null) ||
+        '—';
+    return {
+        id,
+        at: String(at),
+        previousQty,
+        newQty,
+        delta,
+        uom: raw.uom ?? raw.unit ?? null,
+        reason,
+        note: raw.note ?? raw.notes ?? null,
+        adjustedBy: raw.adjustedBy ?? raw.adjusted_by ?? raw.user ?? null,
+        source,
+        reference,
+        movementType: movementType || undefined,
+        affectsOpening: isOpeningQtyAdjustmentEntry({ reason, source }),
+        affectsInfinite: isInfiniteQtyAdjustmentEntry({ reason, source, isInfiniteQty: raw.isInfiniteQty }),
+    };
+}
+
+function extractAdjustmentEntries(res) {
+    const list =
+        (Array.isArray(res?.data?.entries) && res.data.entries)
+        || (Array.isArray(res?.entries) && res.entries)
+        || (Array.isArray(res?.data?.movements) && res.data.movements)
+        || (Array.isArray(res?.movements) && res.movements)
+        || [];
+    return list.map(normalizeAdjustmentEntry).filter(Boolean);
+}
+
+function extractTimelineMeta(res) {
+    const data = res?.data && typeof res.data === 'object' ? res.data : res;
+    if (!data || typeof data !== 'object') return null;
+    const stored =
+        data.storedOpeningQty != null
+            ? Number(data.storedOpeningQty)
+            : data.stored_opening_qty != null
+              ? Number(data.stored_opening_qty)
+              : null;
+    const current =
+        data.currentQtyOnHand != null
+            ? Number(data.currentQtyOnHand)
+            : data.current_qty_on_hand != null
+              ? Number(data.current_qty_on_hand)
+              : null;
+    if (!Number.isFinite(stored) && !Number.isFinite(current)) return null;
+    return {
+        storedOpeningQty: Number.isFinite(stored) ? stored : null,
+        currentQtyOnHand: Number.isFinite(current) ? current : null,
+    };
+}
+
+function mergeLogEntries(localList, serverList) {
+    const byId = new Map();
+    for (const e of serverList || []) byId.set(e.id, e);
+
+    const serverInfiniteNear = (local) => {
+        if (!isInfiniteQtyAdjustmentEntry(local)) return false;
+        const localAt = new Date(local.at).getTime();
+        if (!Number.isFinite(localAt)) return false;
+        return (serverList || []).some((s) => {
+            if (!isInfiniteQtyAdjustmentEntry(s)) return false;
+            if (s.previousQty !== local.previousQty) return false;
+            if (String(s.reason || '') !== String(local.reason || '')) return false;
+            const serverAt = new Date(s.at).getTime();
+            return Number.isFinite(serverAt) && Math.abs(serverAt - localAt) < 120_000;
+        });
+    };
+
+    for (const e of localList || []) {
+        if (byId.has(e.id)) continue;
+        if (serverInfiniteNear(e)) continue;
+        byId.set(e.id, e);
+    }
+    return [...byId.values()].sort((a, b) => String(b.at).localeCompare(String(a.at)));
+}
+
+/** Latest adoption baseline from audit rows (opening-qty adjustments only). */
+function latestOpeningQtyFromLogEntries(entries) {
+    if (!Array.isArray(entries) || entries.length === 0) return null;
+    const openingRows = entries.filter((e) => isOpeningQtyAdjustmentEntry(e));
+    if (openingRows.length === 0) return null;
+    openingRows.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+    const latest = openingRows[0];
+    if (latest?.newQty == null || !Number.isFinite(Number(latest.newQty))) return null;
+    return Number(latest.newQty);
+}
+
+/** Same low-stock rule as the dashboard & Dept & Products. */
+function isLowStockRow(p) {
+    if (p?.isInfiniteQty) return false;
+    const crit = Number(p.critical_level) || 0;
+    const qty = Number(p.qty) || 0;
+    return crit > 0 && qty <= crit;
+}
+
+function formatTimelineQty(entry, which, fallbackUom) {
+    if (isInfiniteQtyAdjustmentEntry(entry) && which === 'new') return '∞';
+    const val = which === 'new' ? entry.newQty : entry.previousQty;
+    if (val == null) return '—';
+    const uom = entry?.uom || fallbackUom;
+    if (uom && String(uom).trim()) {
+        const n = Number(val);
+        const shown = Number.isFinite(n) ? n : val;
+        return `${shown} ${String(uom).trim()}`;
+    }
+    return val;
+}
+
+function formatTimelineDelta(entry, fallbackUom) {
+    if (isInfiniteQtyAdjustmentEntry(entry)) return '—';
+    const d = Number(entry?.delta);
+    if (!Number.isFinite(d)) return '—';
+    const uom = entry?.uom || fallbackUom;
+    const prefix = d > 0 ? '+' : '';
+    const core = `${prefix}${d}`;
+    return uom && String(uom).trim() ? `${core} ${String(uom).trim()}` : core;
+}
+
+function pickDisplayName(master, row) {
+    const candidates = [
+        master?.name,
+        row?.name,
+        row?.productName,
+        row?.product_name,
+        row?.serviceName,
+        row?.itemName,
+        row?.item_name,
+        master?.title,
+    ];
+    for (const c of candidates) {
+        if (c != null && String(c).trim() !== '') return String(c).trim();
+    }
+    const sku = master?.sku ?? row?.sku;
+    if (sku != null && String(sku).trim() !== '') return String(sku).trim();
+    return 'Unnamed';
+}
+
+function pickArabicName(master, row) {
+    const candidates = [
+        master?.arabicName,
+        master?.arabic_name,
+        master?.productNameArabic,
+        master?.product_name_arabic,
+        row?.arabicName,
+        row?.arabic_name,
+        row?.productNameArabic,
+        row?.product_name_arabic,
+    ];
+    for (const c of candidates) {
+        if (c != null && String(c).trim() !== '') return String(c).trim();
+    }
+    return null;
+}
+
+function buildInventorySearchText(row) {
+    const fields = [
+        row?._searchText,
+        row?.name,
+        row?.productName,
+        row?.product_name,
+        row?.arabicName,
+        row?.arabic_name,
+        row?.productNameArabic,
+        row?.product_name_arabic,
+        row?.itemName,
+        row?.item_name,
+        row?.sku,
+        row?.code,
+        row?.barcode,
+        row?.partNumber,
+        row?.part_number,
+        row?.brand,
+        row?.departmentName,
+        row?.department_name,
+        row?.categoryName,
+        row?.category_name,
+        row?.id,
+    ];
+    return fields
+        .map(normalizeInventorySearchValue)
+        .filter(Boolean)
+        .join(' ');
+}
+
+function normalizeInventorySearchValue(value) {
+    if (value == null) return '';
+    let s = String(value);
+    try {
+        if (typeof s.normalize === 'function') {
+            s = s.normalize('NFKD').replace(/[\u0300-\u036f]/g, '');
+        }
+    } catch {
+        /* lone surrogates / engines without normalize — fall back to raw string */
+    }
+    return s.toLowerCase().trim();
+}
+
+function buildRawInventorySearchText(...sources) {
+    const fields = [];
+    for (const source of sources) {
+        if (!source || typeof source !== 'object') continue;
+        fields.push(
+            source.name,
+            source.productName,
+            source.product_name,
+            source.arabicName,
+            source.arabic_name,
+            source.productNameArabic,
+            source.product_name_arabic,
+            source.itemName,
+            source.item_name,
+            source.title,
+            source.sku,
+            source.code,
+            source.barcode,
+            source.partNumber,
+            source.part_number,
+            source.brand,
+            source.departmentName,
+            source.department_name,
+            source.department?.name,
+            source.categoryName,
+            source.category_name,
+            source.category?.name,
+            source.id,
+            source.productId,
+            source.product_id,
+        );
+    }
+    return fields.map(normalizeInventorySearchValue).filter(Boolean).join(' ');
+}
+
+function matchesProductNameSearch(row, query) {
+    const q = normalizeInventorySearchValue(query);
+    if (!q) return true;
+    /** Prefer full row index (name, SKU, dept, brand, `_searchText`) so search works across API shapes and Vercel builds. */
+    const hay = normalizeInventorySearchValue(buildInventorySearchText(row));
+    if (!hay) return false;
+    return q
+        .split(/\s+/)
+        .filter(Boolean)
+        .every((term) => hay.includes(term));
+}
+
+function matchesInventoryDepartmentFilter(row, departmentFilter) {
+    if (!departmentFilter || departmentFilter === 'all') return true;
+    const id = String(row?.departmentId ?? row?.department_id ?? '').trim();
+    return id !== '' && id === String(departmentFilter);
+}
+
+function matchesInventoryCategoryFilter(row, categoryFilter) {
+    if (!categoryFilter || categoryFilter === 'all') return true;
+    if (categoryFilter === '__none__') {
+        const id = String(row?.categoryId ?? row?.category_id ?? '').trim();
+        const name = String(row?.categoryName ?? '').trim();
+        return !id || !name || name === '—';
+    }
+    const id = String(row?.categoryId ?? row?.category_id ?? '').trim();
+    return id !== '' && id === String(categoryFilter);
+}
+
+/** Value written into the search field when a suggestion is chosen (matches token search). */
+function inventorySearchValueFromRow(row) {
+    const name = String(row?.name ?? '').trim();
+    const sku = String(row?.sku ?? '').trim();
+    return [name, sku].filter(Boolean).join(' ').trim() || name || sku || '';
+}
+
+const INV_SEARCH_SUGGEST_LIMIT = 12;
+
+/**
+ * Same merge as Dept & Products `buildBranchProductRow`: branch link fields win over nested
+ * `product` snapshot so on-hand qty does not fall back to catalog/stale `currentQty` on the master.
+ */
+function mergeBranchProductRowForInventory(row) {
+    const master = row?.product && typeof row.product === 'object' ? row.product : {};
+    const branchOpening = pickBranchAdoptionOpeningQty(row);
+    return {
+        ...row,
+        ...master,
+        id: master.id ?? row?.productId ?? row?.product_id ?? row?.id,
+        /** Keep branch-scoped inventory from the workshop row; nested `product` must not wipe it. */
+        branchInventory: row?.branchInventory ?? row?.branch_inventory ?? master?.branchInventory,
+        branch_inventory: row?.branch_inventory ?? row?.branchInventory ?? master?.branch_inventory,
+        openingQty: branchOpening ?? row?.openingQty ?? row?.opening_qty,
+        opening_qty: branchOpening ?? row?.opening_qty ?? row?.opening_qty,
+        currentQty: row?.currentQty ?? master?.currentQty,
+        current_qty: row?.current_qty ?? master?.current_qty,
+        qtyOnHand: row?.qtyOnHand ?? master?.qtyOnHand,
+        qty_on_hand: row?.qty_on_hand ?? master?.qty_on_hand,
+        stockQty: row?.stockQty ?? master?.stockQty,
+        stock_qty: row?.stock_qty ?? master?.stock_qty,
+        criticalStockPoint: row?.criticalStockPoint ?? row?.critical_stock_point,
+        critical_stock_point: row?.critical_stock_point ?? row?.criticalStockPoint,
+        salePriceOverride: row?.salePriceOverride ?? master?.salePriceOverride,
+        salePriceBeforeVat: row?.salePriceBeforeVat ?? master?.salePriceBeforeVat,
+        sellingPriceBeforeVat: row?.sellingPriceBeforeVat ?? master?.sellingPriceBeforeVat,
+        salePrice: row?.salePrice ?? master?.salePrice,
+        sellingPrice: row?.sellingPrice ?? master?.sellingPrice,
+        purchasePrice: row?.purchasePriceOverride ?? master?.purchasePrice ?? row?.purchasePrice,
+    };
+}
+
+/**
+ * Map a catalog row to a flat inventory row (products only).
+ * Merges link row + nested `product` like Dept & Products branch lists.
+ */
+function mapApiRowToInventory(row) {
+    const merged = mergeBranchProductRowForInventory(row);
+    const nested = row?.product && typeof row.product === 'object' ? row.product : null;
+    const master = nested || row;
+    const sourceRowId = row?.id ?? row?.branchProductId ?? row?.branch_product_id ?? row?.workshopProductId ?? row?.workshop_product_id;
+    const branchId = row?.branchId ?? row?.branch_id ?? row?.branch?.id ?? merged.branchId ?? merged.branch_id ?? merged.branch?.id ?? '';
+    const branchName = row?.branchName ?? row?.branch_name ?? row?.branch?.name ?? merged.branchName ?? merged.branch_name ?? merged.branch?.name ?? '';
+    const id =
+        merged.id ??
+        master?.id ??
+        row?.id ??
+        row?.productId ??
+        row?.product_id ??
+        row?.serviceId ??
+        row?.service_id;
+    if (id == null || String(id).trim() === '') return null;
+
+    const openingFromWorkshopLink =
+        pickBranchAdoptionOpeningQty(row) ?? pickBranchAdoptionOpeningQty(merged);
+    const openingFromScalars = firstFiniteNumber([
+        row.openingQty,
+        row.opening_qty,
+        merged.openingQty,
+        merged.opening_qty,
+    ]);
+    const openingQty = openingFromWorkshopLink != null ? openingFromWorkshopLink : openingFromScalars;
+    const invQtyRow = pickBranchInventoryQtyFromRow(row);
+    const invQtyMerged = pickBranchInventoryQtyFromRow(merged);
+    const onHand = firstFiniteNumber([
+        invQtyRow,
+        invQtyMerged,
+        row.qtyOnHand,
+        row.qty_on_hand,
+        row.currentQty,
+        row.current_qty,
+        merged.qtyOnHand,
+        merged.qty_on_hand,
+        merged.currentQty,
+        merged.current_qty,
+        merged.stockQty,
+        merged.stock_qty,
+        merged.inventory?.qtyOnHand,
+        merged.inventory?.qty_on_hand,
+        merged.inventory?.currentQty,
+        merged.inventory?.current_qty,
+    ]);
+    const isInfiniteQty = Boolean(
+        row.isInfiniteQty ?? merged.isInfiniteQty ?? row.is_infinite_qty ?? merged.is_infinite_qty,
+    );
+    const lastPhysicalQty = firstFiniteNumber([
+        row.lastQtyOnHand,
+        row.last_qty_on_hand,
+        merged.lastQtyOnHand,
+        merged.last_qty_on_hand,
+    ]);
+    const qty = isInfiniteQty ? null : onHand !== null ? onHand : openingQty;
+
+    const critical_level = pickNumber(
+        merged.criticalStockPoint,
+        merged.critical_stock_point,
+    );
+    const purchasePrice = pickNumber(
+        merged.purchasePriceOverride,
+        row?.purchasePriceOverride,
+        merged.purchasePrice,
+        merged.purchase_price,
+        row?.purchasePrice,
+        row?.purchase_price,
+        master?.purchasePrice,
+        master?.purchase_price,
+    );
+
+    const unit =
+        master?.unit ??
+        row?.unit ??
+        merged?.unit ??
+        'pcs';
+    const warehouseUnit =
+        merged.warehouseUnit ??
+        row?.warehouseUnit ??
+        master?.warehouseUnit ??
+        null;
+    const workshopUnit =
+        merged.workshopUnit ??
+        row?.workshopUnit ??
+        master?.workshopUnit ??
+        unit;
+    const conversionFactor = pickNumber(
+        merged.conversionFactor,
+        row?.conversionFactor,
+        master?.conversionFactor,
+    ) ?? 1;
+    const conversionRule =
+        merged.conversionRule ??
+        row?.conversionRule ??
+        master?.conversionRule ??
+        formatUomRule(warehouseUnit, workshopUnit, conversionFactor);
+
+    return {
+        id: String(id),
+        name: pickDisplayName(master, row),
+        arabicName: pickArabicName(master, row),
+        brand: master?.brand || '',
+        sku: master?.sku || row?.sku || '',
+        departmentName:
+            master?.departmentName ||
+            master?.department_name ||
+            master?.department?.name ||
+            row?.departmentName ||
+            row?.department_name ||
+            row?.department?.name ||
+            '—',
+        departmentId: (() => {
+            const raw =
+                row?.departmentId ??
+                row?.department_id ??
+                merged?.departmentId ??
+                merged?.department_id ??
+                master?.departmentId ??
+                master?.department_id ??
+                master?.department?.id ??
+                row?.department?.id;
+            return raw != null && String(raw).trim() !== '' ? String(raw) : null;
+        })(),
+        categoryName:
+            master?.categoryName ||
+            master?.category_name ||
+            master?.category?.name ||
+            row?.categoryName ||
+            '—',
+        categoryId: (() => {
+            const raw =
+                row?.categoryId ??
+                row?.category_id ??
+                merged?.categoryId ??
+                merged?.category_id ??
+                master?.categoryId ??
+                master?.category_id ??
+                master?.category?.id ??
+                row?.category?.id;
+            return raw != null && String(raw).trim() !== '' ? String(raw) : null;
+        })(),
+        purchasePrice,
+        openingQty,
+        isInfiniteQty,
+        allowMinusQty: Boolean(
+            merged.allowMinusQty ??
+            row?.allowMinusQty ??
+            master?.allowMinusQty ??
+            nested?.allowMinusQty ??
+            false,
+        ),
+        lastPhysicalQty: isInfiniteQty ? lastPhysicalQty : null,
+        qty,
+        critical_level,
+        unit,
+        warehouseUnit,
+        workshopUnit,
+        conversionFactor,
+        conversionRule,
+        uomProfileId: merged.uomProfileId ?? row?.uomProfileId ?? master?.uomProfileId ?? null,
+        uomProfileName:
+            merged.uomProfileName ?? row?.uomProfileName ?? master?.uomProfileName ?? null,
+        stockDisplayPrimary:
+            row?.stockDisplayPrimary ?? merged?.stockDisplayPrimary ?? null,
+        stockDisplaySecondary:
+            row?.stockDisplaySecondary ?? merged?.stockDisplaySecondary ?? null,
+        branchId: branchId != null && String(branchId).trim() !== '' ? String(branchId) : null,
+        branchName: branchName != null && String(branchName).trim() !== '' ? String(branchName) : null,
+        _rowKey: [
+            id,
+            branchId,
+            sourceRowId,
+            row?.sku ?? master?.sku ?? '',
+        ].map((v) => (v == null ? '' : String(v))).join(':'),
+        _searchText: buildRawInventorySearchText(row, master, merged, nested),
+    };
+}
+
+function inventoryUomDisplay(item, t) {
+    if (item?.uomProfileName) {
+        return {
+            primary: item.uomProfileName,
+            secondary: item.conversionRule || t('uom.linkedProfile'),
+        };
+    }
+    const cf = Number(item?.conversionFactor) || 1;
+    const wu = String(item?.warehouseUnit || '').trim();
+    const ws = String(item?.workshopUnit || item?.unit || 'pcs').trim();
+    const rule = String(item?.conversionRule || '').trim();
+    const hasConversion =
+        cf > 1 && wu && ws && wu.toLowerCase() !== ws.toLowerCase();
+    if (hasConversion && rule && rule !== '—') {
+        return { primary: rule, secondary: t('uom.clickToEdit') };
+    }
+    return {
+        primary: ws || 'pcs',
+        secondary: hasConversion ? t('uom.setConversion') : null,
+    };
+}
+
+function applyStatusesFromParent(rows, selectedProducts) {
+    const sel = new Map((selectedProducts || []).map((s) => [String(s.id), s]));
+    return rows.map((r) => {
+        const match = sel.get(String(r.id));
+        if (match?.status) return { ...r, status: match.status };
+        const { status, ...rest } = r;
+        return rest;
+    });
+}
+
+function stockStatus(item, t) {
+    if (item.status === 'Requested') return { label: t('status.requested'), tone: 'blue' };
+    if (item.isInfiniteQty) return { label: t('status.unlimited'), tone: 'green' };
+    if ((Number(item.qty) || 0) <= 0) return { label: t('status.outOfStock'), tone: 'red' };
+    if (isLowStockRow(item)) return { label: t('status.lowStock'), tone: 'amber' };
+    return { label: t('status.inStock'), tone: 'green' };
+}
+
+const ADJUST_LOG_STORAGE_PREFIX = 'pos-filter:workshop-inv-adjustments:v1:';
+
+function adjustmentLogStorageKey(selectedBranchId) {
+    const key = !selectedBranchId || selectedBranchId === 'all' ? 'all' : String(selectedBranchId);
+    return `${ADJUST_LOG_STORAGE_PREFIX}${key}`;
+}
+
+/** @returns {Record<string, Array<{ id: string, at: string, previousQty: number, newQty: number, delta: number, reason: string }>>} */
+function loadAdjustmentLogsFromStorage(storageKey) {
+    try {
+        const raw = localStorage.getItem(storageKey);
+        if (!raw) return {};
+        const p = JSON.parse(raw);
+        return p && typeof p === 'object' ? p : {};
+    } catch {
+        return {};
+    }
+}
+
+function saveAdjustmentLogsToStorage(storageKey, map) {
+    try {
+        localStorage.setItem(storageKey, JSON.stringify(map));
+    } catch {
+        /* ignore quota / private mode */
+    }
+}
+
+function workshopIdFromSession(workshop) {
+    if (!workshop || typeof workshop !== 'object') return undefined;
+    const id = workshop.id ?? workshop._id ?? workshop.workshopId;
+    return id != null && String(id).trim() !== '' ? String(id) : undefined;
+}
+
+export default function WorkshopInventory({
+    selectedBranchId = 'all',
+    branches = [],
+    selectedProducts = [],
+    onTabChange,
+    updateProductStatus,
+    locale: localeProp,
+}) {
+    const locale = localeProp || (typeof localStorage !== 'undefined' ? localStorage.getItem('portal-locale') : null) || 'en';
+    const t = useCallback((key, vars) => wiT(locale, key, vars), [locale]);
+    const displayName = useCallback(
+        (item, fallback = '—') => catalogDisplayName(item, locale) || item?.name || fallback,
+        [locale],
+    );
+    const { workshop, hasPermission } = useAuth();
+    const workshopIdQuery = useMemo(() => workshopIdFromSession(workshop), [workshop]);
+    const canRequestFromSupplier = hasPermission('workshop.inventory.request-from-supplier');
+    const canManualAdjust = hasPermission('workshop.inventory.manual-adjust');
+    const canCriticalLevel = hasPermission('workshop.inventory.critical-level');
+    const canAnyInventoryAction = canRequestFromSupplier || canManualAdjust || canCriticalLevel;
+
+    const [searchQuery, setSearchQuery] = useState('');
+    const [departmentFilter, setDepartmentFilter] = useState('all');
+    const [categoryFilter, setCategoryFilter] = useState('all');
+    const [invSuggestOpen, setInvSuggestOpen] = useState(false);
+    const [invSuggestIndex, setInvSuggestIndex] = useState(-1);
+    const invSearchBlurTimerRef = useRef(null);
+    const invSuggestDropdownRef = useRef(null);
+    const [productRows, setProductRows] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
+
+    const selectedProductsRef = useRef(selectedProducts);
+    useEffect(() => {
+        selectedProductsRef.current = selectedProducts;
+    }, [selectedProducts]);
+
+    const isAllBranches = !selectedBranchId || selectedBranchId === 'all';
+    const selectedBranchName = useMemo(() => {
+        if (isAllBranches) return t('branch.all');
+        return branches.find((b) => String(b.id) === String(selectedBranchId))?.name || t('branch.fallback');
+    }, [branches, isAllBranches, selectedBranchId, t]);
+
+    const logStorageKey = useMemo(() => adjustmentLogStorageKey(selectedBranchId), [selectedBranchId]);
+    const [adjustmentLogs, setAdjustmentLogs] = useState({});
+    const [logProduct, setLogProduct] = useState(null);
+    const [logLoading, setLogLoading] = useState(false);
+    const [logFetchError, setLogFetchError] = useState('');
+    const [fetchedLogEntries, setFetchedLogEntries] = useState(null);
+    const [timelineMeta, setTimelineMeta] = useState(null);
+    const [alignOpeningSaving, setAlignOpeningSaving] = useState(false);
+    const [alignOpeningError, setAlignOpeningError] = useState('');
+
+    const logOpeningContext = useMemo(() => {
+        if (!logProduct) return null;
+        const pid = String(logProduct.id);
+        const row = productRows.find((p) => String(p.id) === pid);
+        const rowOpening =
+            timelineMeta?.storedOpeningQty != null && Number.isFinite(timelineMeta.storedOpeningQty)
+                ? timelineMeta.storedOpeningQty
+                : row?.openingQty != null && row?.openingQty !== ''
+                  ? Number(row.openingQty)
+                  : logProduct.openingQty != null && logProduct.openingQty !== ''
+                    ? Number(logProduct.openingQty)
+                    : null;
+        const mergedForOpening = isAllBranches
+            ? adjustmentLogs[pid] || []
+            : logLoading
+              ? null
+              : mergeLogEntries(adjustmentLogs[pid] || [], fetchedLogEntries || []);
+        const timelineOpening =
+            mergedForOpening != null ? latestOpeningQtyFromLogEntries(mergedForOpening) : null;
+        const storedDrift =
+            rowOpening === 0 && timelineOpening != null && timelineOpening > 0;
+        const displayOpening =
+            rowOpening != null && !storedDrift ? rowOpening : timelineOpening ?? rowOpening;
+        return {
+            pid,
+            rowOpening,
+            timelineOpening,
+            storedDrift,
+            displayOpening,
+        };
+    }, [logProduct, productRows, fetchedLogEntries, timelineMeta, adjustmentLogs, isAllBranches, logLoading]);
+
+    const logMergedEntries = useMemo(() => {
+        if (!logProduct) return [];
+        const pid = String(logProduct.id);
+        const localList = adjustmentLogs[pid] || [];
+        if (isAllBranches) {
+            return [...localList].sort((a, b) => String(b.at).localeCompare(String(a.at)));
+        }
+        if (logLoading) return [];
+        return mergeLogEntries(localList, fetchedLogEntries || []);
+    }, [logProduct, adjustmentLogs, isAllBranches, logLoading, fetchedLogEntries]);
+
+    const timelineExportDisabled = logLoading || !logMergedEntries.length;
+    const timelineExportFilename = logProduct
+        ? `timeline-${String(logProduct.name || logProduct.id).replace(/\s+/g, '-')}`
+        : 'timeline';
+
+    useEffect(() => {
+        if (!logProduct) {
+            setAlignOpeningError('');
+            setAlignOpeningSaving(false);
+            setTimelineMeta(null);
+        }
+    }, [logProduct]);
+
+    const alignOpeningAdoptionFromTimeline = async () => {
+        if (!logOpeningContext?.storedDrift || !logOpeningContext.timelineOpening || isAllBranches) return;
+        const target = logOpeningContext.timelineOpening;
+        const pid = logOpeningContext.pid;
+        setAlignOpeningSaving(true);
+        setAlignOpeningError('');
+        try {
+            const res = await postBranchProductInventoryAdjustment(
+                String(selectedBranchId),
+                pid,
+                {
+                    newQty: target,
+                    reason: INVENTORY_ADJUSTMENT_REASON_OPENING_QTY,
+                },
+                { workshopId: workshopIdQuery },
+            );
+            if (!res?.success) {
+                throw new Error(res?.message || t('err.updateOpening'));
+            }
+            const d = res.data || {};
+            const nextOpening =
+                d.openingQty != null
+                    ? Number(d.openingQty)
+                    : d.opening_qty != null
+                      ? Number(d.opening_qty)
+                      : target;
+            const nextStock =
+                d.qtyOnHand != null
+                    ? Number(d.qtyOnHand)
+                    : d.qty_on_hand != null
+                      ? Number(d.qty_on_hand)
+                      : nextOpening;
+            setProductRows((prev) =>
+                prev.map((p) =>
+                    String(p.id) === pid
+                        ? { ...p, openingQty: nextOpening, qty: nextStock, status: undefined }
+                        : p,
+                ),
+            );
+            setLogProduct((lp) =>
+                lp && String(lp.id) === pid ? { ...lp, openingQty: nextOpening, qty: nextStock } : lp,
+            );
+            const serverEntry = normalizeAdjustmentEntry({
+                id: d.logId,
+                createdAt: d.createdAt,
+                previousQty: d.previousQty,
+                newQty: d.newQty,
+                delta: d.delta,
+                reason: d.reason || INVENTORY_ADJUSTMENT_REASON_OPENING_QTY,
+                source: d.source || 'manual_opening_qty',
+                adjustedBy: d.adjustedBy,
+            });
+            if (serverEntry) {
+                setFetchedLogEntries((prev) => {
+                    const list = Array.isArray(prev) ? prev : [];
+                    if (list.some((e) => e.id === serverEntry.id)) return list;
+                    return [serverEntry, ...list];
+                });
+            }
+            setTimelineMeta({ storedOpeningQty: nextOpening, currentQtyOnHand: nextStock });
+        } catch (err) {
+            setAlignOpeningError(err.message || t('err.alignOpening'));
+        } finally {
+            setAlignOpeningSaving(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!logProduct) {
+            setFetchedLogEntries(null);
+            setTimelineMeta(null);
+            setLogFetchError('');
+            setLogLoading(false);
+            return;
+        }
+        if (isAllBranches) {
+            setFetchedLogEntries(null);
+            setTimelineMeta(null);
+            setLogFetchError('');
+            setLogLoading(false);
+            return;
+        }
+        const ctrl = new AbortController();
+        setLogLoading(true);
+        setLogFetchError('');
+        (async () => {
+            try {
+                const res = await getBranchProductInventoryAdjustments(String(selectedBranchId), String(logProduct.id), {
+                    limit: 0,
+                    signal: ctrl.signal,
+                    workshopId: workshopIdQuery,
+                });
+                if (!ctrl.signal.aborted) {
+                    setFetchedLogEntries(extractAdjustmentEntries(res));
+                    setTimelineMeta(extractTimelineMeta(res));
+                }
+            } catch (e) {
+                if (e.name === 'AbortError') return;
+                if (!ctrl.signal.aborted) {
+                    setFetchedLogEntries([]);
+                    setTimelineMeta(null);
+                    setLogFetchError(e.message || t('err.loadHistory'));
+                }
+            } finally {
+                if (!ctrl.signal.aborted) setLogLoading(false);
+            }
+        })();
+        return () => ctrl.abort();
+    }, [logProduct, isAllBranches, selectedBranchId, workshopIdQuery]);
+
+    useEffect(() => {
+        setAdjustmentLogs(loadAdjustmentLogsFromStorage(logStorageKey));
+    }, [logStorageKey]);
+
+    const loadInventory = useCallback(async () => {
+        setIsLoading(true);
+        setLoadError('');
+        try {
+            const isAll = !selectedBranchId || selectedBranchId === 'all';
+            let products = [];
+
+            if (isAll) {
+                try {
+                    const pRes = await getWorkshopStaffProducts({ allBranches: true });
+                    products = flattenWorkshopStaffBranchProductsResponse(pRes);
+                    if (products.length === 0) {
+                        products = extractProducts(pRes);
+                    }
+                } catch {
+                    products = [];
+                }
+                if (products.length === 0) {
+                    try {
+                        products = extractProducts(await getMyProducts());
+                    } catch {
+                        products = [];
+                    }
+                }
+            } else {
+                const bid = String(selectedBranchId);
+                try {
+                    products = extractProducts(await getBranchProducts(bid));
+                } catch {
+                    products = [];
+                }
+                if (products.length === 0) {
+                    try {
+                        const prodRes = await getWorkshopStaffBranchProducts(bid);
+                        products = flattenWorkshopStaffBranchProductsResponse(prodRes);
+                        if (products.length === 0) {
+                            products = extractProducts(prodRes);
+                        }
+                    } catch {
+                        products = [];
+                    }
+                }
+                // Do not fall back to getMyProducts({ branchId }) here: some backends return a
+                // workshop-wide union that ignores branchId, which wrongly fills empty branches (e.g. Riyadh with Dubai SKUs).
+            }
+
+            const mapped = products.map(mapApiRowToInventory).filter(Boolean);
+            setProductRows(applyStatusesFromParent(mapped, selectedProductsRef.current));
+        } catch (error) {
+            setLoadError(error.message || t('err.loadInventory'));
+            setProductRows([]);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [selectedBranchId]);
+
+    useEffect(() => {
+        setProductRows((prev) => (prev.length === 0 ? prev : applyStatusesFromParent(prev, selectedProducts)));
+    }, [selectedProducts]);
+
+    useEffect(() => {
+        loadInventory();
+    }, [loadInventory]);
+
+    useEffect(() => {
+        setSelectedProductIds([]);
+        setDepartmentFilter('all');
+        setCategoryFilter('all');
+    }, [selectedBranchId]);
+
+    /**
+     * Live-refresh when a workshop approval (or QR receive) just adjusted stock
+     * for any branch. We always reload the open list — backend filters by the
+     * sidebar's selected branch already, so cross-branch noise is fine.
+     */
+    useEffect(() => {
+        const handler = () => {
+            loadInventory();
+        };
+        window.addEventListener('workshop-inventory-updated', handler);
+        return () => window.removeEventListener('workshop-inventory-updated', handler);
+    }, [loadInventory]);
+
+    const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
+    const [requestItem, setRequestItem] = useState(null);
+    const [selectedSupplier, setSelectedSupplier] = useState('');
+    const [requestQty, setRequestQty] = useState(0);
+
+    const [isAdjustModalOpen, setIsAdjustModalOpen] = useState(false);
+    const [adjustItem, setAdjustItem] = useState(null);
+    const [newQty, setNewQty] = useState('');
+    const [adjustReason, setAdjustReason] = useState('');
+    const [adjustSubmitError, setAdjustSubmitError] = useState('');
+    const [adjustSaving, setAdjustSaving] = useState(false);
+
+    const [selectedProductIds, setSelectedProductIds] = useState([]);
+    const selectAllCheckboxRef = useRef(null);
+    const [isBulkAdjustModalOpen, setIsBulkAdjustModalOpen] = useState(false);
+    const [bulkAdjustAmount, setBulkAdjustAmount] = useState('');
+    const [bulkAdjustReason, setBulkAdjustReason] = useState('');
+    const [bulkAdjustSaving, setBulkAdjustSaving] = useState(false);
+    const [bulkAdjustError, setBulkAdjustError] = useState('');
+    const [bulkAdjustProgress, setBulkAdjustProgress] = useState({ done: 0, total: 0 });
+
+    const [isCriticalModalOpen, setIsCriticalModalOpen] = useState(false);
+    const [criticalItem, setCriticalItem] = useState(null);
+    const [criticalInput, setCriticalInput] = useState('');
+    const [criticalSubmitError, setCriticalSubmitError] = useState('');
+    const [criticalSaving, setCriticalSaving] = useState(false);
+    const [isInvValueProofOpen, setIsInvValueProofOpen] = useState(false);
+    const [isLowStockProofOpen, setIsLowStockProofOpen] = useState(false);
+
+    const inventoryValueBreakdown = useMemo(() => {
+        const lines = productRows
+            .map((p) => {
+                const qty = Number(p.qty) || 0;
+                const purchasePrice = Number(p.purchasePrice) || 0;
+                const lineValue = qty * purchasePrice;
+                return {
+                    id: String(p.id),
+                    name: p.name || '—',
+                    sku: p.sku || '—',
+                    departmentName: p.departmentName || '—',
+                    qty,
+                    purchasePrice,
+                    lineValue,
+                };
+            })
+            .sort((a, b) => b.lineValue - a.lineValue || a.name.localeCompare(b.name));
+        const total = lines.reduce((sum, row) => sum + row.lineValue, 0);
+        const skusWithStock = lines.filter((row) => row.qty > 0).length;
+        const skusWithValue = lines.filter((row) => row.lineValue > 0).length;
+        return { lines, total, skusWithStock, skusWithValue, skuCount: lines.length };
+    }, [productRows]);
+
+    const lowStockBreakdown = useMemo(() => {
+        const lines = productRows
+            .filter(isLowStockRow)
+            .map((p) => {
+                const qty = Number(p.qty) || 0;
+                const critical = Number(p.critical_level) || 0;
+                const gap = Math.max(0, critical - qty);
+                const status = qty <= 0 ? t('status.outOfStockShort') : t('status.lowStockShort');
+                return {
+                    id: String(p.id),
+                    name: p.name || '—',
+                    sku: p.sku || '—',
+                    departmentName: p.departmentName || '—',
+                    categoryName: p.categoryName || '—',
+                    qty,
+                    critical,
+                    gap,
+                    status,
+                };
+            })
+            .sort((a, b) => {
+                if (a.qty <= 0 && b.qty > 0) return -1;
+                if (b.qty <= 0 && a.qty > 0) return 1;
+                return b.gap - a.gap || a.name.localeCompare(b.name);
+            });
+        const withCriticalSet = productRows.filter((p) => (Number(p.critical_level) || 0) > 0).length;
+        const outOfStock = lines.filter((row) => row.qty <= 0).length;
+        const lowOnly = lines.length - outOfStock;
+        return {
+            lines,
+            count: lines.length,
+            outOfStock,
+            lowOnly,
+            withCriticalSet,
+            skuCount: productRows.length,
+            withoutCritical: productRows.length - withCriticalSet,
+        };
+    }, [productRows, t]);
+
+    const stats = useMemo(() => {
+        const totalProducts = productRows.length;
+        const inventoryValue = inventoryValueBreakdown.total;
+        return [
+            {
+                label: t('stat.totalProducts'),
+                value: totalProducts,
+                sub: t('stat.totalProductsSub', { branch: selectedBranchName }),
+                icon: Package,
+                color: '#3B82F6',
+                clickable: false,
+                proofKey: null,
+            },
+            {
+                label: t('stat.lowStock'),
+                value: lowStockBreakdown.count,
+                sub: t('stat.lowStockSub', { branch: selectedBranchName }),
+                icon: AlertCircle,
+                color: '#EF4444',
+                clickable: true,
+                proofKey: 'lowStock',
+            },
+            {
+                label: t('stat.invValue'),
+                value: formatSar(Math.round(inventoryValue), t),
+                sub: t('stat.invValueSub', { branch: selectedBranchName }),
+                icon: Wallet,
+                color: '#10B981',
+                clickable: true,
+                proofKey: 'inventoryValue',
+            },
+        ];
+    }, [productRows, selectedBranchName, inventoryValueBreakdown.total, lowStockBreakdown.count, t]);
+
+    const handleOpenRequest = (item) => {
+        if (!hasPermission('workshop.inventory.request-from-supplier')) return;
+        if (updateProductStatus) {
+            updateProductStatus(item.id, 'Requested');
+        }
+        setProductRows((prev) =>
+            prev.map((p) => (p.id === item.id ? { ...p, status: 'Requested' } : p)),
+        );
+
+        if (onTabChange) {
+            onTabChange('purchases', { autoOpenModal: true, selectedItem: item });
+        }
+    };
+
+    const handleRequestSubmit = () => {
+        setIsRequestModalOpen(false);
+        setRequestItem(null);
+        setSelectedSupplier('');
+        setRequestQty(0);
+    };
+
+    const closeAdjustModal = () => {
+        setIsAdjustModalOpen(false);
+        setAdjustItem(null);
+        setAdjustSubmitError('');
+        setAdjustSaving(false);
+    };
+
+    const resolveEffectiveOpeningForItem = useCallback(
+        (item) => {
+            if (!item) return item;
+            const pid = String(item.id);
+            const rowOpening =
+                item.openingQty != null && item.openingQty !== ''
+                    ? Number(item.openingQty)
+                    : null;
+            const timelineOpening = latestOpeningQtyFromLogEntries(adjustmentLogs[pid] || []);
+            const effectiveOpening =
+                rowOpening != null && !(rowOpening === 0 && timelineOpening != null && timelineOpening > 0)
+                    ? rowOpening
+                    : timelineOpening ?? rowOpening;
+            if (effectiveOpening == null || !Number.isFinite(effectiveOpening)) return item;
+            if (effectiveOpening === rowOpening) return item;
+            return { ...item, openingQty: effectiveOpening };
+        },
+        [adjustmentLogs],
+    );
+
+    const handleOpenAdjust = (item) => {
+        if (!hasPermission('workshop.inventory.manual-adjust')) return;
+        const resolved = resolveEffectiveOpeningForItem(item);
+        setAdjustItem(resolved);
+        setNewQty(resolved.qty != null ? String(resolved.qty) : '0');
+        setAdjustReason('');
+        setAdjustSubmitError('');
+        setIsAdjustModalOpen(true);
+    };
+
+    const isAdjustOpeningQty = adjustReason === INVENTORY_ADJUSTMENT_REASON_OPENING_QTY;
+    const isAdjustInfiniteQty = adjustReason === INVENTORY_ADJUSTMENT_REASON_INFINITE_QTY;
+
+    const handleAdjustReasonChange = (value) => {
+        setAdjustReason(value);
+        if (!adjustItem) return;
+        if (value === INVENTORY_ADJUSTMENT_REASON_OPENING_QTY) {
+            const resolved = resolveEffectiveOpeningForItem(adjustItem);
+            if (resolved !== adjustItem) setAdjustItem(resolved);
+        }
+    };
+
+    const closeCriticalModal = () => {
+        setIsCriticalModalOpen(false);
+        setCriticalItem(null);
+        setCriticalInput('');
+        setCriticalSubmitError('');
+        setCriticalSaving(false);
+    };
+
+    const handleOpenCritical = (item) => {
+        if (!hasPermission('workshop.inventory.critical-level')) return;
+        setCriticalItem(item);
+        setCriticalInput(item.critical_level != null && item.critical_level !== '' ? String(item.critical_level) : '0');
+        setCriticalSubmitError('');
+        setIsCriticalModalOpen(true);
+    };
+
+    const handleCriticalSubmit = async () => {
+        if (!criticalItem || isAllBranches) return;
+        const parsed = Number.parseFloat(String(criticalInput).trim().replace(/,/g, ''));
+        if (!Number.isFinite(parsed) || parsed < 0) {
+            setCriticalSubmitError(t('err.criticalNumber'));
+            return;
+        }
+        const nextCrit = Math.round(parsed * 1000) / 1000;
+        const prevCrit = Number(criticalItem.critical_level) || 0;
+        if (nextCrit === prevCrit) {
+            closeCriticalModal();
+            return;
+        }
+        const pid = String(criticalItem.id);
+        const bid = String(selectedBranchId);
+        setCriticalSaving(true);
+        setCriticalSubmitError('');
+        try {
+            const res = await patchBranchProduct(bid, pid, { criticalStockPoint: nextCrit }, { workshopId: workshopIdQuery });
+            if (res && typeof res === 'object' && res.success === false) {
+                throw new Error(res.message || t('err.updateFailed'));
+            }
+            const payload = res?.data && typeof res.data === 'object' ? res.data : res || {};
+            const serverCrit = pickNumber(
+                payload.criticalStockPoint,
+                payload.critical_stock_point,
+                nextCrit,
+            );
+            setProductRows((prev) =>
+                prev.map((p) => (p.id === pid ? { ...p, critical_level: serverCrit } : p)),
+            );
+            closeCriticalModal();
+        } catch (err) {
+            setCriticalSubmitError(err.message || t('err.updateCritical'));
+        } finally {
+            setCriticalSaving(false);
+        }
+    };
+
+    const handleAdjustSubmit = async () => {
+        if (!adjustItem || !adjustReason.trim()) return;
+        const openingQtyAdjust = adjustReason.trim() === INVENTORY_ADJUSTMENT_REASON_OPENING_QTY;
+        const infiniteQtyAdjust = adjustReason.trim() === INVENTORY_ADJUSTMENT_REASON_INFINITE_QTY;
+        const prevQty = openingQtyAdjust
+            ? Number(adjustItem.openingQty ?? adjustItem.qty) || 0
+            : adjustItem.isInfiniteQty
+              ? Number(adjustItem.lastPhysicalQty) || 0
+              : Number(adjustItem.qty) || 0;
+
+        if (infiniteQtyAdjust && adjustItem.isInfiniteQty) return;
+
+        let qtyNum = prevQty;
+        if (!infiniteQtyAdjust) {
+            const parsed = Number.parseFloat(String(newQty).trim().replace(/,/g, ''));
+            const allowNegative = Boolean(adjustItem.allowMinusQty) && !openingQtyAdjust;
+            if (!Number.isFinite(parsed) || (parsed < 0 && !allowNegative)) return;
+            qtyNum = Math.round(parsed);
+            if (!openingQtyAdjust && !infiniteQtyAdjust && !adjustItem.isInfiniteQty && qtyNum === prevQty) return;
+        }
+
+        const pid = String(adjustItem.id);
+        const reasonTrim = adjustReason.trim();
+
+        if (!isAllBranches) {
+            setAdjustSaving(true);
+            setAdjustSubmitError('');
+            try {
+                const adjustBody = {
+                    newQty: infiniteQtyAdjust ? 0 : qtyNum,
+                    reason: reasonTrim,
+                };
+                if (!openingQtyAdjust && !infiniteQtyAdjust && !adjustItem.isInfiniteQty) {
+                    adjustBody.previousQty = prevQty;
+                } else if (infiniteQtyAdjust) {
+                    adjustBody.previousQty = prevQty;
+                }
+                const res = await postBranchProductInventoryAdjustment(
+                    String(selectedBranchId),
+                    pid,
+                    adjustBody,
+                    { workshopId: workshopIdQuery },
+                );
+                if (!res?.success) {
+                    throw new Error(res?.message || t('err.adjustFailed'));
+                }
+                const d = res.data || {};
+                const serverEntry = {
+                    id: String(d.logId || `${d.createdAt || new Date().toISOString()}-adj`),
+                    at: d.createdAt || new Date().toISOString(),
+                    previousQty: d.previousQty != null ? Number(d.previousQty) : prevQty,
+                    newQty: d.newQty != null ? Number(d.newQty) : qtyNum,
+                    delta: d.delta != null ? Number(d.delta) : qtyNum - prevQty,
+                    reason: d.reason || reasonTrim,
+                    adjustedBy: d.adjustedBy || null,
+                    source: d.source || (openingQtyAdjust ? 'manual_opening_qty' : infiniteQtyAdjust ? 'manual_infinite_qty' : 'manual'),
+                    affectsOpening:
+                        d.adjustmentTarget === 'opening' ||
+                        openingQtyAdjust ||
+                        d.source === 'manual_opening_qty',
+                    affectsInfinite:
+                        d.adjustmentTarget === 'infinite' ||
+                        infiniteQtyAdjust ||
+                        d.source === 'manual_infinite_qty' ||
+                        d.isInfiniteQty === true,
+                };
+
+                const nextOpening =
+                    openingQtyAdjust || d.adjustmentTarget === 'opening'
+                        ? d.openingQty != null
+                            ? Number(d.openingQty)
+                            : serverEntry.newQty
+                        : null;
+                const nextStock =
+                    infiniteQtyAdjust || d.adjustmentTarget === 'infinite' || d.isInfiniteQty
+                        ? null
+                        : openingQtyAdjust || d.adjustmentTarget === 'opening'
+                          ? d.qtyOnHand != null
+                              ? Number(d.qtyOnHand)
+                              : d.qty_on_hand != null
+                                ? Number(d.qty_on_hand)
+                                : nextOpening
+                          : serverEntry.newQty;
+
+                setProductRows((prev) =>
+                    prev.map((p) => {
+                        if (p.id !== adjustItem.id) return p;
+                        if (infiniteQtyAdjust || d.adjustmentTarget === 'infinite' || d.isInfiniteQty) {
+                            return {
+                                ...p,
+                                isInfiniteQty: true,
+                                qty: null,
+                                status: undefined,
+                            };
+                        }
+                        if (openingQtyAdjust || d.adjustmentTarget === 'opening') {
+                            return {
+                                ...p,
+                                openingQty: nextOpening,
+                                qty: nextStock,
+                                isInfiniteQty: false,
+                                status: undefined,
+                            };
+                        }
+                        return { ...p, qty: nextStock, isInfiniteQty: false, status: undefined };
+                    }),
+                );
+
+                if (logProduct && String(logProduct.id) === pid) {
+                    setLogProduct((lp) => {
+                        if (!lp || String(lp.id) !== pid) return lp;
+                        if (openingQtyAdjust || d.adjustmentTarget === 'opening') {
+                            return { ...lp, openingQty: nextOpening, qty: nextStock };
+                        }
+                        return { ...lp, qty: nextStock };
+                    });
+                    setFetchedLogEntries((prev) => {
+                        const normalized = normalizeAdjustmentEntry({
+                            ...serverEntry,
+                            createdAt: serverEntry.at,
+                        });
+                        if (!normalized) return prev;
+                        const list = Array.isArray(prev) ? prev : [];
+                        if (list.some((e) => e.id === normalized.id)) return list;
+                        return [normalized, ...list];
+                    });
+                }
+
+                closeAdjustModal();
+                if (!openingQtyAdjust && !infiniteQtyAdjust) {
+                    void loadInventory();
+                } else {
+                    void loadInventory();
+                }
+            } catch (err) {
+                setAdjustSubmitError(err.message || t('err.adjustConflict'));
+            } finally {
+                setAdjustSaving(false);
+            }
+            return;
+        }
+
+        const entry = {
+            id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+            at: new Date().toISOString(),
+            previousQty: prevQty,
+            newQty: qtyNum,
+            delta: qtyNum - prevQty,
+            reason: reasonTrim,
+        };
+
+        setAdjustmentLogs((prevMap) => {
+            const list = [...(prevMap[pid] || []), entry];
+            const next = { ...prevMap, [pid]: list };
+            saveAdjustmentLogsToStorage(logStorageKey, next);
+            return next;
+        });
+
+        setProductRows((prev) =>
+            prev.map((p) =>
+                p.id === adjustItem.id ? { ...p, qty: qtyNum, status: undefined } : p,
+            ),
+        );
+        closeAdjustModal();
+    };
+
+    const rowsMatchingFilters = useMemo(
+        () =>
+            productRows.filter(
+                (p) =>
+                    matchesInventoryDepartmentFilter(p, departmentFilter) &&
+                    matchesInventoryCategoryFilter(p, categoryFilter),
+            ),
+        [productRows, departmentFilter, categoryFilter],
+    );
+
+    const filteredProducts = useMemo(() => {
+        if (!normalizeInventorySearchValue(searchQuery)) return rowsMatchingFilters;
+        return rowsMatchingFilters.filter((p) => matchesProductNameSearch(p, searchQuery));
+    }, [rowsMatchingFilters, searchQuery]);
+
+    const departmentOptions = useMemo(() => {
+        const map = new Map();
+        for (const p of productRows) {
+            const id = String(p.departmentId ?? '').trim();
+            const name = String(p.departmentName ?? '').trim();
+            if (!id || !name || name === '—') continue;
+            if (!map.has(id)) map.set(id, { id, name });
+        }
+        return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
+    }, [productRows]);
+
+    const categoryOptions = useMemo(() => {
+        const map = new Map();
+        for (const p of productRows) {
+            if (!matchesInventoryDepartmentFilter(p, departmentFilter)) continue;
+            const id = String(p.categoryId ?? '').trim();
+            const name = String(p.categoryName ?? '').trim();
+            if (!id || !name || name === '—') {
+                map.set('__none__', { id: '__none__', name: t('uncategorized') });
+                continue;
+            }
+            if (!map.has(id)) map.set(id, { id, name });
+        }
+        return [...map.values()].sort((a, b) => {
+            if (a.id === '__none__') return 1;
+            if (b.id === '__none__') return -1;
+            return a.name.localeCompare(b.name);
+        });
+    }, [productRows, departmentFilter, t]);
+
+    useEffect(() => {
+        if (categoryFilter === 'all') return;
+        if (!categoryOptions.some((c) => c.id === categoryFilter)) {
+            setCategoryFilter('all');
+        }
+    }, [departmentFilter, categoryOptions, categoryFilter]);
+
+    const hasActiveListFilters =
+        (departmentFilter && departmentFilter !== 'all') ||
+        (categoryFilter && categoryFilter !== 'all');
+
+    const selectedIdSet = useMemo(() => new Set(selectedProductIds), [selectedProductIds]);
+
+    const visibleProductIds = useMemo(
+        () => filteredProducts.map((p) => String(p.id)).filter(Boolean),
+        [filteredProducts],
+    );
+
+    const allVisibleSelected =
+        visibleProductIds.length > 0 && visibleProductIds.every((id) => selectedIdSet.has(id));
+
+    const someVisibleSelected = visibleProductIds.some((id) => selectedIdSet.has(id));
+
+    const selectedProductsForBulk = useMemo(
+        () => productRows.filter((p) => selectedIdSet.has(String(p.id))),
+        [productRows, selectedIdSet],
+    );
+
+    const productsWithStockCount = useMemo(
+        () => rowsMatchingFilters.filter(workshopInventoryHasStock).length,
+        [rowsMatchingFilters],
+    );
+
+    const exportMeta = useMemo(
+        () => ({
+            branchName: selectedBranchName,
+            subtitle: t('export.metaSubtitle', {
+                branch: selectedBranchName,
+                count: selectedProductsForBulk.length,
+            }),
+            labels: { locale, t },
+        }),
+        [selectedBranchName, selectedProductsForBulk.length, t, locale],
+    );
+
+    const exportFilenameBase = useMemo(() => {
+        const slug = String(selectedBranchName || 'inventory')
+            .replace(/[^\w.-]+/g, '_')
+            .replace(/^_|_$/g, '')
+            .slice(0, 60) || 'inventory';
+        return `workshop-inventory-${slug}`;
+    }, [selectedBranchName]);
+
+    const isBulkOpeningQty =
+        bulkAdjustReason.trim() === INVENTORY_ADJUSTMENT_REASON_OPENING_QTY;
+    const isBulkInfiniteQty =
+        bulkAdjustReason.trim() === INVENTORY_ADJUSTMENT_REASON_INFINITE_QTY;
+
+    const bulkReasonKind = isBulkInfiniteQty ? 'infinite' : isBulkOpeningQty ? 'opening' : 'stock';
+
+    const bulkAdjustPreview = useMemo(() => {
+        const amt = bulkAdjustAmount;
+        return selectedProductsForBulk.map((item) =>
+            computeBulkAdjustmentRow(item, amt, bulkReasonKind),
+        );
+    }, [selectedProductsForBulk, bulkAdjustAmount, bulkReasonKind]);
+
+    const bulkAdjustWillChangeCount = bulkAdjustPreview.filter((row) => !row.unchanged).length;
+
+    useLayoutEffect(() => {
+        const el = selectAllCheckboxRef.current;
+        if (!el) return;
+        el.indeterminate = someVisibleSelected && !allVisibleSelected;
+    }, [someVisibleSelected, allVisibleSelected]);
+
+    const toggleProductSelection = useCallback((productId) => {
+        const sid = String(productId);
+        setSelectedProductIds((prev) =>
+            prev.includes(sid) ? prev.filter((id) => id !== sid) : [...prev, sid],
+        );
+    }, []);
+
+    const toggleSelectAllVisible = useCallback(() => {
+        if (allVisibleSelected) {
+            setSelectedProductIds((prev) => prev.filter((id) => !visibleProductIds.includes(id)));
+            return;
+        }
+        setSelectedProductIds((prev) => {
+            const next = new Set([...prev, ...visibleProductIds]);
+            return [...next];
+        });
+    }, [allVisibleSelected, visibleProductIds]);
+
+    const clearProductSelection = useCallback(() => {
+        setSelectedProductIds([]);
+    }, []);
+
+    const selectProductsWithStock = useCallback(() => {
+        const ids = rowsMatchingFilters
+            .filter(workshopInventoryHasStock)
+            .map((p) => String(p.id))
+            .filter(Boolean);
+        setSelectedProductIds(ids);
+    }, [rowsMatchingFilters]);
+
+    const handleExportSelectedExcel = useCallback(() => {
+        if (selectedProductsForBulk.length === 0) return;
+        exportWorkshopInventoryExcel(
+            selectedProductsForBulk,
+            exportMeta,
+            exportFilenameBase,
+        );
+    }, [selectedProductsForBulk, exportMeta, exportFilenameBase]);
+
+    const handleExportSelectedPdf = useCallback(() => {
+        if (selectedProductsForBulk.length === 0) return;
+        exportWorkshopInventoryPdf(
+            selectedProductsForBulk,
+            exportMeta,
+            exportFilenameBase,
+        );
+    }, [selectedProductsForBulk, exportMeta, exportFilenameBase]);
+
+    const openBulkAdjustModal = () => {
+        setBulkAdjustAmount('');
+        setBulkAdjustReason('');
+        setBulkAdjustError('');
+        setBulkAdjustProgress({ done: 0, total: 0 });
+        setIsBulkAdjustModalOpen(true);
+    };
+
+    const closeBulkAdjustModal = () => {
+        setIsBulkAdjustModalOpen(false);
+        setBulkAdjustSaving(false);
+        setBulkAdjustError('');
+        setBulkAdjustProgress({ done: 0, total: 0 });
+    };
+
+    const handleBulkAdjustSubmit = async () => {
+        if (selectedProductsForBulk.length === 0) return;
+        if (!bulkAdjustReason.trim()) return;
+        const reasonTrim = bulkAdjustReason.trim();
+        const infiniteBulk = reasonTrim === INVENTORY_ADJUSTMENT_REASON_INFINITE_QTY;
+
+        if (!infiniteBulk) {
+            const parsedAmt = Number.parseFloat(String(bulkAdjustAmount).trim().replace(/,/g, ''));
+            if (!Number.isFinite(parsedAmt) || parsedAmt < 0) {
+                setBulkAdjustError(t('err.enterAmount'));
+                return;
+            }
+        }
+        if (bulkAdjustWillChangeCount === 0) {
+            setBulkAdjustError(
+                infiniteBulk
+                    ? t('err.allUnlimited')
+                    : t('err.noChange'),
+            );
+            return;
+        }
+        if (isBulkOpeningQty && Number.parseFloat(String(bulkAdjustAmount).trim().replace(/,/g, '')) === 0) {
+            setBulkAdjustError(
+                t('err.bulkOpeningZero'),
+            );
+            return;
+        }
+
+        const targets = bulkAdjustPreview.filter((row) => !row.unchanged);
+        const total = targets.length;
+
+        if (!isAllBranches) {
+            setBulkAdjustSaving(true);
+            setBulkAdjustError('');
+            setBulkAdjustProgress({ done: 0, total });
+            try {
+                const res = await postBranchBulkInventoryAdjustment(
+                    String(selectedBranchId),
+                    {
+                        reason: reasonTrim,
+                        items: targets.map((row) => ({
+                            productId: row.id,
+                            newQty: row.isInfinite ? 0 : row.newQty,
+                            ...(row.isOpening || row.isInfinite ? {} : { previousQty: row.prevQty }),
+                            ...(row.isInfinite ? { previousQty: row.prevQty } : {}),
+                        })),
+                    },
+                    { workshopId: workshopIdQuery },
+                );
+                if (!res?.success) {
+                    throw new Error(res?.message || t('err.bulkFailed'));
+                }
+
+                const updatedCount = Number(res.updated) || 0;
+                const apiFailures = Array.isArray(res.failures) ? res.failures : [];
+                const failedIds = new Set(apiFailures.map((f) => String(f.productId)));
+                const openingQtyAdjust =
+                    reasonTrim === INVENTORY_ADJUSTMENT_REASON_OPENING_QTY;
+                const infiniteQtyAdjust =
+                    reasonTrim === INVENTORY_ADJUSTMENT_REASON_INFINITE_QTY;
+
+                const succeededRows = targets.filter((row) => !failedIds.has(String(row.id)));
+                if (succeededRows.length > 0) {
+                    setProductRows((prev) =>
+                        prev.map((p) => {
+                            const row = succeededRows.find((t) => String(t.id) === String(p.id));
+                            if (!row) return p;
+                            if (row.isInfinite || infiniteQtyAdjust) {
+                                return {
+                                    ...p,
+                                    isInfiniteQty: true,
+                                    qty: null,
+                                    status: undefined,
+                                };
+                            }
+                            const next = {
+                                ...p,
+                                qty: row.newCurrent ?? row.newQty,
+                                isInfiniteQty: false,
+                                status: undefined,
+                            };
+                            if (openingQtyAdjust) {
+                                next.openingQty = row.newOpening ?? row.newQty;
+                            }
+                            return next;
+                        }),
+                    );
+                    void loadInventory();
+                }
+
+                setBulkAdjustProgress({ done: total, total });
+
+                if (apiFailures.length === 0) {
+                    clearProductSelection();
+                    closeBulkAdjustModal();
+                } else if (updatedCount > 0) {
+                    const failLabels = apiFailures
+                        .slice(0, 8)
+                        .map((f) => {
+                            const item = selectedProductsForBulk.find(
+                                (p) => String(p.id) === String(f.productId),
+                            );
+                            return displayName(item, f.productId);
+                        })
+                        .join(', ');
+                    setBulkAdjustError(
+                        t('err.bulkPartial', {
+                            updated: updatedCount,
+                            total,
+                            failed: apiFailures.length,
+                            detail: failLabels ? `: ${failLabels}${apiFailures.length > 8 ? '…' : ''}` : '',
+                        }),
+                    );
+                } else {
+                    setBulkAdjustError(apiFailures[0]?.message || t('err.bulkFailed'));
+                }
+            } catch (err) {
+                setBulkAdjustError(err.message || t('err.bulkFailed'));
+            } finally {
+                setBulkAdjustSaving(false);
+            }
+            return;
+        }
+
+        setBulkAdjustSaving(true);
+        setBulkAdjustError('');
+        setAdjustmentLogs((prevMap) => {
+            const next = { ...prevMap };
+            for (const row of targets) {
+                const entry = {
+                    id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+                    at: new Date().toISOString(),
+                    previousQty: row.prevQty,
+                    newQty: row.newQty,
+                    delta: row.newQty - row.prevQty,
+                    reason: reasonTrim,
+                    source: row.isOpening ? 'manual_opening_qty' : 'manual',
+                    affectsOpening: Boolean(row.isOpening),
+                };
+                next[row.id] = [...(next[row.id] || []), entry];
+            }
+            saveAdjustmentLogsToStorage(logStorageKey, next);
+            return next;
+        });
+        setProductRows((prev) =>
+            prev.map((p) => {
+                const row = targets.find((t) => t.id === String(p.id));
+                if (!row) return p;
+                if (row.isOpening) {
+                    return {
+                        ...p,
+                        openingQty: row.newOpening,
+                        qty: row.newCurrent,
+                        status: undefined,
+                    };
+                }
+                return { ...p, qty: row.newQty, status: undefined };
+            }),
+        );
+        clearProductSelection();
+        closeBulkAdjustModal();
+        setBulkAdjustSaving(false);
+    };
+
+    const invSearchSuggestions = useMemo(() => {
+        const q = normalizeInventorySearchValue(searchQuery);
+        if (!q) return [];
+        return rowsMatchingFilters
+            .filter((p) => matchesProductNameSearch(p, searchQuery))
+            .slice(0, INV_SEARCH_SUGGEST_LIMIT);
+    }, [rowsMatchingFilters, searchQuery]);
+
+    const applyInventorySearchSuggestion = useCallback((row) => {
+        setSearchQuery(inventorySearchValueFromRow(row));
+        setInvSuggestOpen(false);
+        setInvSuggestIndex(-1);
+    }, []);
+
+    const onInvSearchKeyDown = useCallback(
+        (e) => {
+            if (e.key === 'ArrowDown') {
+                if (!invSearchSuggestions.length) return;
+                e.preventDefault();
+                setInvSuggestOpen(true);
+                setInvSuggestIndex((i) => {
+                    if (i < 0) return 0;
+                    return Math.min(i + 1, invSearchSuggestions.length - 1);
+                });
+                return;
+            }
+            if (e.key === 'ArrowUp') {
+                if (!invSearchSuggestions.length) return;
+                e.preventDefault();
+                setInvSuggestOpen(true);
+                setInvSuggestIndex((i) => (i <= 0 ? -1 : i - 1));
+                return;
+            }
+            if (e.key === 'Enter') {
+                if (invSuggestOpen && invSuggestIndex >= 0 && invSearchSuggestions[invSuggestIndex]) {
+                    e.preventDefault();
+                    applyInventorySearchSuggestion(invSearchSuggestions[invSuggestIndex]);
+                }
+                return;
+            }
+            if (e.key === 'Escape') {
+                setInvSuggestOpen(false);
+                setInvSuggestIndex(-1);
+            }
+        },
+        [invSearchSuggestions, invSuggestOpen, invSuggestIndex, applyInventorySearchSuggestion],
+    );
+
+    useLayoutEffect(() => {
+        if (!invSuggestOpen || invSuggestIndex < 0) return;
+        const list = invSuggestDropdownRef.current;
+        const item = list?.querySelector(`#workshop-inv-suggest-${invSuggestIndex}`);
+        if (!list || !item) return;
+        const padding = 6;
+        const listRect = list.getBoundingClientRect();
+        const itemRect = item.getBoundingClientRect();
+        if (itemRect.bottom > listRect.bottom - padding) {
+            list.scrollTop += itemRect.bottom - listRect.bottom + padding;
+        } else if (itemRect.top < listRect.top + padding) {
+            list.scrollTop -= listRect.top - itemRect.top + padding;
+        }
+    }, [invSuggestIndex, invSuggestOpen, invSearchSuggestions]);
+
+    const clearInvSearchBlurTimer = useCallback(() => {
+        if (invSearchBlurTimerRef.current != null) {
+            clearTimeout(invSearchBlurTimerRef.current);
+            invSearchBlurTimerRef.current = null;
+        }
+    }, []);
+
+    useEffect(() => () => clearInvSearchBlurTimer(), [clearInvSearchBlurTimer]);
+
+    const tableEmptyMessage = () => {
+        if (isLoading) return t('empty.loading');
+        if (loadError) return loadError;
+        if (productRows.length === 0) return t('empty.noProducts');
+        if (hasActiveListFilters && rowsMatchingFilters.length === 0) {
+            return t('empty.noDeptCat');
+        }
+        if (searchQuery && filteredProducts.length === 0) return t('empty.noSearch');
+        return t('empty.noFilters');
+    };
+
+    if (isCriticalModalOpen && criticalItem) {
+        return (
+            <WorkshopSubScreen
+                title={t('critical.title')}
+                subtitle={displayName(criticalItem, t('critical.subtitleDefault'))}
+                backLabel={t('critical.back')}
+                onBack={closeCriticalModal}
+                backDisabled={criticalSaving}
+                size="narrow"
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    <div style={{ marginBottom: 20, padding: 16, background: '#F9FAFB', borderRadius: 12, border: '1px solid var(--color-border-light)' }}>
+                        <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: 8 }}>{t('critical.product')}</p>
+                        <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>{displayName(criticalItem)}</h4>
+                        <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                            <span dangerouslySetInnerHTML={{ __html: t('critical.currentStock', { qty: criticalItem?.qty ?? 0 }) }} />
+                            {criticalItem?.openingQty != null ? (
+                                <span dangerouslySetInnerHTML={{ __html: t('critical.opening', { qty: criticalItem.openingQty }) }} />
+                            ) : null}
+                        </p>
+                    </div>
+                    {isAllBranches ? (
+                        <p style={{ margin: '0 0 16px', fontSize: '0.8125rem', color: '#92400E', background: '#FFFBEB', padding: 12, borderRadius: 8 }}>
+                            <span dangerouslySetInnerHTML={{ __html: t('critical.pickBranch') }} />
+                        </p>
+                    ) : (
+                        <p style={{ margin: '0 0 16px', fontSize: '0.8125rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+                            <span dangerouslySetInnerHTML={{ __html: t('critical.help') }} />
+                        </p>
+                    )}
+                    <div className="mc-form-group" style={{ marginBottom: 24 }}>
+                        <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: 8, display: 'block' }}>
+                            {t('critical.label')}
+                        </label>
+                        <input
+                            type="number"
+                            className="mc-filter-select"
+                            style={{ width: '100%', height: 45 }}
+                            min={0}
+                            step="any"
+                            placeholder="0"
+                            value={criticalInput}
+                            onChange={(e) => setCriticalInput(e.target.value)}
+                            disabled={criticalSaving || isAllBranches}
+                        />
+                    </div>
+                    {criticalSubmitError && (
+                        <p style={{ margin: '0 0 16px', padding: 12, background: '#FEE2E2', borderRadius: 8, color: '#991B1B', fontSize: '0.8125rem' }}>
+                            {criticalSubmitError}
+                        </p>
+                    )}
+                    <div style={{ display: 'flex', gap: 12 }}>
+                        <button type="button" className="mc-btn-ghost" style={{ flex: 1, padding: 12 }} onClick={closeCriticalModal} disabled={criticalSaving}>
+                            {t('btn.cancel')}
+                        </button>
+                        <button
+                            type="button"
+                            className="mc-btn-primary"
+                            style={{ flex: 2, padding: 12 }}
+                            onClick={handleCriticalSubmit}
+                            disabled={
+                                criticalSaving ||
+                                isAllBranches ||
+                                (() => {
+                                    const parsed = Number.parseFloat(String(criticalInput).trim().replace(/,/g, ''));
+                                    if (!Number.isFinite(parsed) || parsed < 0) return true;
+                                    const nextCrit = Math.round(parsed * 1000) / 1000;
+                                    return nextCrit === (Number(criticalItem?.critical_level) || 0);
+                                })()
+                            }
+                        >
+                            {criticalSaving ? t('btn.saving') : t('btn.save')}
+                        </button>
+                    </div>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
+    if (logProduct) {
+        return (
+            <WorkshopSubScreen
+                title={t('timeline.title')}
+                subtitle={displayName(logProduct)}
+                backLabel={t('timeline.back')}
+                onBack={() => setLogProduct(null)}
+                size="xl"
+                footer={(
+                    <button type="button" className="mc-btn-ghost mc-btn-large" onClick={() => setLogProduct(null)}>{t('btn.close')}</button>
+                )}
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    <div style={{ padding: '0 24px 24px' }}>
+                                                <div style={{ marginBottom: 20, padding: '14px 16px', background: '#F9FAFB', borderRadius: 12, border: '1px solid var(--color-border-light)' }}>
+                                                    <p style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', margin: '0 0 6px' }}>{t('timeline.product')}</p>
+                                                    <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800 }}>{displayName(logProduct)}</h4>
+                                                    <p style={{ margin: '6px 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                                                        {t('timeline.meta', { sku: logProduct.sku || t('emdash') })}{' '}
+                                                        <strong
+                                                            style={{
+                                                                padding: '2px 8px',
+                                                                borderRadius: 6,
+                                                                background: '#FEF3C7',
+                                                                color: '#92400E',
+                                                            }}
+                                                        >
+                                                            {logOpeningContext?.displayOpening != null &&
+                                                            Number.isFinite(logOpeningContext.displayOpening)
+                                                                ? logOpeningContext.displayOpening
+                                                                : '—'}
+                                                        </strong>
+                                                        {logOpeningContext?.storedDrift ? (
+                                                            <span
+                                                                style={{ display: 'block', marginTop: 8, fontSize: '0.75rem', color: '#B45309' }}
+                                                                dangerouslySetInnerHTML={{
+                                                                    __html: t('timeline.storedDrift', { qty: logOpeningContext.timelineOpening }),
+                                                                }}
+                                                            />
+                                                        ) : null}
+                                                        {t('timeline.currentStock')}{' '}
+                                                        <strong>{formatInventoryQty(productRows.find((p) => String(p.id) === String(logProduct.id))?.qty, productRows.find((p) => String(p.id) === String(logProduct.id))?.isInfiniteQty ?? logProduct.isInfiniteQty)}</strong>
+                                                        {isAllBranches ? t('timeline.offlineOnly') : t('timeline.branchSuffix', { branch: selectedBranchName })}
+                                                    </p>
+                                                    {logOpeningContext?.storedDrift && !isAllBranches ? (
+                                                        <div style={{ marginTop: 12 }}>
+                                                            <button
+                                                                type="button"
+                                                                className="mc-btn-primary"
+                                                                style={{ padding: '10px 16px', fontSize: '0.8125rem' }}
+                                                                disabled={alignOpeningSaving || logLoading}
+                                                                onClick={alignOpeningAdoptionFromTimeline}
+                                                            >
+                                                                {alignOpeningSaving
+                                                                    ? t('btn.saving')
+                                                                    : t('btn.setOpeningAdoption', { qty: logOpeningContext.timelineOpening })}
+                                                            </button>
+                                                            {alignOpeningError ? (
+                                                                <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: '#B91C1C' }}>{alignOpeningError}</p>
+                                                            ) : null}
+                                                        </div>
+                                                    ) : null}
+                                                </div>
+                                                <div
+                                                    style={{
+                                                        display: 'flex',
+                                                        flexWrap: 'wrap',
+                                                        gap: 8,
+                                                        marginBottom: 16,
+                                                    }}
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        disabled={timelineExportDisabled}
+                                                        title={
+                                                            logLoading
+                                                                ? t('timeline.exportLoading')
+                                                                : !logMergedEntries.length
+                                                                  ? t('timeline.exportEmpty')
+                                                                  : t('timeline.exportExcel')
+                                                        }
+                                                        style={{
+                                                            ...timelineExportBtnStyle,
+                                                            opacity: timelineExportDisabled ? 0.5 : 1,
+                                                            cursor: timelineExportDisabled ? 'not-allowed' : 'pointer',
+                                                        }}
+                                                        onClick={() => {
+                                                            exportWorkshopTimelineExcel(logProduct, logMergedEntries, {
+                                                                branchName: selectedBranchName,
+                                                                filenameBase: timelineExportFilename,
+                                                                labels: { locale, t },
+                                                            });
+                                                        }}
+                                                    >
+                                                        <FileSpreadsheet size={14} aria-hidden /> {t('btn.excel')}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        disabled={timelineExportDisabled}
+                                                        title={
+                                                            logLoading
+                                                                ? t('timeline.exportLoading')
+                                                                : !logMergedEntries.length
+                                                                  ? t('timeline.exportEmpty')
+                                                                  : t('timeline.exportPdf')
+                                                        }
+                                                        style={{
+                                                            ...timelineExportBtnStyle,
+                                                            opacity: timelineExportDisabled ? 0.5 : 1,
+                                                            cursor: timelineExportDisabled ? 'not-allowed' : 'pointer',
+                                                        }}
+                                                        onClick={() => {
+                                                            exportWorkshopTimelinePdf(logProduct, logMergedEntries, {
+                                                                branchName: selectedBranchName,
+                                                                filenameBase: timelineExportFilename,
+                                                                labels: { locale, t },
+                                                            });
+                                                        }}
+                                                    >
+                                                        <FileText size={14} aria-hidden /> {t('btn.pdf')}
+                                                    </button>
+                                                </div>
+                                                {logFetchError && (
+                                                    <p style={{ margin: '0 0 12px', padding: '10px 12px', background: '#FEF3C7', borderRadius: 8, color: '#92400E', fontSize: '0.8125rem' }}>
+                                                        {logFetchError}{t('timeline.cachedNote')}
+                                                    </p>
+                                                )}
+                                                {(() => {
+                                                    const merged = logMergedEntries;
+                                                    const timelineUom = String(
+                                                        logProduct?.workshopUnit ||
+                                                            logProduct?.unit ||
+                                                            '',
+                                                    ).trim();
+
+                                                    if (logLoading && !isAllBranches) {
+                                                        return (
+                                                            <p style={{ margin: 0, padding: '40px 0', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+                                                                {t('timeline.loading')}
+                                                            </p>
+                                                        );
+                                                    }
+
+                                                    if (!merged.length) {
+                                                        return (
+                                                            <p style={{ margin: 0, padding: '24px 0', textAlign: 'center', color: 'var(--color-text-muted)', fontSize: '0.875rem' }}>
+                                                                {t('timeline.empty')}
+                                                            </p>
+                                                        );
+                                                    }
+                                                    const showByCol = merged.some((e) => e.adjustedBy?.name || e.adjustedBy?.id);
+                                                    const showRefCol = merged.some(
+                                                        (e) => e.reference?.id || (e.source && e.source !== 'manual'),
+                                                    );
+                                                    return (
+                                                        <WsTableScroll
+                                                            bodyStyle={{
+                                                                maxHeight: 'min(420px, 55vh)',
+                                                                overflowY: 'auto',
+                                                                border: '1px solid var(--color-border-light)',
+                                                                borderRadius: 12,
+                                                            }}
+                                                        >
+                                                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+                                                                <thead>
+                                                                    <tr style={{ background: '#F9FAFB', position: 'sticky', top: 0 }}>
+                                                                        <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>{t('th.when')}</th>
+                                                                        <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>{t('th.from')}</th>
+                                                                        <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>{t('th.to')}</th>
+                                                                        <th style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>{t('th.delta')}</th>
+                                                                        <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>{t('th.reason')}</th>
+                                                                        {showRefCol ? (
+                                                                            <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>{t('th.sourceRef')}</th>
+                                                                        ) : null}
+                                                                        {showByCol ? (
+                                                                            <th style={{ textAlign: 'left', padding: '12px 14px', fontWeight: 800, color: 'var(--color-text-muted)', textTransform: 'uppercase', fontSize: '0.7rem' }}>{t('th.by')}</th>
+                                                                        ) : null}
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody>
+                                                                    {merged.map((e) => {
+                                                                        const openingRow = isOpeningQtyAdjustmentEntry(e);
+                                                                        const infiniteRow = isInfiniteQtyAdjustmentEntry(e);
+                                                                        return (
+                                                                        <tr
+                                                                            key={e.id}
+                                                                            style={{
+                                                                                borderBottom: '1px solid var(--color-border-light)',
+                                                                                background: openingRow ? '#FEF9C3' : infiniteRow ? '#F5F3FF' : undefined,
+                                                                            }}
+                                                                        >
+                                                                            <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', color: openingRow ? '#92400E' : infiniteRow ? '#6D28D9' : 'var(--color-text-muted)' }}>
+                                                                                {new Date(e.at).toLocaleString()}
+                                                                                {openingRow ? (
+                                                                                    <span
+                                                                                        style={{
+                                                                                            display: 'block',
+                                                                                            fontSize: '0.65rem',
+                                                                                            fontWeight: 800,
+                                                                                            textTransform: 'uppercase',
+                                                                                            marginTop: 4,
+                                                                                        }}
+                                                                                    >
+                                                                                        {t('timeline.badgeOpening')}
+                                                                                    </span>
+                                                                                ) : null}
+                                                                                {infiniteRow ? (
+                                                                                    <span
+                                                                                        style={{
+                                                                                            display: 'block',
+                                                                                            fontSize: '0.65rem',
+                                                                                            fontWeight: 800,
+                                                                                            textTransform: 'uppercase',
+                                                                                            marginTop: 4,
+                                                                                        }}
+                                                                                    >
+                                                                                        {t('timeline.badgeUnlimited')}
+                                                                                    </span>
+                                                                                ) : null}
+                                                                            </td>
+                                                                            <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700 }}>{formatTimelineQty(e, 'previous', timelineUom)}</td>
+                                                                            <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700 }}>{formatTimelineQty(e, 'new', timelineUom)}</td>
+                                                                            <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: infiniteRow ? '#6D28D9' : e.delta >= 0 ? '#047857' : '#B91C1C' }}>
+                                                                                {formatTimelineDelta(e, timelineUom)}
+                                                                            </td>
+                                                                            <td style={{ padding: '12px 14px' }}>{wiReasonLabel(locale, e.reason)}</td>
+                                                                            {showRefCol ? (
+                                                                                <td style={{ padding: '12px 14px', color: 'var(--color-text-muted)' }}>
+                                                                                    <span>{humanizeInventoryLogSource(e.source, t)}</span>
+                                                                                    {e.reference?.id ? (
+                                                                                        <span>
+                                                                                            {' '}
+                                                                                            · {humanizeInventoryLogReferenceType(e.reference.type, t)}{' '}
+                                                                                            {e.reference.invoiceNumber ? (
+                                                                                                <strong>{e.reference.invoiceNumber}</strong>
+                                                                                            ) : (
+                                                                                                <>#{e.reference.id}</>
+                                                                                            )}
+                                                                                        </span>
+                                                                                    ) : null}
+                                                                                </td>
+                                                                            ) : null}
+                                                                            {showByCol ? (
+                                                                                <td style={{ padding: '12px 14px', color: 'var(--color-text-muted)' }}>
+                                                                                    {e.adjustedBy?.name || e.adjustedBy?.id || '—'}
+                                                                                </td>
+                                                                            ) : null}
+                                                                        </tr>
+                                                                    );
+                                                                    })}
+                                                                </tbody>
+                                                            </table>
+                                                        </WsTableScroll>
+                                                    );
+                                                })()}
+                                            </div>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
+    if (isAdjustModalOpen && adjustItem) {
+        return (
+            <WorkshopSubScreen
+                title={t('adjust.title')}
+                subtitle={displayName(adjustItem, t('adjust.subtitleDefault'))}
+                backLabel={t('adjust.back')}
+                onBack={closeAdjustModal}
+                backDisabled={adjustSaving}
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    <div style={{ marginBottom: '20px', padding: '16px', background: '#F9FAFB', borderRadius: '12px', border: '1px solid var(--color-border-light)' }}>
+                                                    <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>{t('adjust.productDetails')}</p>
+                                                    <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>{displayName(adjustItem)}</h4>
+                                                    <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                                                        <span dangerouslySetInnerHTML={{ __html: t('adjust.currentStock', { qty: formatInventoryQty(adjustItem?.qty, adjustItem?.isInfiniteQty) }) }} />
+                                                        {adjustItem?.openingQty != null ? (
+                                                            <>
+                                                                {t('adjust.opening')}{' '}
+                                                                <strong
+                                                                    style={{
+                                                                        padding: '2px 8px',
+                                                                        borderRadius: 6,
+                                                                        background: isAdjustOpeningQty ? '#FEF3C7' : 'transparent',
+                                                                        color: isAdjustOpeningQty ? '#92400E' : 'inherit',
+                                                                    }}
+                                                                >
+                                                                    {adjustItem.openingQty}
+                                                                </strong>
+                                                            </>
+                                                        ) : null}
+                                                    </p>
+                                                </div>
+
+                                                <p style={{ margin: '0 0 16px', fontSize: '0.8125rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+                                                    {isAdjustInfiniteQty ? (
+                                                        <span dangerouslySetInnerHTML={{ __html: t('adjust.helpInfinite') }} />
+                                                    ) : isAdjustOpeningQty ? (
+                                                        <span dangerouslySetInnerHTML={{ __html: t('adjust.helpOpening') }} />
+                                                    ) : adjustItem?.isInfiniteQty ? (
+                                                        <>
+                                                            <span dangerouslySetInnerHTML={{ __html: t('adjust.helpLeaveInfinite') }} />
+                                                            {adjustItem.lastPhysicalQty != null ? (
+                                                                <span dangerouslySetInnerHTML={{ __html: t('adjust.helpLeaveInfiniteLast', { qty: adjustItem.lastPhysicalQty }) }} />
+                                                            ) : null}
+                                                            .
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <span dangerouslySetInnerHTML={{ __html: t('adjust.helpStock') }} />
+                                                            {adjustItem?.allowMinusQty
+                                                                ? t('adjust.helpAllowMinus')
+                                                                : t('adjust.helpMustGe0')}
+                                                        </>
+                                                    )}
+                                                    {isAllBranches
+                                                        ? t('adjust.pickBranch')
+                                                        : isAdjustInfiniteQty
+                                                          ? adjustItem?.isInfiniteQty
+                                                            ? t('adjust.alreadyUnlimited')
+                                                            : t('adjust.asInfinite')
+                                                          : isAdjustOpeningQty
+                                                          ? t('adjust.openingNote')
+                                                          : adjustItem?.isInfiniteQty
+                                                            ? t('adjust.noPrevCheck')
+                                                            : t('adjust.prevQtyCheck')}
+                                                </p>
+
+                                                <div className="mc-form-group" style={{ marginBottom: '16px' }}>
+                                                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>{t('adjust.reasonLabel')}</label>
+                                                    <select
+                                                        className="mc-filter-select"
+                                                        style={{ width: '100%', height: '45px' }}
+                                                        value={adjustReason}
+                                                        onChange={(e) => handleAdjustReasonChange(e.target.value)}
+                                                        disabled={adjustSaving}
+                                                    >
+                                                        <option value="">{t('adjust.selectReason')}</option>
+                                                        {INVENTORY_ADJUST_REASON_OPTIONS.map((opt) => (
+                                                            <option key={opt.value} value={opt.value}>
+                                                                {t(opt.labelKey)}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
+                                                {!isAdjustInfiniteQty ? (
+                                                <div className="mc-form-group" style={{ marginBottom: '16px' }}>
+                                                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>
+                                                        {isAdjustOpeningQty ? t('adjust.newOpeningLabel') : t('adjust.newQtyLabel')}
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        className="mc-filter-select"
+                                                        style={{ width: '100%', height: '45px' }}
+                                                        placeholder={isAdjustOpeningQty ? t('adjust.placeholderOpening') : t('adjust.placeholderStock')}
+                                                        min={0}
+                                                        step={1}
+                                                        value={newQty}
+                                                        onChange={(e) => setNewQty(e.target.value)}
+                                                        disabled={adjustSaving}
+                                                    />
+                                                </div>
+                                                ) : null}
+
+                                                {adjustSubmitError && (
+                                                    <p style={{ margin: '0 0 16px', padding: '12px', background: '#FEE2E2', borderRadius: 8, color: '#991B1B', fontSize: '0.8125rem' }}>
+                                                        {adjustSubmitError}
+                                                    </p>
+                                                )}
+
+                                                <div style={{ display: 'flex', gap: '12px' }}>
+                                                    <button type="button" className="mc-btn-ghost" style={{ flex: 1, padding: '12px' }} onClick={closeAdjustModal} disabled={adjustSaving}>
+                                                        {t('btn.cancel')}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="mc-btn-primary"
+                                                        style={{ flex: 2, padding: '12px', background: '#4B5563', borderColor: '#4B5563' }}
+                                                        onClick={handleAdjustSubmit}
+                                                        disabled={(() => {
+                                                            if (adjustSaving || !adjustItem || !adjustReason.trim()) return true;
+                                                            if (isAdjustInfiniteQty) {
+                                                                return Boolean(adjustItem.isInfiniteQty);
+                                                            }
+                                                            const parsed = Number.parseFloat(String(newQty).trim().replace(/,/g, ''));
+                                                            if (!Number.isFinite(parsed) || parsed < 0) return true;
+                                                            if (adjustItem.isInfiniteQty) return false;
+                                                            const baseline = isAdjustOpeningQty
+                                                                ? Number(adjustItem.openingQty ?? adjustItem.qty) || 0
+                                                                : Number(adjustItem.qty) || 0;
+                                                            return Math.round(parsed) === baseline;
+                                                        })()}
+                                                    >
+                                                        {adjustSaving ? t('btn.saving') : t('btn.applyAdjustment')}
+                                                    </button>
+                                                </div>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
+    if (isBulkAdjustModalOpen) {
+        return (
+            <WorkshopSubScreen
+                title={selectedProductsForBulk.length === 1
+                    ? t('bulk.titleOne', { count: selectedProductsForBulk.length })
+                    : t('bulk.titleMany', { count: selectedProductsForBulk.length })}
+                subtitle={t('bulk.subtitle')}
+                backLabel={t('bulk.back')}
+                onBack={closeBulkAdjustModal}
+                backDisabled={bulkAdjustSaving}
+                size="xl"
+            >
+                <div className="ws-section" style={{ padding: 20 }}>
+                    <p style={{ margin: '0 0 16px', fontSize: '0.8125rem', color: 'var(--color-text-muted)', lineHeight: 1.5 }}>
+                                                    {isBulkInfiniteQty ? (
+                                                        <span dangerouslySetInnerHTML={{ __html: t('bulk.helpInfinite') }} />
+                                                    ) : isBulkOpeningQty ? (
+                                                        <span dangerouslySetInnerHTML={{ __html: t('bulk.helpOpening') }} />
+                                                    ) : (
+                                                        <span dangerouslySetInnerHTML={{ __html: t('bulk.helpStock') }} />
+                                                    )}
+                                                    {isAllBranches
+                                                        ? t('bulk.allBranchesNote')
+                                                        : t('bulk.savedFor', { branch: selectedBranchName })}
+                                                </p>
+
+                                                <div className="mc-form-group" style={{ marginBottom: '16px' }}>
+                                                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>
+                                                        {t('adjust.reasonLabel')}
+                                                    </label>
+                                                    <select
+                                                        className="mc-filter-select"
+                                                        style={{ width: '100%', height: '45px' }}
+                                                        value={bulkAdjustReason}
+                                                        onChange={(e) => setBulkAdjustReason(e.target.value)}
+                                                        disabled={bulkAdjustSaving}
+                                                    >
+                                                        <option value="">{t('adjust.selectReason')}</option>
+                                                        {INVENTORY_ADJUST_REASON_OPTIONS.map((opt) => (
+                                                            <option key={opt.value} value={opt.value}>
+                                                                {t(opt.labelKey)}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+
+                                                {!isBulkInfiniteQty ? (
+                                                <div className="mc-form-group" style={{ marginBottom: '16px' }}>
+                                                    <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>
+                                                        {isBulkOpeningQty
+                                                            ? t('bulk.newOpeningLabel')
+                                                            : t('bulk.newQtyLabel')}
+                                                    </label>
+                                                    <input
+                                                        type="number"
+                                                        className="mc-filter-select"
+                                                        style={{ width: '100%', height: '45px' }}
+                                                        min={0}
+                                                        step={1}
+                                                        placeholder={t('bulk.placeholderEg')}
+                                                        value={bulkAdjustAmount}
+                                                        onChange={(e) => setBulkAdjustAmount(e.target.value)}
+                                                        disabled={bulkAdjustSaving || !bulkAdjustReason.trim()}
+                                                    />
+                                                </div>
+                                                ) : null}
+
+                                                {bulkAdjustPreview.length > 0 && (
+                                                    <div
+                                                        style={{
+                                                            marginBottom: 16,
+                                                            maxHeight: 200,
+                                                            overflowY: 'auto',
+                                                            border: '1px solid var(--color-border-light)',
+                                                            borderRadius: 12,
+                                                            background: '#F9FAFB',
+                                                        }}
+                                                    >
+                                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8125rem' }}>
+                                                            <thead>
+                                                                <tr style={{ borderBottom: '1px solid var(--color-border-light)' }}>
+                                                                    <th style={{ padding: '10px 12px', textAlign: 'left' }}>{t('th.product')}</th>
+                                                                    {isBulkOpeningQty ? (
+                                                                        <>
+                                                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>{t('th.openingShort')}</th>
+                                                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>{t('th.newOpening')}</th>
+                                                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>{t('th.current')}</th>
+                                                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>{t('th.newStock')}</th>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>{t('th.current')}</th>
+                                                                            <th style={{ padding: '10px 12px', textAlign: 'center' }}>{t('th.new')}</th>
+                                                                        </>
+                                                                    )}
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {bulkAdjustPreview.slice(0, 12).map((row) => (
+                                                                    <tr key={row.id} style={{ borderBottom: '1px solid var(--color-border-light)' }}>
+                                                                        <td style={{ padding: '8px 12px' }}>
+                                                                            <strong>{displayName(row)}</strong>
+                                                                            {row.sku !== '—' ? (
+                                                                                <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--color-text-muted)' }}>{row.sku}</span>
+                                                                            ) : null}
+                                                                        </td>
+                                                                        {isBulkInfiniteQty ? (
+                                                                            <>
+                                                                                <td style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                                                                                    {formatInventoryQty(row.prevCurrent, false)}
+                                                                                </td>
+                                                                                <td
+                                                                                    style={{
+                                                                                        padding: '8px 12px',
+                                                                                        textAlign: 'center',
+                                                                                        fontWeight: 700,
+                                                                                        color: row.unchanged ? 'var(--color-text-muted)' : '#6D28D9',
+                                                                                    }}
+                                                                                >
+                                                                                    {row.unchanged ? t('bulk.skipInfinite') : '∞'}
+                                                                                </td>
+                                                                            </>
+                                                                        ) : isBulkOpeningQty ? (
+                                                                            <>
+                                                                                <td
+                                                                                    style={{
+                                                                                        padding: '8px 12px',
+                                                                                        textAlign: 'center',
+                                                                                        color: '#92400E',
+                                                                                        background: '#FFFBEB',
+                                                                                        fontWeight: 600,
+                                                                                    }}
+                                                                                >
+                                                                                    {row.prevOpening}
+                                                                                </td>
+                                                                                <td
+                                                                                    style={{
+                                                                                        padding: '8px 12px',
+                                                                                        textAlign: 'center',
+                                                                                        fontWeight: 700,
+                                                                                        color: row.unchanged ? 'var(--color-text-muted)' : '#92400E',
+                                                                                        background: row.unchanged ? undefined : '#FEF3C7',
+                                                                                    }}
+                                                                                >
+                                                                                    {row.newOpening}
+                                                                                </td>
+                                                                                <td style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                                                                                    {row.prevCurrent}
+                                                                                </td>
+                                                                                <td
+                                                                                    style={{
+                                                                                        padding: '8px 12px',
+                                                                                        textAlign: 'center',
+                                                                                        fontWeight: 700,
+                                                                                        color: row.unchanged ? 'var(--color-text-muted)' : '#047857',
+                                                                                    }}
+                                                                                >
+                                                                                    {row.newCurrent}
+                                                                                    {row.unchanged ? t('bulk.skip') : ''}
+                                                                                </td>
+                                                                            </>
+                                                                        ) : (
+                                                                            <>
+                                                                                <td style={{ padding: '8px 12px', textAlign: 'center', color: 'var(--color-text-muted)' }}>{row.prevQty}</td>
+                                                                                <td
+                                                                                    style={{
+                                                                                        padding: '8px 12px',
+                                                                                        textAlign: 'center',
+                                                                                        fontWeight: 700,
+                                                                                        color: row.unchanged ? 'var(--color-text-muted)' : '#047857',
+                                                                                    }}
+                                                                                >
+                                                                                    {row.newQty}
+                                                                                    {row.unchanged ? t('bulk.skip') : ''}
+                                                                                </td>
+                                                                            </>
+                                                                        )}
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                        {bulkAdjustPreview.length > 12 ? (
+                                                            <p style={{ margin: 0, padding: '8px 12px', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                                                {t('bulk.more', { count: bulkAdjustPreview.length - 12 })}
+                                                            </p>
+                                                        ) : null}
+                                                    </div>
+                                                )}
+
+                                                <p style={{ margin: '0 0 12px', fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                                    <span dangerouslySetInnerHTML={{ __html: t('bulk.willUpdate', { change: bulkAdjustWillChangeCount, total: bulkAdjustPreview.length }) }} />
+                                                    {bulkAdjustSaving && bulkAdjustProgress.total > 0
+                                                        ? bulkAdjustProgress.done >= bulkAdjustProgress.total
+                                                            ? t('bulk.done')
+                                                            : t('bulk.applyingServer', { total: bulkAdjustProgress.total })
+                                                        : ''}
+                                                </p>
+
+                                                {bulkAdjustError && (
+                                                    <p style={{ margin: '0 0 16px', padding: '12px', background: '#FEE2E2', borderRadius: 8, color: '#991B1B', fontSize: '0.8125rem' }}>
+                                                        {bulkAdjustError}
+                                                    </p>
+                                                )}
+
+                                                <div style={{ display: 'flex', gap: '12px' }}>
+                                                    <button type="button" className="mc-btn-ghost" style={{ flex: 1, padding: '12px' }} onClick={closeBulkAdjustModal} disabled={bulkAdjustSaving}>
+                                                        {t('btn.cancel')}
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        className="mc-btn-primary"
+                                                        style={{ flex: 2, padding: '12px' }}
+                                                        onClick={handleBulkAdjustSubmit}
+                                                        disabled={
+                                                            bulkAdjustSaving ||
+                                                            !bulkAdjustReason.trim() ||
+                                                            bulkAdjustWillChangeCount === 0 ||
+                                                            (!isBulkInfiniteQty &&
+                                                                !Number.isFinite(
+                                                                    Number.parseFloat(String(bulkAdjustAmount).trim().replace(/,/g, '')),
+                                                                ))
+                                                        }
+                                                    >
+                                                        {bulkAdjustSaving
+                                                            ? t('btn.applying')
+                                                            : bulkAdjustWillChangeCount === 1
+                                                              ? t('btn.applyToN', { count: bulkAdjustWillChangeCount })
+                                                              : t('btn.applyToNPlural', { count: bulkAdjustWillChangeCount })}
+                                                    </button>
+                                                </div>
+                </div>
+            </WorkshopSubScreen>
+        );
+    }
+
+    return (
+        <div className="mc-catalog-container">
+            <div className="mc-selection-header">
+                <div className="mc-header-left">
+                    <h3>{t('page.title')}</h3>
+                    <p dangerouslySetInnerHTML={{
+                        __html: isAllBranches
+                            ? t('page.subtitleAll', { branch: selectedBranchName })
+                            : t('page.subtitle', { branch: selectedBranchName }),
+                    }} />
+                    <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <button
+                            type="button"
+                            className="mc-btn-ghost"
+                            style={{ padding: '8px 14px', fontSize: '0.8125rem', border: '1px solid var(--color-border)', borderRadius: 10, display: 'inline-flex', alignItems: 'center', gap: 8 }}
+                            onClick={() => loadInventory()}
+                            disabled={isLoading}
+                        >
+                            <RefreshCw size={16} style={{ opacity: isLoading ? 0.5 : 1, animation: isLoading ? 'ws-spin 0.8s linear infinite' : undefined }} />
+                            {t('btn.refresh')}
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div
+                className="mc-stats-grid"
+                style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: '20px',
+                    marginBottom: '24px',
+                }}
+            >
+                {stats.map((stat, i) => {
+                    const cardStyle = {
+                        background: '#fff',
+                        padding: '24px',
+                        borderRadius: '24px',
+                        border: '1px solid var(--color-border)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '20px',
+                        boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.05)',
+                        width: '100%',
+                    };
+                    const inner = (
+                        <>
+                        <div
+                            style={{
+                                width: '54px',
+                                height: '54px',
+                                borderRadius: '14px',
+                                background: `${stat.color}15`,
+                                color: stat.color,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                            }}
+                        >
+                            <stat.icon size={26} />
+                        </div>
+                        <div style={{ minWidth: 0, textAlign: 'left' }}>
+                            <p
+                                style={{
+                                    fontSize: '0.8125rem',
+                                    fontWeight: 700,
+                                    color: 'var(--color-text-muted)',
+                                    margin: '0 0 4px',
+                                }}
+                            >
+                                {stat.label}
+                            </p>
+                            <h4
+                                style={{
+                                    fontSize: '1.5rem',
+                                    fontWeight: 800,
+                                    color: 'var(--color-text-dark)',
+                                    margin: 0,
+                                }}
+                            >
+                                {stat.value}
+                            </h4>
+                            {stat.sub ? (
+                                <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', margin: '6px 0 0' }}>{stat.sub}</p>
+                            ) : null}
+                            {stat.clickable ? (
+                                <p className="ws-kpi-proof-hint" style={{ marginTop: 8 }}>
+                                    {t('stat.clickHint')}
+                                </p>
+                            ) : null}
+                        </div>
+                        </>
+                    );
+                    if (stat.clickable) {
+                        const proofClass =
+                            stat.proofKey === 'lowStock'
+                                ? 'mc-stat-card ws-inv-stat-card--clickable ws-inv-stat-card--clickable-danger'
+                                : 'mc-stat-card ws-inv-stat-card--clickable';
+                        return (
+                            <button
+                                key={i}
+                                type="button"
+                                className={proofClass}
+                                style={cardStyle}
+                                onClick={() => {
+                                    if (stat.proofKey === 'lowStock') setIsLowStockProofOpen(true);
+                                    else if (stat.proofKey === 'inventoryValue') setIsInvValueProofOpen(true);
+                                }}
+                                aria-label={t('aria.statBreakdown', { label: stat.label })}
+                            >
+                                {inner}
+                            </button>
+                        );
+                    }
+                    return (
+                        <div key={i} className="mc-stat-card" style={cardStyle}>
+                            {inner}
+                        </div>
+                    );
+                })}
+            </div>
+
+            <div className="mc-selection-layout">
+                <div className="mc-selection-main" style={{ gridColumn: 'span 2' }}>
+                    <div
+                        className="mc-inventory-card"
+                        style={{
+                            background: '#fff',
+                            borderRadius: '24px',
+                            border: '1px solid var(--color-border)',
+                            overflow: 'hidden',
+                        }}
+                    >
+                        <div
+                            style={{
+                                padding: '24px',
+                                borderBottom: '1px solid var(--color-border-light)',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: 8,
+                            }}
+                        >
+                            <div
+                                style={{
+                                    display: 'grid',
+                                    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+                                    gap: 12,
+                                    alignItems: 'end',
+                                }}
+                            >
+                                <div>
+                                    <label
+                                        className="form-label"
+                                        style={{ display: 'block', marginBottom: 6, fontSize: '0.75rem' }}
+                                    >
+                                        {t('filter.department')}
+                                    </label>
+                                    <select
+                                        className="mc-filter-select"
+                                        style={{ width: '100%', minHeight: 46 }}
+                                        value={departmentFilter}
+                                        onChange={(e) => setDepartmentFilter(e.target.value)}
+                                        disabled={isLoading || departmentOptions.length === 0}
+                                    >
+                                        <option value="all">{t('filter.allDepartments')}</option>
+                                        {departmentOptions.map((d) => (
+                                            <option key={d.id} value={d.id}>
+                                                {d.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label
+                                        className="form-label"
+                                        style={{ display: 'block', marginBottom: 6, fontSize: '0.75rem' }}
+                                    >
+                                        {t('filter.category')}
+                                    </label>
+                                    <select
+                                        className="mc-filter-select"
+                                        style={{ width: '100%', minHeight: 46 }}
+                                        value={categoryFilter}
+                                        onChange={(e) => setCategoryFilter(e.target.value)}
+                                        disabled={isLoading || categoryOptions.length === 0}
+                                    >
+                                        <option value="all">{t('filter.allCategories')}</option>
+                                        {categoryOptions.map((c) => (
+                                            <option key={c.id} value={c.id}>
+                                                {c.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                                {hasActiveListFilters ? (
+                                    <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                                        <button
+                                            type="button"
+                                            className="mc-btn-ghost"
+                                            style={{
+                                                padding: '8px 14px',
+                                                fontSize: '0.8125rem',
+                                                border: '1px solid var(--color-border)',
+                                                borderRadius: 10,
+                                                minHeight: 46,
+                                            }}
+                                            onClick={() => {
+                                                setDepartmentFilter('all');
+                                                setCategoryFilter('all');
+                                            }}
+                                        >
+                                            {t('btn.clearFilters')}
+                                        </button>
+                                    </div>
+                                ) : null}
+                            </div>
+                            <div className="mc-header-filter" style={{ width: '100%', maxWidth: 'none' }}>
+                                <div
+                                    className="mc-filter-select-wrapper mc-inv-search-combo"
+                                    style={{ position: 'relative', width: '100%', minWidth: 'min(900px, 100%)', maxWidth: '100%' }}
+                                >
+                                    <Search className="mc-filter-icon" size={16} />
+                                    <input
+                                        type="text"
+                                        placeholder={t('search.placeholder')}
+                                        className="mc-filter-select"
+                                        style={{
+                                            paddingLeft: '40px',
+                                            paddingRight: searchQuery ? '70px' : '14px',
+                                            width: '100%',
+                                            minHeight: 46,
+                                            fontSize: '0.95rem',
+                                            backgroundImage: 'none',
+                                            cursor: 'text',
+                                        }}
+                                        value={searchQuery}
+                                        onChange={(e) => {
+                                            const v = e.target.value;
+                                            setSearchQuery(v);
+                                            setInvSuggestIndex(-1);
+                                            if (!normalizeInventorySearchValue(v)) {
+                                                setInvSuggestOpen(false);
+                                            } else {
+                                                setInvSuggestOpen(true);
+                                            }
+                                        }}
+                                        onKeyDown={onInvSearchKeyDown}
+                                        onFocus={() => {
+                                            clearInvSearchBlurTimer();
+                                            if (normalizeInventorySearchValue(searchQuery)) {
+                                                setInvSuggestOpen(true);
+                                            }
+                                        }}
+                                        onBlur={() => {
+                                            clearInvSearchBlurTimer();
+                                            invSearchBlurTimerRef.current = setTimeout(() => {
+                                                invSearchBlurTimerRef.current = null;
+                                                setInvSuggestOpen(false);
+                                                setInvSuggestIndex(-1);
+                                            }, 200);
+                                        }}
+                                        disabled={isLoading}
+                                        role="combobox"
+                                        aria-autocomplete="list"
+                                        aria-expanded={invSuggestOpen}
+                                        aria-controls="workshop-inv-search-suggest-list"
+                                        aria-activedescendant={
+                                            invSuggestOpen && invSuggestIndex >= 0
+                                                ? `workshop-inv-suggest-${invSuggestIndex}`
+                                                : undefined
+                                        }
+                                    />
+                                    {searchQuery && (
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSearchQuery('');
+                                                setInvSuggestOpen(false);
+                                                setInvSuggestIndex(-1);
+                                            }}
+                                            aria-label={t('search.clear')}
+                                            title={t('search.clear')}
+                                            style={{
+                                                position: 'absolute',
+                                                right: 8,
+                                                top: '50%',
+                                                transform: 'translateY(-50%)',
+                                                border: 'none',
+                                                background: '#F3F4F6',
+                                                color: '#374151',
+                                                borderRadius: 8,
+                                                width: 26,
+                                                height: 26,
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                cursor: 'pointer',
+                                            }}
+                                        >
+                                            <X size={14} />
+                                        </button>
+                                    )}
+                                    {invSuggestOpen && normalizeInventorySearchValue(searchQuery) && (
+                                        <div
+                                            ref={invSuggestDropdownRef}
+                                            id="workshop-inv-search-suggest-list"
+                                            className="mc-inv-search-dropdown"
+                                            role="listbox"
+                                            aria-label={t('search.matching')}
+                                            onMouseDown={(ev) => ev.preventDefault()}
+                                        >
+                                            {invSearchSuggestions.length === 0 ? (
+                                                <div className="mc-inv-search-dropdown-empty">{t('search.noMatch')}</div>
+                                            ) : (
+                                                invSearchSuggestions.map((row, idx) => (
+                                                    <button
+                                                        key={row._rowKey || row.id || idx}
+                                                        type="button"
+                                                        id={`workshop-inv-suggest-${idx}`}
+                                                        role="option"
+                                                        aria-selected={invSuggestIndex === idx}
+                                                        className={`mc-inv-search-suggest${invSuggestIndex === idx ? ' is-active' : ''}`}
+                                                        onMouseEnter={() => setInvSuggestIndex(idx)}
+                                                        onClick={() => applyInventorySearchSuggestion(row)}
+                                                    >
+                                                        <span className="mc-inv-search-suggest-name">{displayName(row)}</span>
+                                                        {row.sku ? (
+                                                            <span className="mc-inv-search-suggest-sku">{row.sku}</span>
+                                                        ) : null}
+                                                    </button>
+                                                ))
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                                <span dangerouslySetInnerHTML={{ __html: t('showing.count', { shown: filteredProducts.length, total: productRows.length }) }} />
+                                {hasActiveListFilters ? t('showing.filtered') : ''}
+                                {searchQuery ? t('showing.search', { query: searchQuery }) : ''}
+                                {t('showing.period')}
+                            </p>
+                            <div className="ws-inv-bulk-toolbar">
+                                <button
+                                    type="button"
+                                    className="mc-btn-ghost"
+                                    style={{ padding: '8px 14px', fontSize: '0.8125rem', border: '1px solid var(--color-border)', borderRadius: 10 }}
+                                    onClick={toggleSelectAllVisible}
+                                    disabled={isLoading || filteredProducts.length === 0}
+                                >
+                                    {allVisibleSelected && visibleProductIds.length > 0
+                                        ? t('btn.deselectAllPage')
+                                        : t('btn.selectAllPage')}
+                                </button>
+                                <button
+                                    type="button"
+                                    className="mc-btn-ghost"
+                                    style={{ padding: '8px 14px', fontSize: '0.8125rem', border: '1px solid var(--color-border)', borderRadius: 10 }}
+                                    onClick={selectProductsWithStock}
+                                    disabled={isLoading || productsWithStockCount === 0}
+                                    title={
+                                        productsWithStockCount === 0
+                                            ? t('tip.selectWithStockNone')
+                                            : t('tip.selectWithStockN', { count: productsWithStockCount })
+                                    }
+                                >
+                                    {t('btn.selectWithStock')}
+                                    {productsWithStockCount > 0 ? ` (${productsWithStockCount})` : ''}
+                                </button>
+                                {selectedProductIds.length > 0 ? (
+                                    <>
+                                        <span className="ws-inv-bulk-count">
+                                            {t('bulk.selected', { count: selectedProductIds.length })}
+                                        </span>
+                                        <button
+                                            type="button"
+                                            className="mc-btn-primary"
+                                            style={{ padding: '8px 14px', fontSize: '0.8125rem' }}
+                                            onClick={openBulkAdjustModal}
+                                        >
+                                            {t('btn.bulkAdjust')}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="mc-btn-ghost"
+                                            style={{ padding: '8px 14px', fontSize: '0.8125rem', border: '1px solid var(--color-border)', borderRadius: 10 }}
+                                            onClick={clearProductSelection}
+                                        >
+                                            {t('btn.clear')}
+                                        </button>
+                                    </>
+                                ) : null}
+                                <span
+                                    style={{
+                                        fontSize: '0.75rem',
+                                        fontWeight: 700,
+                                        color: 'var(--color-text-muted)',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '0.04em',
+                                        marginLeft: selectedProductIds.length > 0 ? 4 : 0,
+                                    }}
+                                >
+                                    {t('bulk.exportSelected')}
+                                </span>
+                                <button
+                                    type="button"
+                                    disabled={selectedProductsForBulk.length === 0}
+                                    title={
+                                        selectedProductsForBulk.length === 0
+                                            ? t('tip.exportNone')
+                                            : t('tip.exportExcel', { count: selectedProductsForBulk.length })
+                                    }
+                                    onClick={handleExportSelectedExcel}
+                                    style={{
+                                        ...exportToolbarBtnStyle,
+                                        opacity: selectedProductsForBulk.length === 0 ? 0.5 : 1,
+                                        cursor: selectedProductsForBulk.length === 0 ? 'not-allowed' : 'pointer',
+                                    }}
+                                >
+                                    <FileSpreadsheet size={14} aria-hidden /> {t('btn.excel')}
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={selectedProductsForBulk.length === 0}
+                                    title={
+                                        selectedProductsForBulk.length === 0
+                                            ? t('tip.exportNone')
+                                            : t('tip.exportPdf', { count: selectedProductsForBulk.length })
+                                    }
+                                    onClick={handleExportSelectedPdf}
+                                    style={{
+                                        ...exportToolbarBtnStyle,
+                                        opacity: selectedProductsForBulk.length === 0 ? 0.5 : 1,
+                                        cursor: selectedProductsForBulk.length === 0 ? 'not-allowed' : 'pointer',
+                                    }}
+                                >
+                                    <FileText size={14} aria-hidden /> {t('btn.pdf')}
+                                </button>
+                                {isAllBranches && selectedProductIds.length > 0 ? (
+                                    <span style={{ fontSize: '0.75rem', color: '#B45309' }}>
+                                        {t('bulk.selectBranchHint')}
+                                    </span>
+                                ) : null}
+                            </div>
+                            <p style={{ margin: 0, fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>
+                                <span dangerouslySetInnerHTML={{ __html: t('bulk.help') }} />
+                                {isAllBranches ? t('bulk.helpAll') : t('bulk.helpBranch')}
+                            </p>
+                        </div>
+
+                        <div className="mc-table-container">
+                            <WsTableScroll>
+                            <table className="mc-data-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead>
+                                    <tr style={{ background: '#F9FAFB', borderBottom: '1px solid var(--color-border-light)' }}>
+                                        <th
+                                            style={{
+                                                padding: '16px 12px',
+                                                width: 48,
+                                                textAlign: 'center',
+                                            }}
+                                        >
+                                            <input
+                                                ref={selectAllCheckboxRef}
+                                                type="checkbox"
+                                                checked={allVisibleSelected && visibleProductIds.length > 0}
+                                                onChange={toggleSelectAllVisible}
+                                                disabled={isLoading || filteredProducts.length === 0}
+                                                aria-label={t('aria.selectAll')}
+                                                onClick={(e) => e.stopPropagation()}
+                                            />
+                                        </th>
+                                        <th
+                                            style={{
+                                                padding: '16px 24px',
+                                                textAlign: 'left',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 800,
+                                                color: 'var(--color-text-muted)',
+                                                textTransform: 'uppercase',
+                                            }}
+                                        >
+                                            {t('th.name')}
+                                        </th>
+                                        <th
+                                            style={{
+                                                padding: '16px 24px',
+                                                textAlign: 'left',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 800,
+                                                color: 'var(--color-text-muted)',
+                                                textTransform: 'uppercase',
+                                            }}
+                                        >
+                                            {t('th.sku')}
+                                        </th>
+                                        <th
+                                            style={{
+                                                padding: '16px 24px',
+                                                textAlign: 'left',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 800,
+                                                color: 'var(--color-text-muted)',
+                                                textTransform: 'uppercase',
+                                            }}
+                                        >
+                                            {t('th.department')}
+                                        </th>
+                                        <th
+                                            style={{
+                                                padding: '16px 24px',
+                                                textAlign: 'left',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 800,
+                                                color: 'var(--color-text-muted)',
+                                                textTransform: 'uppercase',
+                                            }}
+                                        >
+                                            {t('th.category')}
+                                        </th>
+                                        <th
+                                            style={{
+                                                padding: '16px 24px',
+                                                textAlign: 'center',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 800,
+                                                color: 'var(--color-text-muted)',
+                                                textTransform: 'uppercase',
+                                            }}
+                                            title={t('tip.openingCol')}
+                                        >
+                                            {t('th.opening')}
+                                        </th>
+                                        <th
+                                            style={{
+                                                padding: '16px 24px',
+                                                textAlign: 'center',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 800,
+                                                color: 'var(--color-text-muted)',
+                                                textTransform: 'uppercase',
+                                            }}
+                                            title={t('tip.currentCol')}
+                                        >
+                                            {t('th.currentStock')}
+                                        </th>
+                                        <th
+                                            style={{
+                                                padding: '16px 24px',
+                                                textAlign: 'center',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 800,
+                                                color: 'var(--color-text-muted)',
+                                                textTransform: 'uppercase',
+                                            }}
+                                            title={t('tip.criticalCol')}
+                                        >
+                                            {t('th.critical')}
+                                        </th>
+                                        <th
+                                            style={{
+                                                padding: '16px 24px',
+                                                textAlign: 'left',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 800,
+                                                color: 'var(--color-text-muted)',
+                                                textTransform: 'uppercase',
+                                            }}
+                                            title={t('tip.uomCol')}
+                                        >
+                                            {t('th.uom')}
+                                        </th>
+                                        <th
+                                            style={{
+                                                padding: '16px 24px',
+                                                textAlign: 'center',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 800,
+                                                color: 'var(--color-text-muted)',
+                                                textTransform: 'uppercase',
+                                            }}
+                                            title={t('tip.purchaseCol')}
+                                        >
+                                            {t('th.purchasePrice')}
+                                        </th>
+                                        <th
+                                            style={{
+                                                padding: '16px 24px',
+                                                textAlign: 'center',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 800,
+                                                color: 'var(--color-text-muted)',
+                                                textTransform: 'uppercase',
+                                            }}
+                                        >
+                                            {t('th.status')}
+                                        </th>
+                                        {canAnyInventoryAction ? (
+                                        <th
+                                            style={{
+                                                padding: '16px 24px',
+                                                textAlign: 'right',
+                                                fontSize: '0.75rem',
+                                                fontWeight: 800,
+                                                color: 'var(--color-text-muted)',
+                                                textTransform: 'uppercase',
+                                            }}
+                                        >
+                                            {t('th.actions')}
+                                        </th>
+                                        ) : null}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {isLoading ? (
+                                        <ShimmerTableBodyRows rows={8} columns={12} />
+                                    ) : filteredProducts.length === 0 ? (
+                                        <tr>
+                                            <td colSpan={canAnyInventoryAction ? 12 : 11} style={{ padding: '60px', textAlign: 'center', color: 'var(--color-text-muted)' }}>
+                                                <div style={{ marginBottom: '16px', opacity: 0.3 }}>
+                                                    <Package size={48} style={{ margin: '0 auto' }} />
+                                                </div>
+                                                <p style={{ fontWeight: 600 }}>{tableEmptyMessage()}</p>
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        filteredProducts.map((item, idx) => {
+                                            const st = stockStatus(item, t);
+                                            const low = isLowStockRow(item);
+                                            const qtyBg =
+                                                item.isInfiniteQty
+                                                    ? '#F5F3FF'
+                                                    : item.qty <= 0
+                                                    ? '#FEF2F2'
+                                                    : low
+                                                      ? '#FFFBEB'
+                                                      : '#ECFDF5';
+                                            const qtyColor =
+                                                item.isInfiniteQty
+                                                    ? '#6D28D9'
+                                                    : item.qty <= 0 ? '#EF4444' : low ? '#D97706' : '#047857';
+
+                                            const statusBg =
+                                                st.tone === 'blue'
+                                                    ? '#EFF6FF'
+                                                    : st.tone === 'green'
+                                                      ? '#ECFDF5'
+                                                      : st.tone === 'amber'
+                                                        ? '#FFFBEB'
+                                                        : '#FEF2F2';
+                                            const statusColor =
+                                                st.tone === 'blue'
+                                                    ? '#3B82F6'
+                                                    : st.tone === 'green'
+                                                      ? '#047857'
+                                                      : st.tone === 'amber'
+                                                        ? '#D97706'
+                                                        : '#EF4444';
+
+                                            return (
+                                                <tr
+                                                    key={`inv:${idx}:${item._rowKey || item.id || ''}:${searchQuery}`}
+                                                    role="button"
+                                                    tabIndex={0}
+                                                    onClick={() => setLogProduct(item)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' || e.key === ' ') {
+                                                            e.preventDefault();
+                                                            setLogProduct(item);
+                                                        }
+                                                    }}
+                                                    style={{
+                                                        borderBottom: '1px solid var(--color-border-light)',
+                                                        cursor: 'pointer',
+                                                    }}
+                                                    className="ws-inv-row-clickable"
+                                                >
+                                                    <td
+                                                        style={{ padding: '16px 12px', textAlign: 'center' }}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedIdSet.has(String(item.id))}
+                                                            onChange={() => toggleProductSelection(item.id)}
+                                                            aria-label={t('aria.selectProduct', { name: displayName(item, t('product')) })}
+                                                        />
+                                                    </td>
+                                                    <td style={{ padding: '16px 24px' }}>
+                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                                            <span
+                                                                style={{
+                                                                    textAlign: 'left',
+                                                                    fontWeight: 700,
+                                                                    color: 'var(--color-primary)',
+                                                                    fontSize: '0.9375rem',
+                                                                }}
+                                                            >
+                                                                {displayName(item)}
+                                                            </span>
+                                                            {item.brand && (
+                                                                <span style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>{item.brand}</span>
+                                                            )}
+                                                            {(adjustmentLogs[item.id]?.length || 0) > 0 && (
+                                                                <span style={{ fontSize: '0.7rem', color: 'var(--color-text-muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                                                    <History size={12} aria-hidden />
+                                                                    {adjustmentLogs[item.id].length === 1
+                                                                        ? t('adj.countOne', { count: adjustmentLogs[item.id].length })
+                                                                        : t('adj.countMany', { count: adjustmentLogs[item.id].length })}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ padding: '16px 24px', fontSize: '0.8125rem', color: 'var(--color-text-muted)', fontFamily: 'monospace' }}>
+                                                        {item.sku || '—'}
+                                                    </td>
+                                                    <td style={{ padding: '16px 24px', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{item.departmentName}</td>
+                                                    <td style={{ padding: '16px 24px', fontSize: '0.875rem', color: 'var(--color-text-muted)' }}>{item.categoryName}</td>
+                                                    <td style={{ padding: '16px 24px', textAlign: 'center' }}>
+                                                        <span
+                                                            style={{
+                                                                display: 'inline-block',
+                                                                padding: '4px 10px',
+                                                                borderRadius: '6px',
+                                                                fontSize: '0.875rem',
+                                                                fontWeight: 700,
+                                                                color: 'var(--color-text-dark)',
+                                                                background: '#F3F4F6',
+                                                            }}
+                                                        >
+                                                            {item.openingQty != null && item.openingQty !== ''
+                                                                ? item.openingQty
+                                                                : '—'}
+                                                        </span>
+                                                    </td>
+                                                    <td style={{ padding: '16px 24px', textAlign: 'center' }}>
+                                                        {(() => {
+                                                            const eff = productEffectiveUom(item);
+                                                            const stock =
+                                                                item.stockDisplayPrimary && item.stockDisplaySecondary != null
+                                                                    ? {
+                                                                          primary: item.stockDisplayPrimary,
+                                                                          secondary: item.stockDisplaySecondary,
+                                                                      }
+                                                                    : item.isInfiniteQty
+                                                                      ? { primary: t('status.unlimited'), secondary: null }
+                                                                      : formatStockOnHandDisplay(item.qty, eff);
+                                                            const qtyBg =
+                                                                item.isInfiniteQty || (Number(item.qty) || 0) > 0
+                                                                    ? '#ECFDF5'
+                                                                    : '#FEF2F2';
+                                                            const qtyColor =
+                                                                item.isInfiniteQty || (Number(item.qty) || 0) > 0
+                                                                    ? '#059669'
+                                                                    : '#DC2626';
+                                                            return (
+                                                                <span
+                                                                    style={{
+                                                                        display: 'inline-block',
+                                                                        padding: '6px 10px',
+                                                                        background: qtyBg,
+                                                                        color: qtyColor,
+                                                                        borderRadius: '6px',
+                                                                        fontSize: '0.8125rem',
+                                                                        textAlign: 'center',
+                                                                    }}
+                                                                >
+                                                                    <span className="ws-inv-stock-primary">{stock.primary}</span>
+                                                                    {stock.secondary ? (
+                                                                        <span className="ws-inv-stock-secondary">{stock.secondary}</span>
+                                                                    ) : null}
+                                                                </span>
+                                                            );
+                                                        })()}
+                                                    </td>
+                                                    <td style={{ padding: '16px 24px', textAlign: 'center', fontSize: '0.875rem', color: 'var(--color-text-muted)', fontWeight: 600 }}>
+                                                        {Number(item.critical_level) > 0 ? item.critical_level : '—'}
+                                                    </td>
+                                                    <td className="ws-inv-uom-cell">
+                                                        {(() => {
+                                                            const uom = inventoryUomDisplay(item, t);
+                                                            return (
+                                                                <span
+                                                                    className="ws-inv-uom-pill ws-inv-uom-pill-readonly"
+                                                                    title={t('tip.uomCatalog')}
+                                                                >
+                                                                    <span className="ws-inv-uom-pill-text">
+                                                                        {uom.primary}
+                                                                        {uom.secondary ? (
+                                                                            <span className="ws-inv-uom-pill-sub">{uom.secondary}</span>
+                                                                        ) : null}
+                                                                    </span>
+                                                                </span>
+                                                            );
+                                                        })()}
+                                                    </td>
+                                                    <td
+                                                        style={{ padding: '16px 24px', textAlign: 'center', fontSize: '0.875rem', fontWeight: 700, color: 'var(--color-text-dark)' }}
+                                                        title={t('tip.perUnit')}
+                                                    >
+                                                        {formatSar(item.purchasePrice, t, { decimals: 2 })}
+                                                    </td>
+                                                    <td style={{ padding: '16px 24px', textAlign: 'center' }}>
+                                                        <span
+                                                            style={{
+                                                                padding: '6px 12px',
+                                                                borderRadius: '20px',
+                                                                fontSize: '0.75rem',
+                                                                fontWeight: 700,
+                                                                background: statusBg,
+                                                                color: statusColor,
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '6px',
+                                                            }}
+                                                        >
+                                                            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'currentColor' }} />
+                                                            {st.label}
+                                                        </span>
+                                                    </td>
+                                                    {canAnyInventoryAction ? (
+                                                    <td style={{ padding: '16px 24px', textAlign: 'right' }}>
+                                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                                                            {canRequestFromSupplier ? (
+                                                            <button
+                                                                type="button"
+                                                                className="mc-btn-primary"
+                                                                style={{ padding: '6px 12px', fontSize: '0.75rem' }}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleOpenRequest(item);
+                                                                }}
+                                                            >
+                                                                {t('btn.requestSupplier')}
+                                                            </button>
+                                                            ) : null}
+                                                            {canManualAdjust ? (
+                                                            <button
+                                                                type="button"
+                                                                className="mc-btn-ghost"
+                                                                style={{ padding: '6px 12px', fontSize: '0.75rem', border: '1px solid var(--color-border)' }}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleOpenAdjust(item);
+                                                                }}
+                                                            >
+                                                                {t('btn.manualAdjust')}
+                                                            </button>
+                                                            ) : null}
+                                                            {canCriticalLevel ? (
+                                                            <button
+                                                                type="button"
+                                                                className="mc-btn-ghost"
+                                                                style={{ padding: '6px 12px', fontSize: '0.75rem', border: '1px solid var(--color-border)' }}
+                                                                title={
+                                                                    isAllBranches
+                                                                        ? t('tip.criticalPickBranch')
+                                                                        : t('tip.criticalSet')
+                                                                }
+                                                                disabled={isAllBranches}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleOpenCritical(item);
+                                                                }}
+                                                            >
+                                                                {t('btn.criticalLevel')}
+                                                            </button>
+                                                            ) : null}
+                                                        </div>
+                                                    </td>
+                                                    ) : null}
+                                                </tr>
+                                            );
+                                        })
+                                    )}
+                                </tbody>
+                            </table>
+                            </WsTableScroll>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <AnimatePresence>
+                {isRequestModalOpen && (
+                    <Modal onClose={() => setIsRequestModalOpen(false)} title={t('request.title')} width="500px">
+                        <div className="mc-modal-form" style={{ padding: '24px' }}>
+                            <div style={{ marginBottom: '20px', padding: '16px', background: '#F9FAFB', borderRadius: '12px', border: '1px solid var(--color-border-light)' }}>
+                                <p style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', textTransform: 'uppercase', marginBottom: '8px' }}>{t('request.productDetails')}</p>
+                                <h4 style={{ margin: 0, fontSize: '1rem', fontWeight: 800 }}>{requestItem?.name}</h4>
+                                <p style={{ margin: '4px 0 0', fontSize: '0.8125rem', color: 'var(--color-text-muted)' }}>{t('request.sku', { sku: requestItem?.sku || t('na') })}</p>
+                            </div>
+
+                            <div className="mc-form-group" style={{ marginBottom: '16px' }}>
+                                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>{t('request.chooseSupplier')}</label>
+                                <select className="mc-filter-select" style={{ width: '100%', height: '45px' }} value={selectedSupplier} onChange={(e) => setSelectedSupplier(e.target.value)}>
+                                    <option value="">{t('request.selectSupplier')}</option>
+                                    {MOCK_SUPPLIERS_CATALOG.map((s) => (
+                                        <option key={s.id} value={s.id}>
+                                            {s.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            <div className="mc-form-group" style={{ marginBottom: '24px' }}>
+                                <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--color-text-muted)', marginBottom: '8px', display: 'block' }}>{t('request.qtyLabel')}</label>
+                                <input
+                                    type="number"
+                                    className="mc-filter-select"
+                                    style={{ width: '100%', height: '45px' }}
+                                    placeholder={t('request.qtyPlaceholder')}
+                                    value={requestQty}
+                                    onChange={(e) => setRequestQty(e.target.value)}
+                                />
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '12px' }}>
+                                <button type="button" className="mc-btn-ghost" style={{ flex: 1, padding: '12px' }} onClick={() => setIsRequestModalOpen(false)}>
+                                    {t('btn.cancel')}
+                                </button>
+                                <button type="button" className="mc-btn-primary" style={{ flex: 2, padding: '12px' }} onClick={handleRequestSubmit} disabled={!selectedSupplier || requestQty <= 0}>
+                                    {t('btn.submitRequest')}
+                                </button>
+                            </div>
+                        </div>
+                    </Modal>
+                )}
+            </AnimatePresence>
+
+
+
+
+            <AnimatePresence>
+                {isLowStockProofOpen && (
+                    <Modal
+                        onClose={() => setIsLowStockProofOpen(false)}
+                        title={t('proof.lowTitle')}
+                        width="920px"
+                    >
+                        <div style={{ padding: '0 24px 24px' }}>
+                            <p className="ws-kpi-proof-methodology" dangerouslySetInnerHTML={{ __html: t('proof.lowRule') }} />
+                            <p className="ws-kpi-proof-methodology">
+                                <span dangerouslySetInnerHTML={{ __html: t('proof.scope', { branch: selectedBranchName }) }} />
+                                {isAllBranches ? t('proof.scopeAllLow') : ''}
+                                <span dangerouslySetInnerHTML={{ __html: t('proof.lowStockExplain') }} />
+                            </p>
+
+                            <div className="ws-kpi-proof-summary-grid">
+                                <div className="ws-kpi-proof-stat">
+                                    <span className="ws-kpi-proof-stat-label">{t('proof.kpiCount')}</span>
+                                    <span className="ws-kpi-proof-stat-value">{lowStockBreakdown.count}</span>
+                                </div>
+                                <div className="ws-kpi-proof-stat">
+                                    <span className="ws-kpi-proof-stat-label">{t('proof.outOfStock')}</span>
+                                    <span className="ws-kpi-proof-stat-value">{lowStockBreakdown.outOfStock}</span>
+                                </div>
+                                <div className="ws-kpi-proof-stat">
+                                    <span className="ws-kpi-proof-stat-label">{t('proof.lowOnly')}</span>
+                                    <span className="ws-kpi-proof-stat-value">{lowStockBreakdown.lowOnly}</span>
+                                </div>
+                                <div className="ws-kpi-proof-stat">
+                                    <span className="ws-kpi-proof-stat-label">{t('proof.withCritical')}</span>
+                                    <span className="ws-kpi-proof-stat-value">{lowStockBreakdown.withCriticalSet}</span>
+                                </div>
+                                <div className="ws-kpi-proof-stat">
+                                    <span className="ws-kpi-proof-stat-label">{t('proof.withoutCritical')}</span>
+                                    <span className="ws-kpi-proof-stat-value">{lowStockBreakdown.withoutCritical}</span>
+                                </div>
+                            </div>
+
+                            {lowStockBreakdown.lines.length === 0 ? (
+                                <p className="ws-kpi-proof-note">
+                                    {t('proof.lowEmpty')}
+                                </p>
+                            ) : (
+                                <WsTableScroll bodyClassName="ws-kpi-proof-scroll">
+                                    <table className="ws-table ws-kpi-proof-table">
+                                        <thead>
+                                            <tr>
+                                                <th style={{ textAlign: 'left' }}>{t('th.product')}</th>
+                                                <th style={{ textAlign: 'left' }}>{t('th.sku')}</th>
+                                                <th style={{ textAlign: 'left' }}>{t('th.department')}</th>
+                                                <th style={{ textAlign: 'right' }}>{t('th.currentStock')}</th>
+                                                <th style={{ textAlign: 'right' }}>{t('th.critical')}</th>
+                                                <th style={{ textAlign: 'right' }}>{t('th.shortfall')}</th>
+                                                <th style={{ textAlign: 'left' }}>{t('th.status')}</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {lowStockBreakdown.lines.map((row) => (
+                                                <tr key={row.id}>
+                                                    <td style={{ fontWeight: 600 }}>{displayName(row)}</td>
+                                                    <td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{row.sku}</td>
+                                                    <td>{row.departmentName}</td>
+                                                    <td
+                                                        style={{
+                                                            textAlign: 'right',
+                                                            fontWeight: 700,
+                                                            color: row.qty <= 0 ? '#B91C1C' : '#D97706',
+                                                        }}
+                                                    >
+                                                        {row.qty}
+                                                    </td>
+                                                    <td style={{ textAlign: 'right', fontWeight: 700 }}>{row.critical}</td>
+                                                    <td
+                                                        style={{
+                                                            textAlign: 'right',
+                                                            fontWeight: 700,
+                                                            color: '#B91C1C',
+                                                        }}
+                                                    >
+                                                        {row.gap}
+                                                    </td>
+                                                    <td>
+                                                        <span
+                                                            style={{
+                                                                display: 'inline-block',
+                                                                padding: '2px 8px',
+                                                                borderRadius: 6,
+                                                                fontSize: '0.7rem',
+                                                                fontWeight: 800,
+                                                                textTransform: 'uppercase',
+                                                                background: row.qty <= 0 ? '#FEE2E2' : '#FFFBEB',
+                                                                color: row.qty <= 0 ? '#991B1B' : '#92400E',
+                                                            }}
+                                                        >
+                                                            {row.status}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </WsTableScroll>
+                            )}
+                        </div>
+                    </Modal>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
+                {isInvValueProofOpen && (
+                    <Modal
+                        onClose={() => setIsInvValueProofOpen(false)}
+                        title={t('proof.valueTitle')}
+                        width="920px"
+                    >
+                        <div style={{ padding: '0 24px 24px' }}>
+                            <p className="ws-kpi-proof-methodology" dangerouslySetInnerHTML={{ __html: t('proof.valueFormula') }} />
+                            <p className="ws-kpi-proof-methodology">
+                                <span dangerouslySetInnerHTML={{ __html: t('proof.scope', { branch: selectedBranchName }) }} />
+                                {isAllBranches ? t('proof.scopeAllValue') : ''}
+                                <span dangerouslySetInnerHTML={{ __html: t('proof.valueExplain') }} />
+                            </p>
+
+                            <div className="ws-kpi-proof-summary-grid">
+                                <div className="ws-kpi-proof-stat">
+                                    <span className="ws-kpi-proof-stat-label">{t('proof.skusInList')}</span>
+                                    <span className="ws-kpi-proof-stat-value">{inventoryValueBreakdown.skuCount}</span>
+                                </div>
+                                <div className="ws-kpi-proof-stat">
+                                    <span className="ws-kpi-proof-stat-label">{t('proof.skusWithStock')}</span>
+                                    <span className="ws-kpi-proof-stat-value">{inventoryValueBreakdown.skusWithStock}</span>
+                                </div>
+                                <div className="ws-kpi-proof-stat">
+                                    <span className="ws-kpi-proof-stat-label">{t('proof.skusWithValue')}</span>
+                                    <span className="ws-kpi-proof-stat-value">{inventoryValueBreakdown.skusWithValue}</span>
+                                </div>
+                                <div className="ws-kpi-proof-stat">
+                                    <span className="ws-kpi-proof-stat-label">{t('proof.totalExact')}</span>
+                                    <span className="ws-kpi-proof-stat-value">
+                                        {formatSar(inventoryValueBreakdown.total, t, { decimals: 2 })}
+                                    </span>
+                                </div>
+                                <div className="ws-kpi-proof-stat">
+                                    <span className="ws-kpi-proof-stat-label">{t('proof.kpiRounded')}</span>
+                                    <span className="ws-kpi-proof-stat-value">
+                                        {formatSar(Math.round(inventoryValueBreakdown.total), t)}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {inventoryValueBreakdown.lines.length === 0 ? (
+                                <p className="ws-kpi-proof-note">{t('proof.noProducts')}</p>
+                            ) : (
+                                <WsTableScroll bodyClassName="ws-kpi-proof-scroll">
+                                    <table className="ws-table ws-kpi-proof-table">
+                                        <thead>
+                                            <tr>
+                                                <th style={{ textAlign: 'left' }}>{t('th.product')}</th>
+                                                <th style={{ textAlign: 'left' }}>{t('th.sku')}</th>
+                                                <th style={{ textAlign: 'left' }}>{t('th.department')}</th>
+                                                <th style={{ textAlign: 'right' }}>{t('th.purchasePrice')}</th>
+                                                <th style={{ textAlign: 'right' }}>{t('th.currentStock')}</th>
+                                                <th style={{ textAlign: 'right' }}>{t('th.lineValue')}</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {inventoryValueBreakdown.lines.map((row) => (
+                                                <tr key={row.id}>
+                                                    <td style={{ fontWeight: 600 }}>{displayName(row)}</td>
+                                                    <td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{row.sku}</td>
+                                                    <td>{row.departmentName}</td>
+                                                    <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                                        {formatSar(row.purchasePrice, t, { decimals: 2 })}
+                                                    </td>
+                                                    <td style={{ textAlign: 'right', fontWeight: 700 }}>{row.qty}</td>
+                                                    <td
+                                                        style={{
+                                                            textAlign: 'right',
+                                                            fontWeight: 700,
+                                                            color: row.lineValue > 0 ? '#047857' : 'var(--color-text-muted)',
+                                                            whiteSpace: 'nowrap',
+                                                        }}
+                                                    >
+                                                        {formatSar(row.lineValue, t, { decimals: 2 })}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot>
+                                            <tr style={{ borderTop: '2px solid var(--color-border)' }}>
+                                                <td colSpan={5} style={{ textAlign: 'right', fontWeight: 800, paddingTop: 14 }}>
+                                                    {t('th.total')}
+                                                </td>
+                                                <td
+                                                    style={{
+                                                        textAlign: 'right',
+                                                        fontWeight: 800,
+                                                        paddingTop: 14,
+                                                        color: '#047857',
+                                                        whiteSpace: 'nowrap',
+                                                    }}
+                                                >
+                                                    {formatSar(inventoryValueBreakdown.total, t, { decimals: 2 })}
+                                                </td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </WsTableScroll>
+                            )}
+                        </div>
+                    </Modal>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+}

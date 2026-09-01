@@ -1,0 +1,178 @@
+﻿CRLF 5200 LF 0 lines 5201
+export default function SupplierSalesInvoices() {
+A:0
+A:Description
+A:Filter invoices
+A:Internal note for this return
+A:Internal notes (optional, printed on invoice)
+A:Invoice description (optional)
+A:Item (optional)ΓÇª
+A:Open item list
+A:Optional
+A:Record payment
+A:Ref #
+A:Remove line
+A:Search affiliated or non-affiliated customerΓÇª
+A:Search product to add
+A:Search reference, customer, descriptionΓÇª
+A:Search sales invoices
+A:Show item list
+A:UOM
+A:View invoice
+A:e.g. Bank ΓÇö Al Rajhi (current)
+AL:Delete invoice ${row.invoiceNo}?
+AL:Only invoices with status pending_payment (no payments) can be deleted.
+AL:The following product(s) exceed available supplier stock:\n\n${detail}\n\nContinue anyway? Your stock inventory timeline will show a negative balance for these items.
+E:Add at least one line item.
+E:Add at least one line with an account or item name to save a draft.
+E:Invoice not found.
+E:Line ${invalidLine.index + 1}: select an account (or enter item name), qty must be > 0, and price cannot be negative.
+E:Select a customer.
+E:Selected customer is inactive.
+L:Bank transfer
+L:Card
+L:Cash
+L:Cheque
+L:Download PDF
+L:Draft
+L:Other
+L:Overdue
+L:Paid in full
+L:Partially paid
+L:Record return / credit
+L:View
+T:(incl. VAT)
+T:) : viewPayload?.error ? (
+T:) : viewPayload?.invoice ? (
+T:0) || line.unitPrice
+T:0.005 && due && due
+T:0;
+                                                return show ? (
+T:= CATALOG_REMOTE_SEARCH_MIN_CHARS
+                  ? searchQuery.trim()
+                  : '';
+        if (q.length
+T:AR ΓÇö Non-Affiliated Customers
+T:Account
+T:Account name / details *
+T:Accounts Receivable
+T:Actions
+T:Add line
+T:All invoices
+T:Amount after invoice discount:
+T:Amounts are tax inclusive
+T:Balance due
+T:Balance due (after returns)
+T:Balance due is 0 (paid in full)
+T:Balance due is greater than 0
+T:Balance due is overdue
+T:Cancel
+T:Cash / Bank Account
+T:Column ΓÇö Description
+T:Column ΓÇö Discount
+T:Column ΓÇö Line number
+T:Create first invoice
+T:Creates
+T:Credits reduce the workshop&apos;s outstanding balance on this invoice (AR).
+                                        Each return is saved with a reference number and logged in supplier
+                                        transaction history ΓÇö same as issuing an invoice, list totals update
+                                        immediately after you submit.
+T:Custom
+T:Customer
+T:Customer *
+T:Description
+T:Discount
+T:Download PDF
+T:Due date
+T:EOM
+T:Enter account manually
+T:Fixed (SAR)
+T:Freight / Other Charges (SAR)
+T:Freight / Other charges:
+T:Grand Total
+T:Grand Total:
+T:Grand total
+T:Invoice
+T:Invoice #
+T:Invoice Amount
+T:Invoice Discount
+T:Invoiced
+T:Issue a warehouse ΓåÆ workshop invoice; it will appear here.
+T:Issue date
+T:Item
+T:Last Sale Price
+T:Left
+T:Lines to return
+T:Loading invoice &amp; return historyΓÇª
+T:LoadingΓÇª
+T:Math.abs(t.percent - Number(it.vatRate))
+T:Math.abs(t.percent - vatRate)
+T:Net
+T:New Invoice
+T:Next
+T:No customers found. Add workshops under Affiliated Filter
+                                            workshops or customers under Non-affiliated customers /
+                                            workshops.
+T:No data.
+T:No previous sale or stock sales price set
+T:Non-Affiliated Customers
+T:Notes
+T:Notes (optional)
+T:Number(inv.balance ?? 0)
+T:Other (enter name)ΓÇª
+T:Paid
+T:Payment method *
+T:Previous
+T:Purchase Invoice
+T:Qty
+T:Reason
+T:Receiving cash / bank account *
+T:Record payment
+T:Reference
+T:Return
+T:Return qty
+T:Returned
+T:Returns credited
+T:SAR
+T:Sales Invoice
+T:Sales Invoice (Warehouse ΓÇö Workshop)
+T:Sales Invoice Return
+T:Sales Invoices (AR)
+T:SavingΓÇª
+T:Search
+T:Select account
+T:Status
+T:Subtotal:
+T:Tax Amt
+T:Tax Code
+T:This creates an
+T:Tip: Γåæ Γåô arrows, Enter to select product on the
+                                    same line. Tab moves across fields; Tab on the last field adds a
+                                    new line. Price fields support math (e.g. 120*2).
+T:Total
+T:Total Tax (VAT):
+T:UOM
+T:Warehouse ΓåÆ workshop invoices. Creates
+T:Where
+T:Workshop / Branch (customer)
+T:control account in
+                                        Chart of Accounts.
+T:days
+T:in
+                                                    Chart of Accounts. Stock is reduced from your
+                                                    warehouse; nothing is sent to a customer portal.
+T:maxQtyCap + 1e-6;
+                                    return (
+T:on the workshop side and
+                                        update stock levels on both ends.
+T:on the workshop side. Auto-posted to GL on save
+                    (AR/Sales/VAT/COGS).
+T:results.length ? Math.min(prev
+T:will appear in
+                                                    the workshop&apos;s Accounting module.
+T:your supplier portal only
+TL:affiliated:branch:${branchId}
+TX:Paid
+TX:Partial
+TX:Unpaid
+TOTAL 157
