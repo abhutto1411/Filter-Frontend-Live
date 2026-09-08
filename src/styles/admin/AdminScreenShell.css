@@ -1,0 +1,72 @@
+/* Super Admin full-page panels (replaces floating modals). */
+
+.admin-screen {
+    width: 100%;
+    max-width: 100%;
+    padding-bottom: 32px;
+}
+
+.admin-screen--wide .admin-screen-panel {
+    max-width: 1100px;
+}
+
+.admin-screen-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 16px;
+    padding: 8px 12px;
+    border: 1px solid var(--color-border, #e2e8f0);
+    border-radius: 8px;
+    background: var(--color-surface, #fff);
+    color: var(--color-text, #0f172a);
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.admin-screen-back:hover:not(:disabled) {
+    background: #f8fafc;
+    border-color: #cbd5e1;
+}
+
+.admin-screen-back:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.admin-screen-panel {
+    width: 100%;
+    max-width: 880px;
+    margin: 0 auto;
+    background: var(--color-surface, #fff);
+    border: 1px solid var(--color-border, #e2e8f0);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.admin-screen-header {
+    padding: 18px 20px 12px;
+    border-bottom: 1px solid var(--color-border, #e2e8f0);
+}
+
+.admin-screen-title {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--color-text, #0f172a);
+}
+
+.admin-screen-body {
+    padding: 16px 20px 20px;
+}
+
+.admin-screen-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: flex-end;
+    padding: 12px 20px 16px;
+    border-top: 1px solid var(--color-border, #e2e8f0);
+    background: #f8fafc;
+}
