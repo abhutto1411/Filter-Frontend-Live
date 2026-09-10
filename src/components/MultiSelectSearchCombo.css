@@ -1,0 +1,146 @@
+.ms-combo {
+    position: relative;
+    min-width: 280px;
+    width: 100%;
+}
+
+.ms-combo__field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 0 10px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #fff;
+    box-sizing: border-box;
+    cursor: text;
+}
+
+.ms-combo__field--open {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18);
+}
+
+.ms-combo__field--disabled {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.ms-combo__field svg {
+    margin-top: 0;
+    color: #94a3b8;
+    flex-shrink: 0;
+}
+
+.ms-combo__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
+    align-items: center;
+}
+
+.ms-combo__chips input {
+    flex: 1;
+    min-width: 120px;
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 0.875rem;
+    color: #0f172a;
+    padding: 0;
+    height: 28px;
+}
+
+.ms-combo__chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    max-width: 220px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #fff7ed;
+    border: 1px solid #fdba74;
+    color: #9a3412;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.ms-combo__chip-x {
+    display: inline-flex;
+    border: none;
+    background: transparent;
+    padding: 0;
+    color: #c2410c;
+    cursor: pointer;
+}
+
+.ms-combo__clear {
+    border: none;
+    background: transparent;
+    color: #64748b;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    margin-top: 0;
+    flex-shrink: 0;
+}
+
+.ms-combo__menu {
+    overflow: auto;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.14);
+    padding: 6px;
+}
+
+.ms-combo__empty {
+    padding: 14px 12px;
+    color: #64748b;
+    font-size: 0.8125rem;
+}
+
+.ms-combo__opt {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-align: left;
+    border: none;
+    background: transparent;
+    padding: 8px 10px;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    color: #0f172a;
+    cursor: pointer;
+}
+
+.ms-combo__opt--hi,
+.ms-combo__opt:hover {
+    background: #f8fafc;
+}
+
+.ms-combo__opt--on {
+    background: #fff7ed;
+}
+
+.ms-combo__check {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+    border: 1px solid #cbd5e1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    background: #fff;
+}
+
+.ms-combo__check--on {
+    background: #ea580c;
+    border-color: #ea580c;
+    color: #fff;
+}
