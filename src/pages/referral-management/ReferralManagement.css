@@ -1,0 +1,125 @@
+/* Referral Management Styling (Gold & Dark Navy Sidebar) */
+:root {
+  --rm-sidebar-bg: var(--sidebar-bg); /* Use platform Gold */
+  --rm-content-bg: #f9fafb; /* Light Content Canvas */
+  --rm-accent-gold: var(--color-primary); /* Use brand gold */
+  --rm-emerald: #10b981; /* Screenshot green for status badges */
+}
+
+/* Sidebar Specifics to match screenshots */
+.rm-sidebar {
+  background: var(--rm-sidebar-bg);
+  color: var(--sidebar-text);
+  width: 260px;
+  height: 100vh;
+  position: fixed;
+  left: 0;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 4px 0 24px rgba(0,0,0,0.05);
+  z-index: 1000;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.rm-logo-section {
+  padding: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.rm-logo-icon {
+  width: 40px; height: 40px;
+  background: #000; /* Black icon on gold bg */
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--color-primary);
+}
+
+.rm-logo-title { font-weight: 700; font-size: 1.1rem; line-height: 1.1; letter-spacing: -0.02em; color: #000000; }
+.rm-logo-sub { font-size: 0.65rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.05em; color: #000000; }
+
+.rm-nav { padding: 20px 12px; flex: 1; overflow-y: auto; }
+.rm-nav-group-title {
+  font-size: 0.65rem; font-weight: 600; color: #000000; opacity: 0.4;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  margin: 24px 12px 12px;
+}
+
+.rm-nav-btn {
+  width: 100%; display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; border: none; background: transparent;
+  color: var(--sidebar-text); font-family: var(--font-body);
+  font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  border-radius: 12px; transition: all 0.2s;
+  margin-bottom: 4px;
+}
+
+.rm-nav-btn:hover { background: var(--sidebar-hover-bg); color: #ffffff; }
+.rm-nav-btn.active {
+    background: var(--sidebar-active-bg);
+    color: var(--sidebar-text-active);
+    font-weight: 600;
+    box-shadow: inset 4px 0 0 var(--color-primary);
+}
+
+.rm-main { margin-left: 260px; min-height: 100vh; background: var(--rm-content-bg); transition: margin 0.3s ease; }
+.rm-topbar-hamburger { display: none; background: transparent; border: none; cursor: pointer; color: #111827; padding: 8px; margin-right: 12px; }
+.rm-sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(2px); z-index: 999; }
+.rm-topbar { height: 70px; background: #fff; padding: 0 32px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #eee; }
+.rm-topbar-title { font-weight: 700; font-size: 1.25rem; }
+.rm-topbar-sub { font-size: 0.85rem; color: #6b7280; }
+
+.rm-content { padding: 32px; max-width: 1600px; margin: 0 auto; }
+
+/* Dashboard Specifics */
+.rm-kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 24px; margin-bottom: 32px; }
+.rm-card { background: #fff; border-radius: 12px; padding: 24px; border: 1px solid #f3f4f6; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+
+.rm-kpi-header { display: flex; justify-content: space-between; margin-bottom: 16px; }
+.rm-kpi-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; opacity: 0.8; }
+.rm-kpi-value { font-size: 1.75rem; font-weight: 700; margin-bottom: 4px; }
+.rm-kpi-label { font-size: 0.8125rem; color: #6b7280; font-weight: 500; }
+
+.rm-activity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.rm-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
+.rm-card-title { font-weight: 600; font-size: 0.9375rem; }
+.rm-view-all { font-size: 0.75rem; color: var(--rm-accent-gold); font-weight: 600; text-decoration: none; display: flex; align-items: center; gap: 4px; border: none; background: transparent; cursor: pointer; }
+
+/* Status Badges */
+.rm-badge { padding: 4px 12px; border-radius: 99px; font-size: 0.6875rem; font-weight: 600; text-transform: capitalize; }
+.rm-badge--approved { background: #dcfce7; color: #166534; }
+.rm-badge--under_review { background: #fef9c3; color: #854d0e; }
+.rm-badge--submitted { background: #f3f4f6; color: #6b7280; }
+.rm-badge--matured { background: #dcfce7; color: #166534; }
+.rm-badge--paid { background: #eff6ff; color: #1e40af; }
+
+/* Responsive Media Queries */
+@media (max-width: 1024px) {
+  .rm-sidebar { transform: translateX(-100%); width: 280px; }
+  .rm-sidebar.open { transform: translateX(0); }
+  .rm-sidebar-overlay.open { display: block; }
+  .rm-main { margin-left: 0; }
+  .rm-topbar-hamburger { display: block; }
+  .rm-kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 16px; }
+}
+
+@media (max-width: 768px) {
+  .rm-topbar { padding: 0 16px; }
+  .rm-topbar-sub { display: none; }
+  .rm-content { padding: 20px 16px; }
+  .rm-kpi-grid { grid-template-columns: 1fr; }
+  .rm-activity-grid { grid-template-columns: 1fr; }
+  .rm-card { padding: 16px; }
+  .rm-kpi-value { font-size: 1.5rem; }
+  .rm-topbar-title { font-size: 1.1rem; }
+  
+  /* Modal Responsiveness */
+  .rm-card[style*="maxWidth: 520px"], 
+  .rm-card[style*="maxWidth: 440px"] { 
+    max-width: 95vw !important; 
+    padding: 20px !important;
+  }
+}
