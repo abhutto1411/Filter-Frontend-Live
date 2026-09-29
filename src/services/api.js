@@ -3,13 +3,13 @@ import { notifyUserActivity } from '../utils/sessionIdle';
 // Local `.env.development` sets VITE_API_BASE_URL=http://localhost:3000 so new
 // Nest routes (e.g. COA adjust) work before they are deployed to Railway.
 // Production / preview builds without that env var keep the Railway staging API.
-// export const BASE_URL = "https://api.filtercarservices.com";
-const envApiBase =
-  typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL
-    ? String(import.meta.env.VITE_API_BASE_URL).trim()
-    : '';
-export const BASE_URL =
-  envApiBase || 'https://filterbackend-production.up.railway.app';
+export const BASE_URL = "https://api.filtercarservices.com";
+// const envApiBase =
+//   typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL
+//     ? String(import.meta.env.VITE_API_BASE_URL).trim()
+//     : '';
+// export const BASE_URL =
+//   envApiBase || 'https://filterbackend-production.up.railway.app';
 
 const API_LOADING_EVENT = 'filter-api-loading';
 
