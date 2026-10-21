@@ -1,0 +1,4800 @@
+jsx: t.code === line.taxCode)?.rate ?? TAXES[0]?.rate ?? 0;
+
+    let lineEx = 0;
+    let taxAmt = 0;
+    let grandIncl = 0;
+
+    if (amountsTaxInclusive) {
+        const grossInclBeforeDisc = roundMoney2(qty * unitInput);
+        let netIncl = grossInclBeforeDisc;
+        if (discMode === 'percent') {
+            const pct = Math.min(100, Math.max(0, discRaw));
+            netIncl = roundMoney2(grossInclBeforeDisc * (1 - pct / 100));
+        } else {
+            netIncl = roundMoney2(Math.max(0, grossInclBeforeDisc - discRaw));
+        }
+        lineEx =
+            netIncl > 0 && rate > 0
+                ? roundMoney2(netIncl / (1 + rate))
+                : roundMoney2(netIncl);
+        grandIncl = netIncl;
+        taxAmt = roundMoney2(Math.max(0, grandIncl - lineEx));
+    } else {
+        const grossExBeforeDisc = roundMoney2(qty * unitInput);
+        let lineExAdj = grossExBeforeDisc;
+        if (discMode === 'percent') {
+            const pct = Math.min(100, Math.max(0, discRaw));
+            lineExAdj = roundMoney2(grossExBeforeDisc * (1 - pct / 100));
+        } else {
+            lineExAdj = roundMoney2(Math.max(0, grossExBeforeDisc - discRaw));
+        }
+        lineEx = lineExAdj;
+        taxAmt = roundMoney2(lineEx * rate);
+        grandIncl = roundMoney2(lineEx + taxAmt);
+    }
+
+    return {
+        lineEx,
+        taxAmt,
+        grandIncl,
+        taxAmtStr: taxAmt.toFixed(2),
+        grandInclStr: grandIncl.toFixed(2),
+        lineExStr: lineEx.toFixed(2),
+    };
+}
+
+function applyLineTotals(line, amountsTaxInclusive) {
+    const f = computeLineFinancials(line, amountsTaxInclusive);
+    return {
+        ...line,
+        taxAmt: f.taxAmtStr,
+        totalFinal: f.grandInclStr,
+    };
+}
+
+/**
+ * API stores exclusive unit price *after* line discount. Rebuild the per-unit list price the form uses
+ * (before discount) so totals match after edit when discount/description are restored.
+ */
+function reconstructSSPUnitPriceInput(it, amountsTaxInclusive, taxCode) {
+    const rate =
+        TAXES.find((t) => t.code === taxCode)?.rate ?? TAXES[0]?.rate ?? 0;
+    const qty = Math.max(
+        0.000001,
+        parseFloat(String(it.qty ?? 1).replace(',', '.')) || 1,
+    );
+    const U_net = Number(it.unitPrice ?? 0);
+    const discRaw = Number(it.lineDiscountValue ?? 0);
+    const discMode =
+        it.lineDiscountMode === 'fixed_sar' ? 'fixed_sar' : 'percent';
+
+    if (!(discRaw > 0)) {
+        if (!amountsTaxInclusive) {
+            return String(roundMoney2(U_net));
+        }
+        return String(roundMoney2(U_net * (1 + rate)));
+    }
+
+    if (!amountsTaxInclusive) {
+        if (discMode === 'percent') {
+            const pct = Math.min(100, Math.max(0, discRaw));
+            const denom = 1 - pct / 100;
+            if (denom
+jsx: = 1) {
+                return String(roundMoney2(U_net));
+            }
+            const U_list_ex = roundMoney2(U_net / denom);
+            return String(U_list_ex);
+        }
+        const fixed = discRaw;
+        const grossLineEx = roundMoney2(U_net * qty + fixed);
+        return String(roundMoney2(grossLineEx / qty));
+    }
+
+    const netIncl = roundMoney2(U_net * qty * (1 + rate));
+    if (discMode === 'percent') {
+        const pct = Math.min(100, Math.max(0, discRaw));
+        const denom = 1 - pct / 100;
+        const grossInclBeforeDisc =
+            denom
+jsx: 0
+            ? Number(stockRaw.valueWarehouseSar || 0) / qtyWh
+            : Number(pickerRow.price) || 0;
+    const lastPurchaseRaw =
+        stockRaw && typeof stockRaw.lastPurchase === 'object' && stockRaw.lastPurchase != null
+            ? stockRaw.lastPurchase
+            : null;
+    const hasPreviousPurchase = !!(
+        lastPurchaseRaw && String(lastPurchaseRaw.purchaseDate || '').trim() !== ''
+    );
+    const lastPurchasePriceNum = hasPreviousPurchase
+        ? Number(lastPurchaseRaw.unitPrice ?? stockRaw.lastPurchasePrice ?? 0)
+        : 0;
+    const purchaseDateRaw = String(lastPurchaseRaw?.purchaseDate || '').trim();
+    const supplierLabel = String(
+        lastPurchaseRaw?.superSupplierName || stockRaw.lastPurchaseSupplierLabel || '',
+    ).trim();
+    const lastPurchaseMeta =
+        hasPreviousPurchase && (purchaseDateRaw || supplierLabel)
+            ? [purchaseDateRaw, supplierLabel].filter(Boolean).join(' • ')
+            : '';
+    const adoptedSupplierProductId =
+        stockRaw.productId != null && String(stockRaw.productId).trim() !== ''
+            ? String(stockRaw.productId).trim()
+            : null;
+    return {
+        ...pickerRow,
+        // Keep master catalog id as row id — do NOT replace with supplier_products.id
+        // (those id spaces collide and were flipping Box → piece/pcs).
+        id: pickerMasterId || pickerRow.id,
+        masterProductId: pickerMasterId || pickerRow.id,
+        adoptedSupplierProductId: adoptedSupplierProductId || undefined,
+        warehouseUnit,
+        workshopUnit,
+        conversionFactor,
+        unit: warehouseUnit,
+        price:
+            Number.isFinite(unitCostWh) && unitCostWh > 0 ? unitCostWh : pickerRow.price,
+        warehouseStockQty: qtyWh,
+        stockQtyWorkshop: Number(stockRaw.currentBalanceWorkshop ?? 0),
+        stockHint:
+            qtyWh >= 0
+                ? `Warehouse stock: ${qtyWh} ${warehouseUnit}${
+                      conversionFactor > 1
+                          ? ` (= ${qtyWh * conversionFactor} ${workshopUnit})`
+                          : ''
+                  }`
+                : pickerRow.stockHint,
+        hasPreviousPurchase,
+        lastPrice: lastPurchasePriceNum,
+        lastPurchaseMeta,
+    };
+}
+
+/** Stock Inventory → Adjust via Purchase preset (supplier product rows). */
+function mapStockBalanceToPurchasePickerRow(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const mid =
+        raw.masterProductId != null && String(raw.masterProductId).trim() !== ''
+            ? String(raw.masterProductId).trim()
+            : null;
+    const pid =
+        raw.productId != null && raw.productId !== ''
+            ? String(raw.productId)
+            : raw.supplierProductId != null && raw.supplierProductId !== ''
+              ? String(raw.supplierProductId)
+              : '';
+    if (!pid && !mid) return null;
+    const base = mapMasterCatalogToPurchasePickerRow({
+        id: mid || pid,
+        masterProductId: mid || pid,
+        name: raw.productName,
+        sku: raw.sku ?? raw.barcode,
+        warehouseUnit: masterCatalogWarehouseUnit(raw, 'pcs'),
+        workshopUnit: raw.workshopUnit,
+        conversionFactor: raw.conversionFactor,
+        purchasePrice: 0,
+    });
+    return applyStockBalanceHintsToPickerRow(base, raw);
+}
+
+function normPiUomLabel(u) {
+    return String(u ?? '').trim().toLowerCase();
+}
+
+function isPiWarehouseUomLine(line, inv) {
+    const wu = normPiUomLabel(inv?.warehouseUnit);
+    const u = normPiUomLabel(line?.uom);
+    return !!wu && !!u && u === wu;
+}
+
+function findPiCapsRow(line, inventoryItems) {
+    const pid = String(line?.supplierProductId ?? '').trim();
+    const mid = String(line?.masterProductId ?? '').trim();
+    if (!pid && !mid) return null;
+    return (
+        (mid
+            ? inventoryItems.find((inv) => String(inv.masterProductId ?? '') === mid) ||
+              inventoryItems.find((inv) => String(inv.id) === mid)
+            : null) ??
+        (pid
+            ? inventoryItems.find((inv) => String(inv.masterProductId ?? '') === pid) ||
+              inventoryItems.find((inv) => String(inv.id) === pid)
+            : null) ??
+        null
+    );
+}
+
+function linePiUomOptions(line, inv) {
+    const wu = String(inv?.warehouseUnit ?? line?.warehouseUnit ?? '').trim();
+    if (wu) return [wu];
+    return [String(line?.uom ?? 'pcs').trim() || 'pcs'];
+}
+
+/**
+ * Purchase invoices always stock-in in Master Catalog warehouse UOM
+ * (never legacy `unit` / workshop Liter).
+ */
+function resolvePiLineUnitForApi(line, inv) {
+    const wu = String(inv?.warehouseUnit ?? line?.warehouseUnit ?? '').trim();
+    if (wu) return wu;
+    return String(line?.uom ?? 'pcs').trim() || 'pcs';
+}
+
+function formatPiUomConversionPreview(line, inv) {
+    if (!inv) return '';
+    const cf = Number(inv.conversionFactor) || 1;
+    if (!(cf > 1)) return '';
+    const wu = inv.warehouseUnit || 'Box';
+    const wsu = inv.workshopUnit || 'pcs';
+    const qty = parseFloat(String(line.qty).replace(',', '.')) || 0;
+    if (!(qty > 0)) return '';
+    const price = parseFloat(String(line.price).replace(',', '.')) || 0;
+    if (isPiWarehouseUomLine(line, inv)) {
+        const wsQty = roundMoney2(qty * cf);
+        const wsPrice = cf > 0 ? roundMoney2(price / cf) : price;
+        return `${qty} ${wu} → +${wsQty} ${wsu} in stock · SAR ${price.toFixed(2)}/${wu} → SAR ${wsPrice.toFixed(2)}/${wsu} cost`;
+    }
+    const whQty = roundMoney2(qty / cf);
+    return `${qty} ${wsu} → +${whQty} ${wu} warehouse stock`;
+}
+
+function scorePurchaseSearchItem(item, q) {
+    const name = String(item.name || '').toLowerCase();
+    const sku = String(item.sku || '').toLowerCase();
+    if (!q) return 0;
+    if (sku === q) return 100;
+    if (name === q) return 95;
+    if (sku.startsWith(q)) return 90;
+    if (name.startsWith(q)) return 85;
+    if (sku.includes(q)) return 70;
+    if (name.includes(q)) return 60;
+    const tokens = q.split(/\s+/).filter((t) => t.length >= 2);
+    let hits = 0;
+    for (const t of tokens) {
+        if (name.includes(t) || sku.includes(t)) hits += 1;
+    }
+    if (tokens.length && hits === tokens.length) return 50 + hits * 5;
+    return 0;
+}
+
+const SEARCH_QUICK_PICK_PI = 12;
+const SEARCH_MAX_RESULTS_PI = 40;
+
+/** Hydrated when navigating from Stock Inventory → Adjust via Purchase */
+const PI_PRESET_FROM_STOCK_FLAG = 'supplier_pi_open_from_stock';
+const PI_PRESET_STOCK_LINE = 'supplier_pi_preset_stock_line';
+
+/** @typedef {'payables'|'super_suppliers'|'ssp_invoices'} ApTabId */
+
+function fmtApMoney(value) {
+    return Number(value ?? 0).toLocaleString(undefined, {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
+}
+
+function todayIsoDate() {
+    return new Date().toISOString().slice(0, 10);
+}
+
+const EMPTY_SS_FORM = {
+    name: '',
+    mobile: '',
+    email: '',
+    vatNumber: '',
+    address: '',
+    notes: '',
+    openingBalance: '',
+    openingBalanceDate: todayIsoDate(),
+    openingOffsetAccountId: '',
+};
+
+function formatAccountsPayableDisplay(amount) {
+    const n = Number(amount ?? 0);
+    if (n
+jsx: new Date().toISOString().slice(0, 10));
+    const [dueDateType, setDueDateType] = useState('Net');
+    const [netDays, setNetDays] = useState(30);
+    const [customDueDate, setCustomDueDate] = useState('');
+    const [refNo, setRefNo] = useState('');
+    const [refAutoGenerate, setRefAutoGenerate] = useState(false);
+    /** Selected super-supplier ID (upstream vendor); required for purchase invoice. */
+    const [superSupplierId, setSuperSupplierId] = useState('');
+    const [description, setDescription] = useState('');
+    const [internalNotes, setInternalNotes] = useState('');
+
+    const [lineItems, setLineItems] = useState([]);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState([]);
+    const [showDropdown, setShowDropdown] = useState(false);
+    const [selectedIndex, setSelectedIndex] = useState(-1);
+    const piSearchWrapRef = useRef(null);
+    const piSearchListRef = useRef(null);
+    const lineItemPickerWrapRef = useRef(null);
+    const lineItemPickerListRef = useRef(null);
+    const itemPickerInputRef = useRef('');
+    const itemPickerLineIdRef = useRef(null);
+    const [itemPickerLineId, setItemPickerLineId] = useState(null);
+    const [itemPickerInput, setItemPickerInput] = useState('');
+    const [itemPickerFilter, setItemPickerFilter] = useState('');
+    const [itemPickerSelectedIndex, setItemPickerSelectedIndex] = useState(0);
+    /** Dropdown open separately from which line owns the input — avoid reopening over a selected product. */
+    const [itemPickerMenuOpen, setItemPickerMenuOpen] = useState(false);
+    const [lastPurchaseStockRefreshing, setLastPurchaseStockRefreshing] = useState(false);
+    const lineFieldRefs = useRef({});
+    const pendingFocusLineFieldRef = useRef(null);
+
+    const [sspPanelKey, setSspPanelKey] = useState(0);
+    /** @type {[ApTabId, React.Dispatch
+jsx: >]} */
+    const [apTab, setApTab] = useState(
+        /** @type {ApTabId} */ ('payables'),
+    );
+
+    const [catalogItems, setCatalogItems] = useState([]);
+    const [catalogLoading, setCatalogLoading] = useState(false);
+
+    const [createSubmitting, setCreateSubmitting] = useState(false);
+    const [createError, setCreateError] = useState('');
+    /** Same modal as New Purchase Invoice — edit loads SSP purchase into identical fields */
+    const [sspPurchaseModalMode, setSspPurchaseModalMode] = useState(
+        /** @type {'create' | 'edit'} */ ('create'),
+    );
+    const [editingSspPurchaseId, setEditingSspPurchaseId] = useState(null);
+    /** Status of the purchase being edited ('draft' | 'posted' | null for new). */
+    const [editingSspPurchaseStatus, setEditingSspPurchaseStatus] = useState(null);
+    const [sspPurchaseEditLoading, setSspPurchaseEditLoading] = useState(false);
+
+    const [superSuppliers, setSuperSuppliers] = useState([]);
+    const [ssLoading, setSsLoading] = useState(true);
+    const [ssListError, setSsListError] = useState('');
+    const [supplierSearch, setSupplierSearch] = useState('');
+    const [addSsOpen, setAddSsOpen] = useState(false);
+    const [ssForm, setSsForm] = useState(() => ({ ...EMPTY_SS_FORM }));
+    const [ssCoaAccounts, setSsCoaAccounts] = useState([]);
+    const [ssCoaLoading, setSsCoaLoading] = useState(false);
+    const [ssSaving, setSsSaving] = useState(false);
+    const [ssErr, setSsErr] = useState('');
+    const [editingSuperSupplierId, setEditingSuperSupplierId] = useState(null);
+    const [ssTogglingId, setSsTogglingId] = useState(null);
+    const [ssDeletingId, setSsDeletingId] = useState(null);
+    const [createSspPurchaseForId, setCreateSspPurchaseForId] = useState(null);
+    const [auditOpen, setAuditOpen] = useState(false);
+    const [auditSsFilter, setAuditSsFilter] = useState('');
+    const [auditItems, setAuditItems] = useState([]);
+    const [auditLoading, setAuditLoading] = useState(false);
+
+    const [ssLedgerOpen, setSsLedgerOpen] = useState(false);
+    const [ssLedgerLoading, setSsLedgerLoading] = useState(false);
+    const [ssLedgerError, setSsLedgerError] = useState('');
+    const [ssLedgerData, setSsLedgerData] = useState(null);
+
+    const [ssProductsOpen, setSsProductsOpen] = useState(false);
+    const [ssProductsLoading, setSsProductsLoading] = useState(false);
+    const [ssProductsError, setSsProductsError] = useState('');
+    const [ssProductsData, setSsProductsData] = useState(null);
+    const [ssProductsSuperSupplierId, setSsProductsSuperSupplierId] = useState('');
+    const [ssProductsDateFrom, setSsProductsDateFrom] = useState('');
+    const [ssProductsDateTo, setSsProductsDateTo] = useState('');
+    const [ssProductsProductFilter, setSsProductsProductFilter] = useState('');
+
+    const loadSuperSuppliers = useCallback(async () => {
+        setSsLoading(true);
+        setSsListError('');
+        try {
+            const res = await listSupplierSuperSuppliers();
+            const list = res?.superSuppliers ?? [];
+            setSuperSuppliers(Array.isArray(list) ? list : []);
+        } catch (err) {
+            setSuperSuppliers([]);
+            setSsListError(err?.message || 'Failed to load suppliers');
+        } finally {
+            setSsLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadSuperSuppliers();
+    }, [loadSuperSuppliers]);
+
+    useEffect(() => {
+        if (!addSsOpen) return undefined;
+        let cancelled = false;
+        (async () => {
+            setSsCoaLoading(true);
+            try {
+                const res = await getSupplierAccounts({ status: 'active' });
+                if (!cancelled) {
+                    setSsCoaAccounts(unwrapSupplierAccountingList(res));
+                }
+            } catch {
+                if (!cancelled) setSsCoaAccounts([]);
+            } finally {
+                if (!cancelled) setSsCoaLoading(false);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [addSsOpen]);
+
+    const ssOpeningContraOptions = useMemo(
+        () =>
+            (ssCoaAccounts || []).filter(
+                (a) =>
+                    (a.type === 'ASSET' || a.type === 'EXPENSE') &&
+                    !a.hasChildren &&
+                    a.status !== 'inactive',
+            ),
+        [ssCoaAccounts],
+    );
+
+    const editingSuperSupplier = useMemo(
+        () =>
+            editingSuperSupplierId
+                ? superSuppliers.find((s) => String(s.id) === String(editingSuperSupplierId))
+                : null,
+        [superSuppliers, editingSuperSupplierId],
+    );
+
+    const ssOpeningLocked = Boolean(
+        editingSuperSupplier && Number(editingSuperSupplier.purchaseCount || 0) > 0,
+    );
+
+    const filteredSuperSuppliers = useMemo(() => {
+        const q = supplierSearch.trim().toLowerCase();
+        if (!q) return superSuppliers;
+        return superSuppliers.filter((ss) => {
+            const hay = [ss.name, ss.vatNumber, ss.mobile, ss.email, ss.notes]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
+            return hay.includes(q);
+        });
+    }, [superSuppliers, supplierSearch]);
+
+    const aggregateAp = useMemo(
+        () =>
+            filteredSuperSuppliers.reduce(
+                (sum, ss) => sum + Number(ss.accountsPayable ?? 0),
+                0,
+            ),
+        [filteredSuperSuppliers],
+    );
+
+    const openSuperSupplierLedger = async (superSupplierId, supplierName = '') => {
+        setSsLedgerOpen(true);
+        setSsLedgerLoading(true);
+        setSsLedgerError('');
+        setSsLedgerData({ supplier: { name: supplierName || 'Super supplier' } });
+        try {
+            const res = await getSuperSupplierApLedger(String(superSupplierId));
+            const root = res?.data && typeof res.data === 'object' ? res.data : res;
+            setSsLedgerData(root);
+        } catch (e) {
+            setSsLedgerError(e?.message || 'Could not load account ledger.');
+            setSsLedgerData(null);
+        } finally {
+            setSsLedgerLoading(false);
+        }
+    };
+
+    const closeSuperSupplierLedger = () => {
+        setSsLedgerOpen(false);
+        setSsLedgerError('');
+        setSsLedgerData(null);
+        void loadSuperSuppliers();
+    };
+
+    const loadSuperSupplierProducts = useCallback(
+        async (superSupplierId, filters = {}) => {
+            if (!superSupplierId) return;
+            setSsProductsLoading(true);
+            setSsProductsError('');
+            try {
+                const res = await getSuperSupplierPurchaseProducts(String(superSupplierId), filters);
+                const root = res?.data && typeof res.data === 'object' ? res.data : res;
+                setSsProductsData(root);
+            } catch (e) {
+                setSsProductsError(e?.message || 'Could not load purchased products.');
+                setSsProductsData(null);
+            } finally {
+                setSsProductsLoading(false);
+            }
+        },
+        [],
+    );
+
+    const openSuperSupplierProducts = (superSupplierId, supplierName = '') => {
+        const id = String(superSupplierId);
+        setSsProductsSuperSupplierId(id);
+        setSsProductsOpen(true);
+        setSsProductsDateFrom('');
+        setSsProductsDateTo('');
+        setSsProductsProductFilter('');
+        setSsProductsData({ supplier: { name: supplierName || 'Super supplier' } });
+        void loadSuperSupplierProducts(id, {});
+    };
+
+    const closeSuperSupplierProducts = () => {
+        setSsProductsOpen(false);
+        setSsProductsError('');
+        setSsProductsData(null);
+        setSsProductsSuperSupplierId('');
+        setSsProductsDateFrom('');
+        setSsProductsDateTo('');
+        setSsProductsProductFilter('');
+    };
+
+    const applySuperSupplierProductsFilters = () => {
+        if (!ssProductsSuperSupplierId) return;
+        void loadSuperSupplierProducts(ssProductsSuperSupplierId, {
+            dateFrom: ssProductsDateFrom || undefined,
+            dateTo: ssProductsDateTo || undefined,
+            product: ssProductsProductFilter.trim() || undefined,
+        });
+    };
+
+    const clearSuperSupplierProductsFilters = () => {
+        setSsProductsDateFrom('');
+        setSsProductsDateTo('');
+        setSsProductsProductFilter('');
+        if (!ssProductsSuperSupplierId) return;
+        void loadSuperSupplierProducts(ssProductsSuperSupplierId, {});
+    };
+
+    const openAuditModal = async (superSupplierId = '') => {
+        setAuditOpen(true);
+        setAuditSsFilter(superSupplierId);
+        setAuditLoading(true);
+        try {
+            const res = await listSupplierSuperSupplierAudit({
+                ...(superSupplierId ? { superSupplierId } : {}),
+                limit: 200,
+            });
+            setAuditItems(res?.items ?? []);
+        } catch {
+            setAuditItems([]);
+        } finally {
+            setAuditLoading(false);
+        }
+    };
+
+    const handleSaveSuperSupplier = async () => {
+        if (!ssForm.name?.trim()) {
+            setSsErr('Name is required');
+            return;
+        }
+        const openingAmt = Number(ssForm.openingBalance);
+        const hasOpening =
+            ssForm.openingBalance !== '' &&
+            ssForm.openingBalance != null &&
+            Number.isFinite(openingAmt) &&
+            Math.abs(openingAmt) >= 0.005;
+        if (hasOpening) {
+            if (!ssForm.openingBalanceDate?.trim()) {
+                setSsErr('As-of date is required when opening balance is set.');
+                return;
+            }
+            if (!ssForm.openingOffsetAccountId?.trim()) {
+                setSsErr('Select a contra account from your chart of accounts.');
+                return;
+            }
+        }
+        setSsSaving(true);
+        setSsErr('');
+        try {
+            const payload = {
+                name: ssForm.name.trim(),
+                mobile: ssForm.mobile?.trim() || undefined,
+                email: ssForm.email?.trim() || undefined,
+                vatNumber: ssForm.vatNumber?.trim() || undefined,
+                address: ssForm.address?.trim() || undefined,
+                notes: ssForm.notes?.trim() || undefined,
+                openingBalance: hasOpening ? openingAmt : 0,
+                openingBalanceDate: hasOpening
+                    ? ssForm.openingBalanceDate.trim()
+                    : undefined,
+                openingOffsetAccountId: hasOpening
+                    ? ssForm.openingOffsetAccountId.trim()
+                    : undefined,
+            };
+            if (editingSuperSupplierId) {
+                await updateSupplierSuperSupplier(editingSuperSupplierId, payload);
+            } else {
+                await createSupplierSuperSupplier(payload);
+            }
+            setAddSsOpen(false);
+            setEditingSuperSupplierId(null);
+            setSsForm({ ...EMPTY_SS_FORM, openingBalanceDate: todayIsoDate() });
+            await loadSuperSuppliers();
+        } catch (e) {
+            setSsErr(e?.message || 'Could not save super supplier');
+        } finally {
+            setSsSaving(false);
+        }
+    };
+
+    const openEditSuperSupplier = (ss) => {
+        setSsErr('');
+        setEditingSuperSupplierId(String(ss.id));
+        setSsForm({
+            name: ss.name || '',
+            mobile: ss.mobile || '',
+            email: ss.email || '',
+            vatNumber: ss.vatNumber || '',
+            address: ss.address || '',
+            notes: ss.notes || '',
+            openingBalance:
+                ss.openingBalance != null && Number(ss.openingBalance) !== 0
+                    ? String(ss.openingBalance)
+                    : '',
+            openingBalanceDate: ss.openingBalanceDate || todayIsoDate(),
+            openingOffsetAccountId: ss.openingOffsetAccountId
+                ? String(ss.openingOffsetAccountId)
+                : '',
+        });
+        setApTab('super_suppliers');
+        setAddSsOpen(true);
+    };
+
+    const openAddSuperSupplier = () => {
+        setSsErr('');
+        setEditingSuperSupplierId(null);
+        setSsForm({ ...EMPTY_SS_FORM, openingBalanceDate: todayIsoDate() });
+        setApTab('super_suppliers');
+        setAddSsOpen(true);
+    };
+
+    const handleToggleSuperSupplierActive = async (ss) => {
+        const id = String(ss.id);
+        setSsTogglingId(id);
+        try {
+            await updateSupplierSuperSupplier(id, { isActive: !ss.isActive });
+            await loadSuperSuppliers();
+        } catch (e) {
+            window.alert(e?.message || 'Could not update status');
+        } finally {
+            setSsTogglingId(null);
+        }
+    };
+
+    const handleDeleteSuperSupplier = async (ss) => {
+        const purchaseCount = Number(ss.purchaseCount ?? 0);
+        const apBalance = Number(ss.accountsPayable ?? 0);
+        if (purchaseCount > 0 || Math.abs(apBalance) > 0.005) {
+            window.alert(
+                'This super supplier cannot be deleted because purchase or ledger transactions exist.',
+            );
+            return;
+        }
+        if (
+            !window.confirm(
+                `Delete super supplier "${ss.name}"? This cannot be undone.`,
+            )
+        ) {
+            return;
+        }
+        const id = String(ss.id);
+        setSsDeletingId(id);
+        try {
+            await deleteSupplierSuperSupplier(id);
+            await loadSuperSuppliers();
+        } catch (e) {
+            window.alert(e?.message || 'Could not delete super supplier');
+        } finally {
+            setSsDeletingId(null);
+        }
+    };
+
+    const canDeleteSuperSupplier = (ss) => {
+        const purchaseCount = Number(ss.purchaseCount ?? 0);
+        const apBalance = Number(ss.accountsPayable ?? 0);
+        return purchaseCount === 0 && Math.abs(apBalance)
+jsx: {
+        if (!modalOpen) return undefined;
+        let cancelled = false;
+        setCatalogLoading(true);
+        const stockParams = { limit: 2000, offset: 0 };
+        if (superSupplierId) {
+            stockParams.superSupplierId = String(superSupplierId);
+        }
+        Promise.all([
+            listSupplierMasterCatalogProducts(),
+            getSupplierInventoryStockBalances(stockParams).catch(() => ({ items: [] })),
+        ])
+            .then(([masterRes, stockRes]) => {
+                if (cancelled) return;
+                const masters = Array.isArray(masterRes?.products)
+                    ? masterRes.products
+                    : Array.isArray(masterRes?.items)
+                      ? masterRes.items
+                      : Array.isArray(masterRes)
+                        ? masterRes
+                        : [];
+                const stockRows = Array.isArray(stockRes?.items) ? stockRes.items : [];
+                const stockByMasterId = new Map();
+                for (const row of stockRows) {
+                    const mid =
+                        row?.masterProductId != null && String(row.masterProductId).trim() !== ''
+                            ? String(row.masterProductId).trim()
+                            : '';
+                    if (mid) stockByMasterId.set(mid, row);
+                }
+                const mapped = masters
+                    .map((row) => {
+                        const base = mapMasterCatalogToPurchasePickerRow(row);
+                        if (!base) return null;
+                        const stock = stockByMasterId.get(String(base.masterProductId));
+                        return stock ? applyStockBalanceHintsToPickerRow(base, stock) : base;
+                    })
+                    .filter(Boolean);
+                setCatalogItems(mapped);
+                // Keep open lines on Master Catalog warehouse UOM (never legacy liter/pcs drift).
+                setLineItems((prev) =>
+                    prev.map((line) => {
+                        const mid = String(
+                            line.masterProductId || line.supplierProductId || '',
+                        ).trim();
+                        if (!mid) return line;
+                        const inv =
+                            mapped.find((x) => String(x.masterProductId ?? '') === mid) ||
+                            mapped.find((x) => String(x.id) === mid);
+                        if (!inv) return line;
+                        const whUom = masterCatalogWarehouseUnit(
+                            { warehouseUnit: inv.warehouseUnit || line.warehouseUnit },
+                            'pcs',
+                        );
+                        if (
+                            String(line.uom || '') === whUom &&
+                            String(line.warehouseUnit || '') === whUom &&
+                            String(line.masterProductId || '') === mid
+                        ) {
+                            return line;
+                        }
+                        return applyLineTotals(
+                            {
+                                ...line,
+                                masterProductId: mid,
+                                supplierProductId: mid,
+                                uom: whUom,
+                                warehouseUnit: whUom,
+                                workshopUnitCatalog:
+                                    String(inv.workshopUnit ?? '').trim() ||
+                                    line.workshopUnitCatalog,
+                                conversionFactor:
+                                    inv.conversionFactor ?? line.conversionFactor ?? 1,
+                            },
+                            amountsTaxInclusive,
+                        );
+                    }),
+                );
+            })
+            .catch(() => {
+                if (!cancelled) setCatalogItems([]);
+            })
+            .finally(() => {
+                if (!cancelled) setCatalogLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [modalOpen, superSupplierId, amountsTaxInclusive]);
+
+    useEffect(() => {
+        if (!modalOpen || !superSupplierId) return undefined;
+        let cancelled = false;
+        setLastPurchaseStockRefreshing(true);
+        getSupplierInventoryStockBalances({
+            limit: 2000,
+            offset: 0,
+            superSupplierId: String(superSupplierId),
+        })
+            .then((res) => {
+                if (cancelled) return;
+                const stockRows = Array.isArray(res?.items) ? res.items : [];
+                const stockByMasterId = new Map();
+                for (const row of stockRows) {
+                    const mid =
+                        row?.masterProductId != null && String(row.masterProductId).trim() !== ''
+                            ? String(row.masterProductId).trim()
+                            : '';
+                    if (mid) stockByMasterId.set(mid, row);
+                }
+                const enrich = (row) => {
+                    // Always resolve stock by master catalog id — never by row.id alone
+                    // (products.id and supplier_products.id collide in the same number space).
+                    const mid = String(row.masterProductId || row.id || '').trim();
+                    const stock = mid ? stockByMasterId.get(mid) : null;
+                    return stock ? applyStockBalanceHintsToPickerRow(row, stock) : row;
+                };
+                setCatalogItems((prev) => prev.map(enrich));
+                setLineItems((prev) =>
+                    prev.map((line) => {
+                        if (!line.supplierProductId && !line.masterProductId) return line;
+                        const mid = String(
+                            line.masterProductId || line.supplierProductId || '',
+                        ).trim();
+                        const stock = mid ? stockByMasterId.get(mid) : null;
+                        if (!stock) return line;
+                        const inv = applyStockBalanceHintsToPickerRow(
+                            {
+                                id: mid,
+                                masterProductId: mid,
+                                name: line.item,
+                                sku: line.sku,
+                                price: Number(line.price) || 0,
+                                unit: line.uom,
+                                warehouseUnit: line.warehouseUnit,
+                                workshopUnit: line.workshopUnitCatalog,
+                                conversionFactor: line.conversionFactor,
+                                hasPreviousPurchase: false,
+                                lastPrice: 0,
+                                lastPurchaseMeta: '',
+                            },
+                            stock,
+                        );
+                        const hasPrev = !!inv.hasPreviousPurchase;
+                        const whUom =
+                            masterCatalogWarehouseUnit(
+                                { warehouseUnit: line.warehouseUnit || inv.warehouseUnit },
+                                '',
+                            ) ||
+                            masterCatalogWarehouseUnit(inv, '') ||
+                            'pcs';
+                        return applyLineTotals(
+                            {
+                                ...line,
+                                masterProductId: mid,
+                                supplierProductId: mid,
+                                uom: whUom,
+                                warehouseUnit: whUom,
+                                workshopUnitCatalog:
+                                    String(
+                                        line.workshopUnitCatalog || inv.workshopUnit || '',
+                                    ).trim() || line.workshopUnitCatalog,
+                                conversionFactor:
+                                    line.conversionFactor ?? inv.conversionFactor,
+                                hasPreviousPurchase: hasPrev,
+                                lastPurchasePrice: hasPrev
+                                    ? Number(inv.lastPrice ?? 0)
+                                    : 0,
+                                lastPurchaseMeta: hasPrev
+                                    ? String(inv.lastPurchaseMeta || '').trim()
+                                    : '',
+                            },
+                            amountsTaxInclusive,
+                        );
+                    }),
+                );
+            })
+            .catch(() => {})
+            .finally(() => {
+                if (!cancelled) setLastPurchaseStockRefreshing(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [modalOpen, superSupplierId, amountsTaxInclusive]);
+
+    const catalogForSearch = catalogItems.length ? catalogItems : [];
+
+    const getSearchSuggestionsPi = (query) => {
+        const items = catalogForSearch;
+        const q = query.trim().toLowerCase();
+        if (!q) {
+            return [...items]
+                .sort((a, b) =>
+                    String(a.name || '').localeCompare(String(b.name || ''), undefined, {
+                        sensitivity: 'base',
+                    }),
+                )
+                .slice(0, SEARCH_QUICK_PICK_PI);
+        }
+        return items
+            .map((item) => ({ item, score: scorePurchaseSearchItem(item, q) }))
+            .filter((x) => x.score > 0)
+            .sort(
+                (a, b) =>
+                    b.score - a.score ||
+                    String(a.item.name || '').localeCompare(String(b.item.name || '')),
+            )
+            .slice(0, SEARCH_MAX_RESULTS_PI)
+            .map((x) => x.item);
+    };
+
+    const applySearchQueryPi = (value) => {
+        setSearchQuery(value);
+        const results = getSearchSuggestionsPi(value);
+        setSearchResults(results);
+        setShowDropdown(true);
+        // Only auto-highlight when the user typed a query. Empty quick-pick
+        // must not select index 0 — Enter would append a random catalog line.
+        const q = value.trim();
+        setSelectedIndex(q && results.length ? 0 : -1);
+    };
+
+    const openPiLineSearch = () => {
+        const results = getSearchSuggestionsPi(searchQuery);
+        setSearchResults(results);
+        setShowDropdown(true);
+        const q = String(searchQuery ?? '').trim();
+        setSelectedIndex(q && results.length ? 0 : -1);
+    };
+
+    useEffect(() => {
+        if (!modalOpen || !showDropdown) return undefined;
+        const close = (e) => {
+            const el = piSearchWrapRef.current;
+            if (el && !el.contains(e.target)) setShowDropdown(false);
+        };
+        document.addEventListener('mousedown', close);
+        return () => document.removeEventListener('mousedown', close);
+    }, [modalOpen, showDropdown]);
+
+    useEffect(() => {
+        itemPickerInputRef.current = itemPickerInput;
+    }, [itemPickerInput]);
+
+    useEffect(() => {
+        itemPickerLineIdRef.current = itemPickerLineId;
+    }, [itemPickerLineId]);
+
+    const lineHasLinkedCatalogProduct = (line) =>
+        Boolean(
+            String(line?.masterProductId || line?.supplierProductId || '').trim(),
+        );
+
+    const commitItemPickerLineText = (openLineId) => {
+        if (openLineId == null) return;
+        const text = String(itemPickerInputRef.current ?? '').trim();
+        setLineItems((prev) =>
+            prev.map((l) => {
+                if (l.id !== openLineId) return l;
+                // Never wipe a linked catalog selection with an empty commit.
+                if (!text && lineHasLinkedCatalogProduct(l)) return l;
+                if (text === String(l.item ?? '').trim()) return l;
+                return { ...l, item: text };
+            }),
+        );
+    };
+
+    const closeLineItemPicker = (openLineId = itemPickerLineIdRef.current) => {
+        commitItemPickerLineText(openLineId);
+        setItemPickerLineId(null);
+        setItemPickerInput('');
+        setItemPickerFilter('');
+        setItemPickerMenuOpen(false);
+    };
+
+    const activateLineItemField = (line, { openMenu } = {}) => {
+        const prevId = itemPickerLineIdRef.current;
+        if (prevId != null && prevId !== line.id) {
+            commitItemPickerLineText(prevId);
+        }
+        // Don't leave the footer catalog search open — Enter there can append
+        // an unrelated product while editing a line.
+        setShowDropdown(false);
+        setSelectedIndex(-1);
+
+        const linked = lineHasLinkedCatalogProduct(line);
+        const hasLabel = Boolean(String(line.item ?? '').trim());
+        const shouldOpen =
+            openMenu === true
+                ? true
+                : openMenu === false
+                  ? false
+                  : !linked && !hasLabel;
+        setItemPickerLineId(line.id);
+        setItemPickerInput(String(line.item ?? ''));
+        setItemPickerFilter(shouldOpen ? '' : String(line.item ?? ''));
+        // No auto-highlight on empty quick-pick (prevents Enter adding a random product).
+        setItemPickerSelectedIndex(shouldOpen ? -1 : 0);
+        setItemPickerMenuOpen(shouldOpen);
+    };
+
+    useEffect(() => {
+        if (!modalOpen || itemPickerLineId == null || !itemPickerMenuOpen) {
+            return undefined;
+        }
+        const openLineId = itemPickerLineId;
+        const onDocMouseDown = (e) => {
+            const el = lineItemPickerWrapRef.current;
+            if (el && !el.contains(e.target)) {
+                closeLineItemPicker(openLineId);
+            }
+        };
+        document.addEventListener('mousedown', onDocMouseDown);
+        return () => document.removeEventListener('mousedown', onDocMouseDown);
+    }, [modalOpen, itemPickerLineId, itemPickerMenuOpen]);
+
+    useEffect(() => {
+        setItemPickerSelectedIndex(String(itemPickerFilter ?? '').trim() ? 0 : -1);
+    }, [itemPickerFilter, itemPickerLineId]);
+
+    const getLineTabFields = useCallback(() => {
+        const fields = ['item', 'account'];
+        if (showDesc) fields.push('description');
+        fields.push('uom', 'qty', 'price');
+        if (showDiscount) {
+            fields.push('discount', 'discountMode');
+        }
+        fields.push('taxCode');
+        return fields;
+    }, [showDesc, showDiscount]);
+
+    const focusLineField = useCallback((lineId, fieldName) => {
+        requestAnimationFrame(() => {
+            lineFieldRefs.current[`${lineId}:${fieldName}`]?.focus?.();
+        });
+    }, []);
+
+    useEffect(() => {
+        const pending = pendingFocusLineFieldRef.current;
+        if (!pending) return;
+        pendingFocusLineFieldRef.current = null;
+        focusLineField(pending.lineId, pending.fieldName);
+    }, [lineItems.length, focusLineField]);
+
+    useEffect(() => {
+        if (!showDropdown || !piSearchListRef.current) return;
+        const el = piSearchListRef.current.querySelector(
+            `[data-pick-idx="${selectedIndex}"]`,
+        );
+        el?.scrollIntoView({ block: 'nearest' });
+    }, [selectedIndex, showDropdown]);
+
+    useEffect(() => {
+        if (
+            !modalOpen
+            || itemPickerLineId == null
+            || !itemPickerMenuOpen
+            || !lineItemPickerListRef.current
+        ) {
+            return;
+        }
+        const el = lineItemPickerListRef.current.querySelector(
+            `[data-pick-idx="${itemPickerSelectedIndex}"]`,
+        );
+        el?.scrollIntoView({ block: 'nearest' });
+    }, [modalOpen, itemPickerLineId, itemPickerMenuOpen, itemPickerSelectedIndex]);
+
+    const lastPurchaseHintForLine = useCallback(
+        (line) => {
+            const mid = String(line.masterProductId || line.supplierProductId || '').trim();
+            if (mid) {
+                const inv =
+                    catalogItems.find((x) => String(x.masterProductId ?? '') === mid) ||
+                    catalogItems.find((x) => String(x.id) === mid);
+                if (inv) {
+                    return {
+                        hasPrev: !!inv.hasPreviousPurchase,
+                        price: Number(inv.lastPrice ?? 0),
+                        meta: String(inv.lastPurchaseMeta || '').trim(),
+                    };
+                }
+            }
+            return {
+                hasPrev: !!line.hasPreviousPurchase,
+                price: Number(line.lastPurchasePrice ?? 0),
+                meta: String(line.lastPurchaseMeta || '').trim(),
+            };
+        },
+        [catalogItems],
+    );
+
+    /** Apply master-catalog / stock row to an existing purchase line. */
+    const applyCatalogPurchaseItemToLine = (lineId, catItem) => {
+        const unitPrice = Number(catItem.price) || 0;
+        // Always send Master Catalog id (backend auto-adopts). Never use
+        // supplier_products.id from stock hints — id spaces collide.
+        const masterId = String(
+            catItem?.masterProductId ?? catItem?.id ?? '',
+        ).trim();
+        const whUom = masterCatalogWarehouseUnit(catItem, 'pcs');
+        setLineItems((prev) =>
+            prev.map((line) => {
+                if (line.id !== lineId) return line;
+                const raw = {
+                    ...line,
+                    sku: catItem.sku || '',
+                    item: catItem.name,
+                    supplierProductId: masterId || undefined,
+                    masterProductId: masterId || undefined,
+                    account:
+                        catItem.type === 'Stock'
+                            ? '1410 - Inventory Asset'
+                            : '5100 - Cost of Goods Sold',
+                    uom: whUom,
+                    warehouseUnit: whUom,
+                    workshopUnitCatalog:
+                        String(catItem.workshopUnit ?? '').trim() || null,
+                    conversionFactor: catItem.conversionFactor ?? 1,
+                    price: unitPrice,
+                    hasPreviousPurchase: !!catItem.hasPreviousPurchase,
+                    lastPurchasePrice: catItem.hasPreviousPurchase
+                        ? Number(catItem.lastPrice ?? 0)
+                        : Number(line.lastPurchasePrice ?? 0),
+                    lastPurchaseMeta: catItem.hasPreviousPurchase
+                        ? String(catItem.lastPurchaseMeta || '').trim()
+                        : '',
+                };
+                return applyLineTotals(raw, amountsTaxInclusive);
+            }),
+        );
+        setItemPickerLineId(null);
+        setItemPickerInput('');
+        setItemPickerFilter('');
+        setItemPickerMenuOpen(false);
+        // Focus qty — never UOM (browser autofill was overwriting Box → piece).
+        focusLineField(lineId, 'qty');
+    };
+
+    const removePurchaseLine = (lineId) => {
+        setLineItems((prev) => prev.filter((l) => l.id !== lineId));
+        setItemPickerLineId((cur) => (cur === lineId ? null : cur));
+        setItemPickerMenuOpen((open) =>
+            itemPickerLineIdRef.current === lineId ? false : open,
+        );
+    };
+
+    const updateLineItem = (id, field, value) => {
+        const recalc = new Set(['qty', 'price', 'taxCode', 'discount', 'discountMode', 'uom']);
+        setLineItems((prev) =>
+            prev.map((line) => {
+                if (line.id !== id) return line;
+                // Linked catalog lines: UOM is locked to Master Catalog warehouse unit.
+                if (field === 'uom' && line.supplierProductId) {
+                    const inv = findPiCapsRow(line, catalogItems);
+                    const locked = masterCatalogWarehouseUnit(
+                        inv || { warehouseUnit: line.warehouseUnit },
+                        line.warehouseUnit || line.uom || 'pcs',
+                    );
+                    if (String(value ?? '').trim() !== locked) {
+                        return line;
+                    }
+                }
+                let updated = { ...line, [field]: value };
+                if (field === 'uom') {
+                    const inv = findPiCapsRow(line, catalogItems);
+                    const cf = Number(inv?.conversionFactor) || 1;
+                    const oldIsWh = isPiWarehouseUomLine(line, inv);
+                    const newIsWh = isPiWarehouseUomLine(updated, inv);
+                    if (inv && cf > 0 && oldIsWh !== newIsWh) {
+                        const p = parseFloat(String(line.price).replace(',', '.')) || 0;
+                        updated = {
+                            ...updated,
+                            price: roundMoney2(oldIsWh ? p / cf : p * cf),
+                        };
+                    }
+                }
+                return recalc.has(field)
+                    ? applyLineTotals(updated, amountsTaxInclusive)
+                    : updated;
+            }),
+        );
+    };
+
+    useEffect(() => {
+        setLineItems((prev) =>
+            prev.length
+                ? prev.map((line) => applyLineTotals(line, amountsTaxInclusive))
+                : prev,
+        );
+    }, [amountsTaxInclusive]);
+
+    const getSummary = () => {
+        let subtotalEx = 0;
+        let linesVatBeforeInvDisc = 0;
+        for (const line of lineItems) {
+            const f = computeLineFinancials(line, amountsTaxInclusive);
+            subtotalEx += f.lineEx;
+            linesVatBeforeInvDisc += f.taxAmt;
+        }
+        subtotalEx = roundMoney2(subtotalEx);
+        linesVatBeforeInvDisc = roundMoney2(linesVatBeforeInvDisc);
+        const freightNum =
+            parseFloat(String(freightCharges).replace(',', '.')) || 0;
+        const freightIn = roundMoney2(Math.max(0, freightNum));
+
+        let invDisc = 0;
+        const invRaw =
+            parseFloat(String(invoiceDiscountValue).replace(',', '.')) || 0;
+        if (invoiceDiscountMode === 'percent') {
+            invDisc = roundMoney2(
+                (subtotalEx * Math.min(100, Math.max(0, invRaw))) / 100,
+            );
+        } else {
+            invDisc = roundMoney2(Math.min(Math.max(0, invRaw), subtotalEx));
+        }
+        const invoiceDiscountSar = roundMoney2(Math.max(0, invDisc));
+        const taxableAfterDiscount = roundMoney2(
+            Math.max(0, subtotalEx - invoiceDiscountSar),
+        );
+        const totalTax =
+            subtotalEx > 0
+                ? roundMoney2(
+                      linesVatBeforeInvDisc * (taxableAfterDiscount / subtotalEx),
+                  )
+                : 0;
+        const grandTotal = roundMoney2(
+            Math.max(0, taxableAfterDiscount + totalTax + freightIn),
+        );
+        const invPctDisplayed = Math.min(100, Math.max(0, invRaw));
+        const fmt2 = (n) =>
+            n.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            });
+
+        return {
+            subtotal: fmt2(subtotalEx),
+            amountAfterDiscount: fmt2(taxableAfterDiscount),
+            totalTax: fmt2(totalTax),
+            grandTotal: fmt2(grandTotal),
+            rawSubtotal: subtotalEx,
+            rawTaxableAfterDiscount: taxableAfterDiscount,
+            rawTotalTax: totalTax,
+            rawGrandTotal: grandTotal,
+            freightIn,
+            freightInFormatted: fmt2(freightIn),
+            showFreightRow: freightIn > 0,
+            invoiceDiscount: invoiceDiscountSar,
+            invoiceDiscountFormatted: fmt2(invoiceDiscountSar),
+            showInvoiceDiscountRow: invoiceDiscountSar > 0,
+            invoiceDiscountSummaryLabel:
+                invoiceDiscountMode === 'percent'
+                    ? `Invoice discount (${invPctDisplayed}%):`
+                    : 'Invoice discount (fixed SAR):',
+        };
+    };
+    const summary = getSummary();
+
+    const addEmptyPurchaseLine = () => {
+        const lineId = nextLineId();
+        const raw = {
+            id: lineId,
+            item: '',
+            sku: '',
+            supplierProductId: undefined,
+            account: '1410 - Inventory Asset',
+            description: '',
+            uom: 'pcs',
+            warehouseUnit: null,
+            workshopUnitCatalog: null,
+            qty: 1,
+            price: 0,
+            discount: 0,
+            discountMode: 'percent',
+            taxCode: 'VAT 15%',
+            taxAmt: '0.00',
+            totalFinal: '0.00',
+            hasPreviousPurchase: false,
+            lastPurchasePrice: 0,
+            lastPurchaseMeta: '',
+        };
+        const newLine = applyLineTotals(raw, amountsTaxInclusive);
+        setLineItems((prev) => [...prev, newLine]);
+        pendingFocusLineFieldRef.current = { lineId, fieldName: 'account' };
+        return lineId;
+    };
+
+    const handleLineFieldTab = (e, lineId, fieldName, lineIndex) => {
+        if (e.key !== 'Tab' || e.shiftKey) return;
+        const fields = getLineTabFields();
+        const fieldIdx = fields.indexOf(fieldName);
+        if (fieldIdx
+jsx: {
+        if (itemPickerLineId !== line.id) return;
+        const suggestions = getSearchSuggestionsPi(itemPickerFilter);
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!itemPickerMenuOpen) setItemPickerMenuOpen(true);
+            setItemPickerSelectedIndex((i) => {
+                const start = i
+jsx: Math.max(i - 1, 0));
+            return;
+        }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            if (
+                itemPickerMenuOpen &&
+                itemPickerLineId === line.id &&
+                itemPickerSelectedIndex >= 0 &&
+                suggestions[itemPickerSelectedIndex]
+            ) {
+                applyCatalogPurchaseItemToLine(
+                    line.id,
+                    suggestions[itemPickerSelectedIndex],
+                );
+                return;
+            }
+            closeLineItemPicker(line.id);
+            focusLineField(line.id, 'account');
+            return;
+        }
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            closeLineItemPicker(line.id);
+        }
+    };
+
+    const addItemToLines = (item) => {
+        const lineId = nextLineId();
+        const unitPrice = Number(item.price) || 0;
+        const masterId = String(item?.masterProductId ?? item?.id ?? '').trim();
+        const whUom = masterCatalogWarehouseUnit(item, 'pcs');
+        const raw = {
+            id: lineId,
+            sku: item.sku || '',
+            item: item.name,
+            supplierProductId: masterId || undefined,
+            masterProductId: masterId || undefined,
+            account:
+                item.type === 'Stock' ? '1410 - Inventory Asset' : '5100 - Cost of Goods Sold',
+            description: '',
+            uom: whUom,
+            warehouseUnit: whUom,
+            workshopUnitCatalog: String(item.workshopUnit ?? '').trim() || null,
+            conversionFactor: item.conversionFactor ?? 1,
+            qty: 1,
+            price: unitPrice,
+            discount: 0,
+            discountMode: 'percent',
+            taxCode: 'VAT 15%',
+            taxAmt: '0.00',
+            totalFinal: '0.00',
+            hasPreviousPurchase: !!item.hasPreviousPurchase,
+            lastPurchasePrice: item.hasPreviousPurchase ? Number(item.lastPrice ?? 0) : 0,
+            lastPurchaseMeta: item.hasPreviousPurchase
+                ? String(item.lastPurchaseMeta || '').trim()
+                : '',
+        };
+        const newLine = applyLineTotals(raw, amountsTaxInclusive);
+        setLineItems((prev) => [...prev, newLine]);
+        setSearchQuery('');
+        setShowDropdown(false);
+        pendingFocusLineFieldRef.current = { lineId, fieldName: 'qty' };
+        return lineId;
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (!showDropdown) {
+                openPiLineSearch();
+                return;
+            }
+            if (e.key === 'ArrowDown') {
+                setSelectedIndex((i) => {
+                    if (searchResults.length === 0) return -1;
+                    if (i
+jsx: (i > 0 ? i - 1 : -1));
+            }
+            return;
+        }
+        if (!showDropdown) return;
+        if (e.key === 'Enter' && selectedIndex >= 0 && searchResults[selectedIndex]) {
+            e.preventDefault();
+            addItemToLines(searchResults[selectedIndex]);
+        } else if (e.key === 'Escape') {
+            setShowDropdown(false);
+            setSelectedIndex(-1);
+        }
+    };
+
+    const evalMath = (expr) => {
+        const str = String(expr).trim();
+        if (!str || !/^[\d\s+*/().\-*]+$/.test(str)) return str;
+        if (/^\d+(\.\d+)?$/.test(str)) return str;
+        try {
+            const result = Function(`return (${str})`)();
+            if (typeof result === 'number' && isFinite(result)) return parseFloat(result.toFixed(6)).toString();
+        } catch {
+            /* ignore */
+        }
+        return str;
+    };
+    const handleMathKeyDown = (e, lineId, field) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const evaluated = evalMath(e.target.value);
+            updateLineItem(lineId, field, evaluated);
+            e.target.value = evaluated;
+        }
+    };
+    const handleMathBlur = (e, lineId, field) => {
+        const evaluated = evalMath(e.target.value);
+        if (evaluated !== e.target.value) updateLineItem(lineId, field, evaluated);
+    };
+
+    const calculateDueDate = () => {
+        const issue = new Date(issueDate);
+        if (isNaN(issue.getTime())) return '—';
+        let due = new Date(issue);
+        if (dueDateType === 'Net') due.setDate(issue.getDate() + parseInt(netDays || 0, 10));
+        else if (dueDateType === 'Custom') return customDueDate || '—';
+        else if (dueDateType === 'EOM') due = new Date(issue.getFullYear(), issue.getMonth() + 1, 0);
+        return due.toISOString().slice(0, 10);
+    };
+    const calculatedDueDate = calculateDueDate();
+
+    const getGridColumns = () => {
+        const cols = [];
+        if (showLineNum) cols.push('40px');
+        cols.push('2fr', '1.5fr');
+        if (showDesc) cols.push('2fr');
+        cols.push('0.8fr', '0.8fr', '1fr');
+        if (showDiscount) cols.push('minmax(140px, 1.35fr)');
+        cols.push('1fr', '1fr', '1fr', '1fr', '1fr'); // Total, TaxCode, TaxAmt, Grand Total, Last Purchase
+        cols.push('48px');
+        return cols.join(' ');
+    };
+
+    const resetCreateForm = () => {
+        setLineItems([]);
+        setRefNo('');
+        setRefAutoGenerate(false);
+        setSuperSupplierId('');
+        setDescription('');
+        setInternalNotes('');
+        setIssueDate(new Date().toISOString().slice(0, 10));
+        setDueDateType('Net');
+        setNetDays(30);
+        setCustomDueDate('');
+        setSearchQuery('');
+        setCreateError('');
+        setShowLineNum(false);
+        setShowDesc(false);
+        setShowDiscount(false);
+        setAmountsTaxInclusive(false);
+        setFreightCharges('0');
+        setInvoiceDiscountValue('0');
+        setInvoiceDiscountMode('fixed_sar');
+        setItemPickerLineId(null);
+        setItemPickerInput('');
+        setItemPickerFilter('');
+        setItemPickerMenuOpen(false);
+        setSspPurchaseModalMode('create');
+        setEditingSspPurchaseId(null);
+        setEditingSspPurchaseStatus(null);
+        setSspPurchaseEditLoading(false);
+    };
+
+    const openSuperSupplierPurchaseForEdit = async (purchaseId) => {
+        setCreateError('');
+        setSspPurchaseModalMode('edit');
+        setEditingSspPurchaseId(String(purchaseId));
+        setSspPurchaseEditLoading(true);
+        setModalOpen(true);
+        setApTab('ssp_invoices');
+        try {
+            const res = await getSupplierSuperSupplierPurchase(purchaseId);
+            const p = res?.purchase ?? res?.data ?? res;
+            if (!p?.id) {
+                setCreateError('Could not load purchase for editing.');
+                return;
+            }
+            setEditingSspPurchaseStatus(
+                String(p.status || 'posted').trim().toLowerCase(),
+            );
+            setIssueDate((p.purchaseDate || '').toString().slice(0, 10));
+            setSuperSupplierId(String(p.superSupplierId ?? ''));
+            setRefNo(String(p.vendorRef ?? p.referenceNo ?? '').trim());
+            setDescription(String(p.description ?? '').trim());
+            const { userNotes, dueIso } = splitSuperSupplierPurchaseNotes(p.notes);
+            setInternalNotes(userNotes);
+            const issue = new Date((p.purchaseDate || '').toString().slice(0, 10));
+            if (!Number.isNaN(issue.getTime()) && dueIso) {
+                const due = new Date(dueIso);
+                if (!Number.isNaN(due.getTime())) {
+                    const diffDays = Math.round((due - issue) / (1000 * 60 * 60 * 24));
+                    if (!Number.isNaN(diffDays) && diffDays >= 0) {
+                        setDueDateType('Net');
+                        setNetDays(diffDays || 30);
+                    } else {
+                        setDueDateType('Custom');
+                        setCustomDueDate(dueIso);
+                    }
+                } else {
+                    setDueDateType('Net');
+                    setNetDays(30);
+                }
+            } else {
+                setDueDateType('Net');
+                setNetDays(30);
+            }
+
+            const m =
+                p.purchaseFormMeta != null && typeof p.purchaseFormMeta === 'object'
+                    ? p.purchaseFormMeta
+                    : {};
+            const taxIncl = !!m.amountsTaxInclusive;
+            setShowLineNum(!!m.showLineNum);
+            setShowDesc(!!m.showDesc);
+            setShowDiscount(!!m.showDiscount);
+            setAmountsTaxInclusive(taxIncl);
+            if (m.invoiceDiscountMode === 'percent') {
+                setInvoiceDiscountMode('percent');
+                if (m.invoiceDiscountInput != null && Number.isFinite(Number(m.invoiceDiscountInput))) {
+                    setInvoiceDiscountValue(String(m.invoiceDiscountInput));
+                } else {
+                    setInvoiceDiscountValue('0');
+                }
+            } else {
+                setInvoiceDiscountMode('fixed_sar');
+                if (m.invoiceDiscountInput != null && Number.isFinite(Number(m.invoiceDiscountInput))) {
+                    setInvoiceDiscountValue(String(m.invoiceDiscountInput));
+                } else {
+                    setInvoiceDiscountValue(String(Number(p.invoiceDiscount ?? 0)));
+                }
+            }
+            setFreightCharges(String(Number(p.freightIn ?? 0)));
+
+            const linesFromApi = Array.isArray(p.items) && p.items.length ? p.items : [];
+            setLineItems(
+                linesFromApi.map((it) => {
+                    const taxCode = 'VAT 15%';
+                    const discVal = Number(it.lineDiscountValue ?? 0);
+                    const discMode =
+                        it.lineDiscountMode === 'fixed_sar' ? 'fixed_sar' : 'percent';
+                    const priceStr = reconstructSSPUnitPriceInput(it, taxIncl, taxCode);
+                    return applyLineTotals(
+                        {
+                            id: nextLineId(),
+                            sku: String(it.sku ?? '').trim(),
+                            item: it.productName || '',
+                            supplierProductId:
+                                it.supplierProductId != null &&
+                                String(it.supplierProductId).trim() !== ''
+                                    ? String(it.supplierProductId).trim()
+                                    : undefined,
+                            account: '1410 - Inventory Asset',
+                            description: String(it.lineDescription ?? '').trim(),
+                            uom: it.unit || 'pcs',
+                            warehouseUnit: it.unit || null,
+                            workshopUnitCatalog: null,
+                            qty: String(it.qty ?? 1),
+                            price: priceStr,
+                            discount: discVal,
+                            discountMode: discMode,
+                            taxCode,
+                            taxAmt: '0.00',
+                            totalFinal: '0.00',
+                            hasPreviousPurchase: false,
+                            lastPurchasePrice: 0,
+                            lastPurchaseMeta: '',
+                        },
+                        taxIncl,
+                    );
+                }),
+            );
+        } catch (e) {
+            setCreateError(e?.message || 'Could not load purchase for editing.');
+        } finally {
+            setSspPurchaseEditLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        try {
+            if (sessionStorage.getItem(PI_PRESET_FROM_STOCK_FLAG) !== '1') {
+                return undefined;
+            }
+            const raw = sessionStorage.getItem(PI_PRESET_STOCK_LINE);
+            sessionStorage.removeItem(PI_PRESET_FROM_STOCK_FLAG);
+            sessionStorage.removeItem(PI_PRESET_STOCK_LINE);
+
+            resetCreateForm();
+            setModalOpen(true);
+            setApTab('payables');
+
+            if (!raw) {
+                return undefined;
+            }
+            const line = JSON.parse(raw);
+            if (
+                line == null ||
+                typeof line !== 'object' ||
+                String(line.supplierProductId ?? '').trim() === '' ||
+                String(line.name ?? '').trim() === ''
+            ) {
+                return undefined;
+            }
+
+            window.setTimeout(() => {
+                addItemToLines({
+                    id: String(line.masterProductId || line.supplierProductId).trim(),
+                    masterProductId: String(
+                        line.masterProductId || line.supplierProductId,
+                    ).trim(),
+                    sku: String(line.sku || '').trim(),
+                    name: String(line.name || '').trim(),
+                    price: Number(line.price) || 0,
+                    unit: String(line.unit || 'pcs').trim() || 'pcs',
+                    warehouseUnit: line.warehouseUnit,
+                    workshopUnit: line.workshopUnit,
+                    conversionFactor: line.conversionFactor,
+                    type: 'Stock',
+                });
+            }, 0);
+        } catch {
+            sessionStorage.removeItem(PI_PRESET_FROM_STOCK_FLAG);
+            sessionStorage.removeItem(PI_PRESET_STOCK_LINE);
+        }
+        return undefined;
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot when landing from Stock Inventory
+    }, []);
+
+    const handleCreateInvoice = async (saveMode = 'finalize') => {
+        const isDraftSave = saveMode === 'draft';
+        setCreateError('');
+        if (!superSupplierId) {
+            setCreateError('Select a super supplier from the list.');
+            return;
+        }
+        if (lineItems.length === 0) {
+            setCreateError('Add at least one line item.');
+            return;
+        }
+        const supplierRow = superSuppliers.find((s) => String(s.id) === String(superSupplierId));
+        if (!supplierRow) {
+            setCreateError('Invalid super supplier selection. Refresh the page.');
+            return;
+        }
+        if (supplierRow.isActive === false) {
+            setCreateError('Selected super supplier is inactive.');
+            return;
+        }
+
+        const normalizedLines = lineItems.map((line, idx) => {
+            const fin = computeLineFinancials(line, amountsTaxInclusive);
+            const qtyNum = parseFloat(String(line.qty).replace(',', '.')) || 0;
+            const unitPriceExForApi =
+                qtyNum > 0 ? roundMoney2(fin.lineEx / qtyNum) : 0;
+            const inv = findPiCapsRow(line, catalogItems);
+            const resolvedUnit = resolvePiLineUnitForApi(line, inv);
+            let productName = resolveInvoiceLineProductName(line, {
+                inventoryItems: catalogItems,
+            });
+            // Never persist the GL account label as the product name for stock lines.
+            if (
+                line.supplierProductId &&
+                (!productName || isLikelyGlAccountLabel(productName))
+            ) {
+                productName =
+                    String(inv?.name || line.item || '').trim() || productName;
+            }
+            return {
+                idx,
+                productName,
+                sku: String(line.sku || inv?.sku || '').trim() || undefined,
+                supplierProductId:
+                    line.supplierProductId != null &&
+                    String(line.supplierProductId).trim() !== ''
+                        ? String(line.supplierProductId).trim()
+                        : undefined,
+                qty: qtyNum,
+                unit: resolvedUnit,
+                unitPrice: unitPriceExForApi,
+                vatLine: fin.taxAmt,
+            };
+        });
+
+        if (isDraftSave) {
+            // Drafts only need at least one named line; finalize enforces the rest.
+            const namedLine = normalizedLines.find(
+                (l) => l.productName && !isLikelyGlAccountLabel(l.productName),
+            );
+            if (!namedLine) {
+                setCreateError(
+                    'Add at least one product line (select from master catalog) to save a draft.',
+                );
+                return;
+            }
+        } else {
+            const bad = normalizedLines.find(
+                (l) =>
+                    !l.productName ||
+                    isLikelyGlAccountLabel(l.productName) ||
+                    !(l.qty > 0) ||
+                    l.unitPrice
+jsx: 0, and unit price cannot be negative.`,
+                );
+                return;
+            }
+        }
+
+        const totals = getSummary();
+        const vatAmount = roundMoney2(
+            totals.rawTotalTax ??
+                normalizedLines.reduce((s, l) => s + l.vatLine, 0),
+        );
+        const subtotalExVat = roundMoney2(
+            totals.rawSubtotal ??
+                normalizedLines.reduce((s, l) => s + l.qty * l.unitPrice, 0),
+        );
+        if (!isDraftSave && !(subtotalExVat + vatAmount > 0)) {
+            setCreateError('Invoice total must be greater than zero (check quantities and unit prices).');
+            return;
+        }
+
+        const items = normalizedLines.map((l, idx) => {
+            const row = lineItems[idx];
+            const discRaw =
+                parseFloat(String(row?.discount ?? 0).replace(',', '.')) || 0;
+            const desc = String(row?.description ?? '').trim();
+            const body = {
+                ...(l.sku ? { sku: l.sku } : {}),
+                ...(l.supplierProductId ? { supplierProductId: l.supplierProductId } : {}),
+                productName: l.productName,
+                qty: l.qty,
+                unit: l.unit,
+                unitPrice: Math.round(l.unitPrice * 1e6) / 1e6,
+                lineDiscount: discRaw,
+                lineDiscountMode:
+                    row?.discountMode === 'fixed_sar' ? 'fixed_sar' : 'percent',
+            };
+            if (desc) {
+                body.lineDescription = desc;
+            }
+            return body;
+        });
+
+        const due =
+            calculatedDueDate === '—' ? '' : calculatedDueDate;
+        const notesParts = [internalNotes.trim(), due ? `Due date: ${due}` : ''].filter(Boolean);
+
+        const purchaseFormMeta = {
+            showLineNum,
+            showDesc,
+            showDiscount,
+            amountsTaxInclusive,
+            invoiceDiscountMode,
+            invoiceDiscountInput:
+                parseFloat(String(invoiceDiscountValue).replace(',', '.')) || 0,
+        };
+
+        const payload = {
+            superSupplierId: String(superSupplierId),
+            purchaseDate: issueDate,
+            vendorRef: refNo.trim() || undefined,
+            referenceNo: refNo.trim() || undefined,
+            description: description.trim() || undefined,
+            notes: notesParts.length ? notesParts.join('\n') : undefined,
+            vatAmount: Math.round(vatAmount * 100) / 100,
+            items,
+            freightIn: totals.freightIn,
+            invoiceDiscount: totals.invoiceDiscount,
+            purchaseFormMeta,
+            // Draft = saved privately, no stock/GL. Finalize posts everything.
+            status: isDraftSave ? 'draft' : 'posted',
+        };
+
+        setCreateSubmitting(true);
+        try {
+            if (sspPurchaseModalMode === 'edit' && editingSspPurchaseId) {
+                await updateSupplierSuperSupplierPurchase(editingSspPurchaseId, payload);
+                if (isDraftSave) {
+                    // Stay in the editor so the user can keep refining the draft.
+                    setEditingSspPurchaseStatus('draft');
+                    setSspPanelKey((k) => k + 1);
+                    await loadSuperSuppliers();
+                    return;
+                }
+            } else {
+                const res = await createSupplierSuperSupplierPurchase(payload);
+                if (isDraftSave) {
+                    const newId = res?.purchase?.id ?? res?.data?.id ?? null;
+                    if (newId) {
+                        setSspPurchaseModalMode('edit');
+                        setEditingSspPurchaseId(String(newId));
+                        setEditingSspPurchaseStatus('draft');
+                    }
+                    setSspPanelKey((k) => k + 1);
+                    await loadSuperSuppliers();
+                    return;
+                }
+            }
+            setModalOpen(false);
+            resetCreateForm();
+            setSspPanelKey((k) => k + 1);
+            setApTab('ssp_invoices');
+            await loadSuperSuppliers();
+        } catch (err) {
+            console.error('Save super supplier purchase failed:', err);
+            setCreateError(err?.message || 'Could not save purchase invoice');
+        } finally {
+            setCreateSubmitting(false);
+        }
+    };
+
+    return (
+jsx: Could not load suppliers:
+jsx: {ssListError}
+jsx: Purchases
+jsx: Track supplier payables, super suppliers, and upstream purchase invoices.
+jsx: {
+                            setSsErr('');
+                            openAddSuperSupplier();
+                        }}
+                    >
+jsx: Add Super Supplier
+jsx: {
+                            setCreateError('');
+                            resetCreateForm();
+                            setModalOpen(true);
+                        }}
+                    >
+jsx: New Purchase Invoice
+jsx: {
+                    const active = apTab === t.id;
+                    return (
+jsx: setApTab(/** @type {ApTabId} */ (t.id))}
+                            className={`theme-segmented__btn${active ? ' theme-segmented__btn--active' : ''}`}
+                        >
+                            {t.label}
+jsx: setSupplierSearch(e.target.value)}
+                            placeholder="Search suppliers…"
+                            style={{
+                                width: '100%',
+                                padding: '8px 12px 8px 34px',
+                                borderRadius: 8,
+                                border: '1px solid #E2E8F0',
+                                fontSize: '0.875rem',
+                            }}
+                        />
+jsx: Name
+jsx: Accounts payable
+jsx: Status
+jsx: Actions
+jsx: {
+                                const apStatus = ss.apStatus ?? 'paid';
+                                return (
+jsx: Ledger
+jsx: Super suppliers
+jsx: openAuditModal('')}>
+jsx: View full audit log
+jsx: VAT / Contact
+jsx: openSuperSupplierProducts(String(ss.id), ss.name)}
+                                                style={{
+                                                    display: 'block',
+                                                    background: 'none',
+                                                    border: 'none',
+                                                    padding: 0,
+                                                    margin: 0,
+                                                    cursor: 'pointer',
+                                                    textAlign: 'left',
+                                                    font: 'inherit',
+                                                }}
+                                                title="View purchased products"
+                                            >
+jsx: e.stopPropagation()}
+                                                >
+jsx: openEditSuperSupplier(ss),
+                                                        },
+                                                        {
+                                                            label:
+                                                                ssDeletingId === String(ss.id)
+                                                                    ? 'Deleting…'
+                                                                    : 'Delete',
+                                                            onClick: () => handleDeleteSuperSupplier(ss),
+                                                            disabled: ssDeletingId === String(ss.id),
+                                                            hidden: !canDeleteSuperSupplier(ss),
+                                                            danger: true,
+                                                        },
+                                                    ]}
+                                                />
+jsx: setCreateSspPurchaseForId(null)}
+                    onPurchasesMutated={loadSuperSuppliers}
+                    onEditPurchase={openSuperSupplierPurchaseForEdit}
+                />
+jsx: {
+                            if (!ssSaving) {
+                                setAddSsOpen(false);
+                                setEditingSuperSupplierId(null);
+                                setSsErr('');
+                            }
+                        }}
+                        width="560px"
+                        footer={
+jsx: {
+                                        setAddSsOpen(false);
+                                        setEditingSuperSupplierId(null);
+                                        setSsErr('');
+                                    }}
+                                >
+                                    Cancel
+jsx: Name *
+jsx: setSsForm((s) => ({ ...s, name: e.target.value }))}
+                                placeholder="Company name"
+                            />
+jsx: VAT number
+jsx: setSsForm((s) => ({ ...s, vatNumber: e.target.value }))}
+                            />
+jsx: Mobile
+jsx: setSsForm((s) => ({ ...s, mobile: e.target.value }))}
+                                />
+jsx: Email
+jsx: setSsForm((s) => ({ ...s, email: e.target.value }))}
+                                />
+jsx: Address
+jsx: setSsForm((s) => ({ ...s, address: e.target.value }))}
+                            />
+jsx: Notes
+jsx: setSsForm((s) => ({ ...s, notes: e.target.value }))}
+                            />
+jsx: Opening balance (SAR)
+jsx: ({
+                                                ...s,
+                                                openingBalance: e.target.value,
+                                            }))
+                                        }
+                                        placeholder="0.00"
+                                    />
+jsx: As of date
+jsx: ({
+                                                ...s,
+                                                openingBalanceDate: e.target.value,
+                                            }))
+                                        }
+                                    />
+jsx: Contra account (chart of accounts)
+jsx: ({
+                                            ...s,
+                                            openingOffsetAccountId: e.target.value,
+                                        }))
+                                    }
+                                >
+jsx: Account ledger —{' '}
+                                {ssLedgerData?.supplier?.name || 'Super supplier'}
+jsx: Date
+jsx: Entry #
+jsx: Description
+jsx: Reference
+jsx: Debit
+jsx: Credit
+jsx: Balance
+jsx: 0
+                                                                ? `SAR ${fmtApMoney(ln.debit)}`
+                                                                : '—'}
+jsx: 0
+                                                                ? `SAR ${fmtApMoney(ln.credit)}`
+                                                                : '—'}
+jsx: (ssLedgerData?.lines?.length || 0) ? (
+jsx: Purchased products —{' '}
+                                {ssProductsData?.supplier?.name || 'Super supplier'}
+jsx: From date
+jsx: setSsProductsDateFrom(e.target.value)}
+                                />
+jsx: To date
+jsx: setSsProductsDateTo(e.target.value)}
+                                />
+jsx: Product filter
+jsx: setSsProductsProductFilter(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter') applySuperSupplierProductsFilters();
+                                        }}
+                                        placeholder="Search by product name or SKU"
+                                        style={{ paddingLeft: 34, width: '100%' }}
+                                    />
+jsx: Invoice
+jsx: Product
+jsx: SKU
+jsx: Qty
+jsx: Unit price
+jsx: Line total
+jsx: (ssProductsData?.lines?.length || 0) ? (
+jsx: Super supplier audit {auditSsFilter ? '(filtered)' : ''}
+jsx: setAuditOpen(false)}
+                        width="720px"
+                        footer={
+jsx: setAuditOpen(false)}>
+                                Close
+jsx: When
+jsx: Action
+jsx: Summary
+jsx: By
+jsx: Purchase Invoice
+jsx: {
+                            if (!createSubmitting && !sspPurchaseEditLoading) {
+                                setModalOpen(false);
+                                resetCreateForm();
+                            }
+                        }}
+                        backLabel="Back to Purchases"
+                        footer={
+jsx: {
+                                            setModalOpen(false);
+                                            resetCreateForm();
+                                        }}
+                                    >
+                                        Cancel
+jsx: handleCreateInvoice('draft')}
+                                        >
+                                            {createSubmitting ? 'Saving…' : 'Save as Draft'}
+jsx: handleCreateInvoice('finalize')}
+                                    >
+                                        {createSubmitting
+                                            ? sspPurchaseModalMode === 'edit'
+                                                ? 'Saving…'
+                                                : 'Creating…'
+                                            : editingSspPurchaseStatus === 'draft'
+                                              ? 'Finalize Invoice'
+                                              : sspPurchaseModalMode === 'edit'
+                                                ? 'Save changes'
+                                                : 'Create Purchase Invoice'}
+jsx: Issue date
+jsx: setIssueDate(e.target.value)} />
+jsx: Due date
+jsx: setDueDateType(e.target.value)}>
+jsx: Net
+jsx: Custom
+jsx: EOM
+jsx: setNetDays(e.target.value)} />
+jsx: days
+jsx: setCustomDueDate(e.target.value)} />
+jsx: Due: {calculatedDueDate}
+jsx: Super supplier *
+jsx: setSuperSupplierId(e.target.value)}
+                                    style={{
+                                        width: '100%',
+                                        padding: '10px 14px',
+                                        borderRadius: 10,
+                                        border: '1px solid #e2e8f0',
+                                        fontSize: '0.9375rem',
+                                        fontWeight: 600,
+                                        background: '#f8fafc',
+                                        color: '#1e293b',
+                                    }}
+                                >
+jsx: setDescription(e.target.value)} />
+jsx: Item
+jsx: Account
+jsx: UOM
+jsx: Discount
+jsx: Total
+jsx: Tax Code
+jsx: Tax Amt
+jsx: Grand Total
+jsx: Last Purchase Price
+jsx: {
+                                    const capsRow = findPiCapsRow(line, catalogItems);
+                                    const uomOpts = capsRow
+                                        ? linePiUomOptions(line, capsRow)
+                                        : [String(line.warehouseUnit || line.uom || 'Box').trim() || 'Box'];
+                                    const conversionPreview = formatPiUomConversionPreview(
+                                        line,
+                                        capsRow,
+                                    );
+                                    return (
+jsx: {
+                                                            activateLineItemField(line);
+                                                        }}
+                                                        onChange={(e) => {
+                                                            const v = e.target.value;
+                                                            const prevId = itemPickerLineIdRef.current;
+                                                            if (prevId != null && prevId !== line.id) {
+                                                                commitItemPickerLineText(prevId);
+                                                            }
+                                                            setItemPickerLineId(line.id);
+                                                            setItemPickerInput(v);
+                                                            setItemPickerFilter(v);
+                                                            setItemPickerSelectedIndex(
+                                                                String(v).trim() ? 0 : -1,
+                                                            );
+                                                            setItemPickerMenuOpen(true);
+                                                        }}
+                                                        onKeyDown={(e) =>
+                                                            handleLineItemPickerKeyDown(e, line)
+                                                        }
+                                                        ref={(el) => {
+                                                            lineFieldRefs.current[`${line.id}:item`] = el;
+                                                        }}
+                                                    />
+jsx: e.preventDefault()}
+                                                        onClick={() => {
+                                                            if (
+                                                                itemPickerLineId === line.id
+                                                                && itemPickerMenuOpen
+                                                            ) {
+                                                                closeLineItemPicker(line.id);
+                                                            } else {
+                                                                activateLineItemField(line, {
+                                                                    openMenu: true,
+                                                                });
+                                                                focusLineField(line.id, 'item');
+                                                            }
+                                                        }}
+                                                        style={{
+                                                            flex: '0 0 auto',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'center',
+                                                            padding: '0 8px',
+                                                            borderRadius: 8,
+                                                            border: '1px solid #e2e8f0',
+                                                            background: '#f8fafc',
+                                                            cursor: 'pointer',
+                                                            color: '#475569',
+                                                        }}
+                                                    >
+jsx: {
+                                                            const pickerRows =
+                                                                getSearchSuggestionsPi(itemPickerFilter);
+                                                            return pickerRows.length ? (
+                                                                pickerRows.map((invItem, i) => (
+jsx: {
+                                                                            ev.preventDefault();
+                                                                            applyCatalogPurchaseItemToLine(
+                                                                                line.id,
+                                                                                invItem,
+                                                                            );
+                                                                        }}
+                                                                        onMouseEnter={() =>
+                                                                            setItemPickerSelectedIndex(i)
+                                                                        }
+                                                                        role="presentation"
+                                                                    >
+jsx: • {invItem.unit}
+jsx: SKU {invItem.sku}
+jsx: {
+                                                    lineFieldRefs.current[`${line.id}:account`] = el;
+                                                }}
+                                                onChange={(e) => updateLineItem(line.id, 'account', e.target.value)}
+                                                onKeyDown={(e) =>
+                                                    handleLineFieldTab(e, line.id, 'account', idx)
+                                                }
+                                            >
+                                                {ACCOUNT_OPTIONS.map((opt) => (
+jsx: {
+                                                        lineFieldRefs.current[`${line.id}:uom`] = el;
+                                                    }}
+                                                    onKeyDown={(e) =>
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            'uom',
+                                                            idx,
+                                                        )
+                                                    }
+                                                />
+                                            ) : (
+jsx: {
+                                                        lineFieldRefs.current[`${line.id}:uom`] = el;
+                                                    }}
+                                                onChange={(e) =>
+                                                    updateLineItem(
+                                                        line.id,
+                                                        'uom',
+                                                        e.target.value,
+                                                    )
+                                                }
+                                                    onKeyDown={(e) =>
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            'uom',
+                                                            idx,
+                                                        )
+                                                    }
+                                                />
+                                            )}
+jsx: {
+                                                    lineFieldRefs.current[`${line.id}:qty`] = el;
+                                                }}
+                                                onChange={(e) => updateLineItem(line.id, 'qty', e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    handleMathKeyDown(e, line.id, 'qty');
+                                                    handleLineFieldTab(e, line.id, 'qty', idx);
+                                                }}
+                                                onBlur={(e) => handleMathBlur(e, line.id, 'qty')}
+                                            />
+                                            {conversionPreview ? (
+jsx: {
+                                                    lineFieldRefs.current[`${line.id}:price`] = el;
+                                                }}
+                                                onChange={(e) => updateLineItem(line.id, 'price', e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    handleMathKeyDown(e, line.id, 'price');
+                                                    handleLineFieldTab(e, line.id, 'price', idx);
+                                                }}
+                                                onBlur={(e) => handleMathBlur(e, line.id, 'price')}
+                                            />
+jsx: {
+                                                        handleMathKeyDown(
+                                                            e,
+                                                            line.id,
+                                                            'discount',
+                                                        );
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            'discount',
+                                                            idx,
+                                                        );
+                                                    }}
+                                                    onBlur={(e) =>
+                                                        handleMathBlur(
+                                                            e,
+                                                            line.id,
+                                                            'discount',
+                                                        )
+                                                    }
+                                                />
+jsx: SAR
+jsx: {
+                                                    lineFieldRefs.current[`${line.id}:taxCode`] = el;
+                                                }}
+                                                onChange={(e) => updateLineItem(line.id, 'taxCode', e.target.value)}
+                                                onKeyDown={(e) =>
+                                                    handleLineFieldTab(e, line.id, 'taxCode', idx)
+                                                }
+                                            >
+                                                {TAXES.map((t) => (
+jsx: SAR {line.taxAmt}
+jsx: SAR {line.totalFinal}
+jsx: {
+                                                if (
+                                                    lastPurchaseStockRefreshing &&
+                                                    line.supplierProductId
+                                                ) {
+                                                    return (
+jsx: 0;
+                                                return show ? (
+jsx: removePurchaseLine(line.id)}
+                                                style={{
+                                                    padding: 6,
+                                                    borderRadius: 8,
+                                                    border: '1px solid #fecaca',
+                                                    background: '#fff',
+                                                    color: '#b91c1c',
+                                                    cursor: 'pointer',
+                                                    lineHeight: 0,
+                                                }}
+                                            >
+jsx: applySearchQueryPi(e.target.value)}
+                                                onKeyDown={handleKeyDown}
+                                                onFocus={openPiLineSearch}
+                                            />
+jsx: 0 ? (
+                                                    searchResults.map((item, index) => (
+jsx: addItemToLines(item)}
+                                                            onMouseEnter={() => setSelectedIndex(index)}
+                                                            role="presentation"
+                                                        >
+jsx: • {item.unit}
+jsx: SKU {item.sku}
+jsx: SAR {item.price}
+jsx: per {item.unit}
+jsx: Add line
+jsx: Tip: Type to search stock inventory, use ↑↓ arrows, Enter to select. Price fields support math (e.g. 12*5)
+jsx: setShowLineNum(e.target.checked)} />
+jsx: Column — Line number
+jsx: setShowDesc(e.target.checked)} />
+jsx: Column — Description
+jsx: setShowDiscount(e.target.checked)} />
+jsx: Column — Discount
+jsx: Amounts are tax inclusive
+jsx: Freight-in (SAR)
+jsx: Invoice Discount
+jsx: setInternalNotes(e.target.value)}
+                                        />
+jsx: Subtotal:
+jsx: SAR {summary.subtotal}
+jsx: Freight-in (SAR):
+jsx: SAR {summary.freightInFormatted}
+jsx: Amount after invoice discount:
+jsx: SAR {summary.amountAfterDiscount}
+jsx: Total Tax (VAT):
+jsx: SAR {summary.totalTax}
+jsx: Grand Total:
+jsx: SAR {summary.grandTotal}
+jsx: super supplier purchase invoice
+jsx: with line items and VAT
+                                            total. It appears in
+jsx: Super supplier purchase invoices
+jsx: below and
+                                            updates your vendor purchase history.
+str: Cost of Goods Sold
+str: Rent Expense
+str: Utilities Expense
+str: Salaries & Wages
+str: Inventory Asset
+str: Sales Revenue
+str: VAT 15%
+str: VAT 5%
+str: VAT 0%
+str: Exempt
+str: )) || 0;
+    const unitInput = parseFloat(String(line.price).replace(
+str: )) || 0;
+    const discRaw = parseFloat(String(line.discount ?? 0).replace(
+str: )) || 0;
+    const discMode = line.discountMode === 
+str: ;
+    const rate =
+        TAXES.find((t) => t.code === line.taxCode)?.rate ?? TAXES[0]?.rate ?? 0;
+
+    let lineEx = 0;
+    let taxAmt = 0;
+    let grandIncl = 0;
+
+    if (amountsTaxInclusive) {
+        const grossInclBeforeDisc = roundMoney2(qty * unitInput);
+        let netIncl = grossInclBeforeDisc;
+        if (discMode === 
+str: )) || 1,
+    );
+    const U_net = Number(it.unitPrice ?? 0);
+    const discRaw = Number(it.lineDiscountValue ?? 0);
+    const discMode =
+        it.lineDiscountMode === 
+str: ;
+
+    if (!(discRaw > 0)) {
+        if (!amountsTaxInclusive) {
+            return String(roundMoney2(U_net));
+        }
+        return String(roundMoney2(U_net * (1 + rate)));
+    }
+
+    if (!amountsTaxInclusive) {
+        if (discMode === 
+str: ).trim();
+    if (!s) return { userNotes: 
+str: ) {
+    const wu = String(raw?.warehouseUnit ?? 
+str: ).trim();
+    if (wu) return wu;
+    const code = String(raw?.unitCode ?? 
+str: ) return null;
+    const mid =
+        raw.id != null && raw.id !== 
+str: 
+            ? String(raw.id)
+            : raw.masterProductId != null && raw.masterProductId !== 
+str: 
+              ? String(raw.masterProductId)
+              : 
+str: ;
+    if (!mid) return null;
+    const warehouseUnit = masterCatalogWarehouseUnit(raw, 
+str: );
+    const workshopUnit =
+        String(raw.workshopUnit ?? 
+str: ).trim(),
+        name: raw.name || raw.productName || 
+str: ,
+        price,
+        unit: warehouseUnit,
+        warehouseUnit,
+        workshopUnit,
+        conversionFactor,
+        warehouseStockQty: null,
+        stockQtyWorkshop: null,
+        type: 
+str: ,
+        stockHint:
+            
+str: ,
+        hasPreviousPurchase: false,
+        lastPrice: 0,
+        lastPurchaseMeta: 
+str: ) return pickerRow;
+
+    const pickerMasterId = String(pickerRow.masterProductId || pickerRow.id || 
+str: ).trim();
+    const stockMasterId =
+        stockRaw.masterProductId != null && String(stockRaw.masterProductId).trim() !== 
+str: 
+            ? String(stockRaw.masterProductId).trim()
+            : 
+str: ,
+    );
+    const workshopUnit =
+        String(pickerRow.workshopUnit || stockRaw.workshopUnit || 
+str:  && stockRaw.lastPurchase != null
+            ? stockRaw.lastPurchase
+            : null;
+    const hasPreviousPurchase = !!(
+        lastPurchaseRaw && String(lastPurchaseRaw.purchaseDate || 
+str: ).trim() !== 
+str: 
+    );
+    const lastPurchasePriceNum = hasPreviousPurchase
+        ? Number(lastPurchaseRaw.unitPrice ?? stockRaw.lastPurchasePrice ?? 0)
+        : 0;
+    const purchaseDateRaw = String(lastPurchaseRaw?.purchaseDate || 
+str: ).trim();
+    const supplierLabel = String(
+        lastPurchaseRaw?.superSupplierName || stockRaw.lastPurchaseSupplierLabel || 
+str: ,
+    ).trim();
+    const lastPurchaseMeta =
+        hasPreviousPurchase && (purchaseDateRaw || supplierLabel)
+            ? [purchaseDateRaw, supplierLabel].filter(Boolean).join(
+str: ;
+    const adoptedSupplierProductId =
+        stockRaw.productId != null && String(stockRaw.productId).trim() !== 
+str: ) return null;
+    const mid =
+        raw.masterProductId != null && String(raw.masterProductId).trim() !== 
+str: 
+            ? String(raw.masterProductId).trim()
+            : null;
+    const pid =
+        raw.productId != null && raw.productId !== 
+str: 
+            ? String(raw.productId)
+            : raw.supplierProductId != null && raw.supplierProductId !== 
+str: 
+              ? String(raw.supplierProductId)
+              : 
+str: ;
+    if (!pid && !mid) return null;
+    const base = mapMasterCatalogToPurchasePickerRow({
+        id: mid || pid,
+        masterProductId: mid || pid,
+        name: raw.productName,
+        sku: raw.sku ?? raw.barcode,
+        warehouseUnit: masterCatalogWarehouseUnit(raw, 
+str: ).trim();
+    const mid = String(line?.masterProductId ?? 
+str: ).trim();
+    if (!pid && !mid) return null;
+    return (
+        (mid
+            ? inventoryItems.find((inv) => String(inv.masterProductId ?? 
+str: ) === mid) ||
+              inventoryItems.find((inv) => String(inv.id) === mid)
+            : null) ??
+        (pid
+            ? inventoryItems.find((inv) => String(inv.masterProductId ?? 
+str: ).trim();
+    if (wu) return [wu];
+    return [String(line?.uom ?? 
+str: ).trim() || 
+str: ).trim();
+    if (wu) return wu;
+    return String(line?.uom ?? 
+str: ;
+    const cf = Number(inv.conversionFactor) || 1;
+    if (!(cf > 1)) return 
+str: ;
+    const wu = inv.warehouseUnit || 
+str: ;
+    const wsu = inv.workshopUnit || 
+str: ;
+    const qty = parseFloat(String(line.qty).replace(
+str: )) || 0;
+    if (!(qty > 0)) return 
+str: ;
+    const price = parseFloat(String(line.price).replace(
+str: ).toLowerCase();
+    const sku = String(item.sku || 
+str: ;
+const PI_PRESET_STOCK_LINE = 
+str: ,
+    mobile: 
+str: ,
+    email: 
+str: ,
+    vatNumber: 
+str: ,
+    address: 
+str: ,
+    notes: 
+str: ,
+    openingBalance: 
+str: ,
+    openingBalanceDate: todayIsoDate(),
+    openingOffsetAccountId: 
+str: ) return 
+str: ;
+    if (apStatus === 
+str: ;
+    return 
+str: ) {
+        return { background: 
+str: , color: 
+str: , border: 
+str:  };
+    }
+    if (apStatus === 
+str:  };
+    }
+    return { background: 
+str: );
+    const [invoiceDiscountValue, setInvoiceDiscountValue] = useState(
+str: );
+    const [invoiceDiscountMode, setInvoiceDiscountMode] = useState(
+str: );
+    const [netDays, setNetDays] = useState(30);
+    const [customDueDate, setCustomDueDate] = useState(
+str: );
+    const [refNo, setRefNo] = useState(
+str: );
+    const [description, setDescription] = useState(
+str: );
+    const [internalNotes, setInternalNotes] = useState(
+str: );
+
+    const [lineItems, setLineItems] = useState([]);
+    const [searchQuery, setSearchQuery] = useState(
+str: );
+    const [searchResults, setSearchResults] = useState([]);
+    const [showDropdown, setShowDropdown] = useState(false);
+    const [selectedIndex, setSelectedIndex] = useState(-1);
+    const piSearchWrapRef = useRef(null);
+    const piSearchListRef = useRef(null);
+    const lineItemPickerWrapRef = useRef(null);
+    const lineItemPickerListRef = useRef(null);
+    const itemPickerInputRef = useRef(
+str: );
+    const itemPickerLineIdRef = useRef(null);
+    const [itemPickerLineId, setItemPickerLineId] = useState(null);
+    const [itemPickerInput, setItemPickerInput] = useState(
+str: );
+    const [itemPickerFilter, setItemPickerFilter] = useState(
+str: ),
+    );
+
+    const [catalogItems, setCatalogItems] = useState([]);
+    const [catalogLoading, setCatalogLoading] = useState(false);
+
+    const [createSubmitting, setCreateSubmitting] = useState(false);
+    const [createError, setCreateError] = useState(
+str: );
+    const [supplierSearch, setSupplierSearch] = useState(
+str: );
+    const [addSsOpen, setAddSsOpen] = useState(false);
+    const [ssForm, setSsForm] = useState(() => ({ ...EMPTY_SS_FORM }));
+    const [ssCoaAccounts, setSsCoaAccounts] = useState([]);
+    const [ssCoaLoading, setSsCoaLoading] = useState(false);
+    const [ssSaving, setSsSaving] = useState(false);
+    const [ssErr, setSsErr] = useState(
+str: );
+    const [editingSuperSupplierId, setEditingSuperSupplierId] = useState(null);
+    const [ssTogglingId, setSsTogglingId] = useState(null);
+    const [ssDeletingId, setSsDeletingId] = useState(null);
+    const [createSspPurchaseForId, setCreateSspPurchaseForId] = useState(null);
+    const [auditOpen, setAuditOpen] = useState(false);
+    const [auditSsFilter, setAuditSsFilter] = useState(
+str: );
+    const [auditItems, setAuditItems] = useState([]);
+    const [auditLoading, setAuditLoading] = useState(false);
+
+    const [ssLedgerOpen, setSsLedgerOpen] = useState(false);
+    const [ssLedgerLoading, setSsLedgerLoading] = useState(false);
+    const [ssLedgerError, setSsLedgerError] = useState(
+str: );
+    const [ssLedgerData, setSsLedgerData] = useState(null);
+
+    const [ssProductsOpen, setSsProductsOpen] = useState(false);
+    const [ssProductsLoading, setSsProductsLoading] = useState(false);
+    const [ssProductsError, setSsProductsError] = useState(
+str: );
+    const [ssProductsData, setSsProductsData] = useState(null);
+    const [ssProductsSuperSupplierId, setSsProductsSuperSupplierId] = useState(
+str: );
+    const [ssProductsDateFrom, setSsProductsDateFrom] = useState(
+str: );
+    const [ssProductsDateTo, setSsProductsDateTo] = useState(
+str: );
+    const [ssProductsProductFilter, setSsProductsProductFilter] = useState(
+str: );
+
+    const loadSuperSuppliers = useCallback(async () => {
+        setSsLoading(true);
+        setSsListError(
+str: );
+        try {
+            const res = await listSupplierSuperSuppliers();
+            const list = res?.superSuppliers ?? [];
+            setSuperSuppliers(Array.isArray(list) ? list : []);
+        } catch (err) {
+            setSuperSuppliers([]);
+            setSsListError(err?.message || 
+str: );
+        } finally {
+            setSsLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        loadSuperSuppliers();
+    }, [loadSuperSuppliers]);
+
+    useEffect(() => {
+        if (!addSsOpen) return undefined;
+        let cancelled = false;
+        (async () => {
+            setSsCoaLoading(true);
+            try {
+                const res = await getSupplierAccounts({ status: 
+str:  });
+                if (!cancelled) {
+                    setSsCoaAccounts(unwrapSupplierAccountingList(res));
+                }
+            } catch {
+                if (!cancelled) setSsCoaAccounts([]);
+            } finally {
+                if (!cancelled) setSsCoaLoading(false);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [addSsOpen]);
+
+    const ssOpeningContraOptions = useMemo(
+        () =>
+            (ssCoaAccounts || []).filter(
+                (a) =>
+                    (a.type === 
+str:  || a.type === 
+str: ) &&
+                    !a.hasChildren &&
+                    a.status !== 
+str: ,
+            ),
+        [ssCoaAccounts],
+    );
+
+    const editingSuperSupplier = useMemo(
+        () =>
+            editingSuperSupplierId
+                ? superSuppliers.find((s) => String(s.id) === String(editingSuperSupplierId))
+                : null,
+        [superSuppliers, editingSuperSupplierId],
+    );
+
+    const ssOpeningLocked = Boolean(
+        editingSuperSupplier && Number(editingSuperSupplier.purchaseCount || 0) > 0,
+    );
+
+    const filteredSuperSuppliers = useMemo(() => {
+        const q = supplierSearch.trim().toLowerCase();
+        if (!q) return superSuppliers;
+        return superSuppliers.filter((ss) => {
+            const hay = [ss.name, ss.vatNumber, ss.mobile, ss.email, ss.notes]
+                .filter(Boolean)
+                .join(
+str: )
+                .toLowerCase();
+            return hay.includes(q);
+        });
+    }, [superSuppliers, supplierSearch]);
+
+    const aggregateAp = useMemo(
+        () =>
+            filteredSuperSuppliers.reduce(
+                (sum, ss) => sum + Number(ss.accountsPayable ?? 0),
+                0,
+            ),
+        [filteredSuperSuppliers],
+    );
+
+    const openSuperSupplierLedger = async (superSupplierId, supplierName = 
+str: ) => {
+        setSsLedgerOpen(true);
+        setSsLedgerLoading(true);
+        setSsLedgerError(
+str: );
+        setSsLedgerData({ supplier: { name: supplierName || 
+str:  } });
+        try {
+            const res = await getSuperSupplierApLedger(String(superSupplierId));
+            const root = res?.data && typeof res.data === 
+str:  ? res.data : res;
+            setSsLedgerData(root);
+        } catch (e) {
+            setSsLedgerError(e?.message || 
+str: );
+            setSsLedgerData(null);
+        } finally {
+            setSsLedgerLoading(false);
+        }
+    };
+
+    const closeSuperSupplierLedger = () => {
+        setSsLedgerOpen(false);
+        setSsLedgerError(
+str: );
+        setSsLedgerData(null);
+        void loadSuperSuppliers();
+    };
+
+    const loadSuperSupplierProducts = useCallback(
+        async (superSupplierId, filters = {}) => {
+            if (!superSupplierId) return;
+            setSsProductsLoading(true);
+            setSsProductsError(
+str: );
+            try {
+                const res = await getSuperSupplierPurchaseProducts(String(superSupplierId), filters);
+                const root = res?.data && typeof res.data === 
+str:  ? res.data : res;
+                setSsProductsData(root);
+            } catch (e) {
+                setSsProductsError(e?.message || 
+str: );
+                setSsProductsData(null);
+            } finally {
+                setSsProductsLoading(false);
+            }
+        },
+        [],
+    );
+
+    const openSuperSupplierProducts = (superSupplierId, supplierName = 
+str: ) => {
+        const id = String(superSupplierId);
+        setSsProductsSuperSupplierId(id);
+        setSsProductsOpen(true);
+        setSsProductsDateFrom(
+str: );
+        setSsProductsDateTo(
+str: );
+        setSsProductsProductFilter(
+str: );
+        setSsProductsData({ supplier: { name: supplierName || 
+str:  } });
+        void loadSuperSupplierProducts(id, {});
+    };
+
+    const closeSuperSupplierProducts = () => {
+        setSsProductsOpen(false);
+        setSsProductsError(
+str: );
+        setSsProductsData(null);
+        setSsProductsSuperSupplierId(
+str: );
+        setSsProductsDateFrom(
+str: );
+    };
+
+    const applySuperSupplierProductsFilters = () => {
+        if (!ssProductsSuperSupplierId) return;
+        void loadSuperSupplierProducts(ssProductsSuperSupplierId, {
+            dateFrom: ssProductsDateFrom || undefined,
+            dateTo: ssProductsDateTo || undefined,
+            product: ssProductsProductFilter.trim() || undefined,
+        });
+    };
+
+    const clearSuperSupplierProductsFilters = () => {
+        setSsProductsDateFrom(
+str: );
+        if (!ssProductsSuperSupplierId) return;
+        void loadSuperSupplierProducts(ssProductsSuperSupplierId, {});
+    };
+
+    const openAuditModal = async (superSupplierId = 
+str: ) => {
+        setAuditOpen(true);
+        setAuditSsFilter(superSupplierId);
+        setAuditLoading(true);
+        try {
+            const res = await listSupplierSuperSupplierAudit({
+                ...(superSupplierId ? { superSupplierId } : {}),
+                limit: 200,
+            });
+            setAuditItems(res?.items ?? []);
+        } catch {
+            setAuditItems([]);
+        } finally {
+            setAuditLoading(false);
+        }
+    };
+
+    const handleSaveSuperSupplier = async () => {
+        if (!ssForm.name?.trim()) {
+            setSsErr(
+str: );
+            return;
+        }
+        const openingAmt = Number(ssForm.openingBalance);
+        const hasOpening =
+            ssForm.openingBalance !== 
+str:  &&
+            ssForm.openingBalance != null &&
+            Number.isFinite(openingAmt) &&
+            Math.abs(openingAmt) >= 0.005;
+        if (hasOpening) {
+            if (!ssForm.openingBalanceDate?.trim()) {
+                setSsErr(
+str: );
+                return;
+            }
+            if (!ssForm.openingOffsetAccountId?.trim()) {
+                setSsErr(
+str: );
+                return;
+            }
+        }
+        setSsSaving(true);
+        setSsErr(
+str: );
+        } finally {
+            setSsSaving(false);
+        }
+    };
+
+    const openEditSuperSupplier = (ss) => {
+        setSsErr(
+str: );
+        setEditingSuperSupplierId(String(ss.id));
+        setSsForm({
+            name: ss.name || 
+str: ,
+            mobile: ss.mobile || 
+str: ,
+            email: ss.email || 
+str: ,
+            vatNumber: ss.vatNumber || 
+str: ,
+            address: ss.address || 
+str: ,
+            notes: ss.notes || 
+str: ,
+            openingBalance:
+                ss.openingBalance != null && Number(ss.openingBalance) !== 0
+                    ? String(ss.openingBalance)
+                    : 
+str: ,
+            openingBalanceDate: ss.openingBalanceDate || todayIsoDate(),
+            openingOffsetAccountId: ss.openingOffsetAccountId
+                ? String(ss.openingOffsetAccountId)
+                : 
+str: ,
+        });
+        setApTab(
+str: );
+        setAddSsOpen(true);
+    };
+
+    const openAddSuperSupplier = () => {
+        setSsErr(
+str: );
+        setEditingSuperSupplierId(null);
+        setSsForm({ ...EMPTY_SS_FORM, openingBalanceDate: todayIsoDate() });
+        setApTab(
+str: );
+        setAddSsOpen(true);
+    };
+
+    const handleToggleSuperSupplierActive = async (ss) => {
+        const id = String(ss.id);
+        setSsTogglingId(id);
+        try {
+            await updateSupplierSuperSupplier(id, { isActive: !ss.isActive });
+            await loadSuperSuppliers();
+        } catch (e) {
+            window.alert(e?.message || 
+str: );
+        } finally {
+            setSsTogglingId(null);
+        }
+    };
+
+    const handleDeleteSuperSupplier = async (ss) => {
+        const purchaseCount = Number(ss.purchaseCount ?? 0);
+        const apBalance = Number(ss.accountsPayable ?? 0);
+        if (purchaseCount > 0 || Math.abs(apBalance) > 0.005) {
+            window.alert(
+                
+str: ,
+            );
+            return;
+        }
+        if (
+            !window.confirm(
+                `Delete super supplier 
+str: ? This cannot be undone.`,
+            )
+        ) {
+            return;
+        }
+        const id = String(ss.id);
+        setSsDeletingId(id);
+        try {
+            await deleteSupplierSuperSupplier(id);
+            await loadSuperSuppliers();
+        } catch (e) {
+            window.alert(e?.message || 
+str: );
+        } finally {
+            setSsDeletingId(null);
+        }
+    };
+
+    const canDeleteSuperSupplier = (ss) => {
+        const purchaseCount = Number(ss.purchaseCount ?? 0);
+        const apBalance = Number(ss.accountsPayable ?? 0);
+        return purchaseCount === 0 && Math.abs(apBalance) <= 0.005;
+    };
+
+    useEffect(() => {
+        if (!modalOpen) return undefined;
+        let cancelled = false;
+        setCatalogLoading(true);
+        const stockParams = { limit: 2000, offset: 0 };
+        if (superSupplierId) {
+            stockParams.superSupplierId = String(superSupplierId);
+        }
+        Promise.all([
+            listSupplierMasterCatalogProducts(),
+            getSupplierInventoryStockBalances(stockParams).catch(() => ({ items: [] })),
+        ])
+            .then(([masterRes, stockRes]) => {
+                if (cancelled) return;
+                const masters = Array.isArray(masterRes?.products)
+                    ? masterRes.products
+                    : Array.isArray(masterRes?.items)
+                      ? masterRes.items
+                      : Array.isArray(masterRes)
+                        ? masterRes
+                        : [];
+                const stockRows = Array.isArray(stockRes?.items) ? stockRes.items : [];
+                const stockByMasterId = new Map();
+                for (const row of stockRows) {
+                    const mid =
+                        row?.masterProductId != null && String(row.masterProductId).trim() !== 
+str: 
+                            ? String(row.masterProductId).trim()
+                            : 
+str: ,
+                        ).trim();
+                        if (!mid) return line;
+                        const inv =
+                            mapped.find((x) => String(x.masterProductId ?? 
+str: ) === mid) ||
+                            mapped.find((x) => String(x.id) === mid);
+                        if (!inv) return line;
+                        const whUom = masterCatalogWarehouseUnit(
+                            { warehouseUnit: inv.warehouseUnit || line.warehouseUnit },
+                            
+str: ,
+                        );
+                        if (
+                            String(line.uom || 
+str: ) === whUom &&
+                            String(line.warehouseUnit || 
+str: ) === whUom &&
+                            String(line.masterProductId || 
+str: ) === mid
+                        ) {
+                            return line;
+                        }
+                        return applyLineTotals(
+                            {
+                                ...line,
+                                masterProductId: mid,
+                                supplierProductId: mid,
+                                uom: whUom,
+                                warehouseUnit: whUom,
+                                workshopUnitCatalog:
+                                    String(inv.workshopUnit ?? 
+str: ).trim() ||
+                                    line.workshopUnitCatalog,
+                                conversionFactor:
+                                    inv.conversionFactor ?? line.conversionFactor ?? 1,
+                            },
+                            amountsTaxInclusive,
+                        );
+                    }),
+                );
+            })
+            .catch(() => {
+                if (!cancelled) setCatalogItems([]);
+            })
+            .finally(() => {
+                if (!cancelled) setCatalogLoading(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [modalOpen, superSupplierId, amountsTaxInclusive]);
+
+    useEffect(() => {
+        if (!modalOpen || !superSupplierId) return undefined;
+        let cancelled = false;
+        setLastPurchaseStockRefreshing(true);
+        getSupplierInventoryStockBalances({
+            limit: 2000,
+            offset: 0,
+            superSupplierId: String(superSupplierId),
+        })
+            .then((res) => {
+                if (cancelled) return;
+                const stockRows = Array.isArray(res?.items) ? res.items : [];
+                const stockByMasterId = new Map();
+                for (const row of stockRows) {
+                    const mid =
+                        row?.masterProductId != null && String(row.masterProductId).trim() !== 
+str: ).trim();
+                    const stock = mid ? stockByMasterId.get(mid) : null;
+                    return stock ? applyStockBalanceHintsToPickerRow(row, stock) : row;
+                };
+                setCatalogItems((prev) => prev.map(enrich));
+                setLineItems((prev) =>
+                    prev.map((line) => {
+                        if (!line.supplierProductId && !line.masterProductId) return line;
+                        const mid = String(
+                            line.masterProductId || line.supplierProductId || 
+str: ,
+                        ).trim();
+                        const stock = mid ? stockByMasterId.get(mid) : null;
+                        if (!stock) return line;
+                        const inv = applyStockBalanceHintsToPickerRow(
+                            {
+                                id: mid,
+                                masterProductId: mid,
+                                name: line.item,
+                                sku: line.sku,
+                                price: Number(line.price) || 0,
+                                unit: line.uom,
+                                warehouseUnit: line.warehouseUnit,
+                                workshopUnit: line.workshopUnitCatalog,
+                                conversionFactor: line.conversionFactor,
+                                hasPreviousPurchase: false,
+                                lastPrice: 0,
+                                lastPurchaseMeta: 
+str: ,
+                            },
+                            stock,
+                        );
+                        const hasPrev = !!inv.hasPreviousPurchase;
+                        const whUom =
+                            masterCatalogWarehouseUnit(
+                                { warehouseUnit: line.warehouseUnit || inv.warehouseUnit },
+                                
+str: ,
+                            ) ||
+                            masterCatalogWarehouseUnit(inv, 
+str: ;
+                        return applyLineTotals(
+                            {
+                                ...line,
+                                masterProductId: mid,
+                                supplierProductId: mid,
+                                uom: whUom,
+                                warehouseUnit: whUom,
+                                workshopUnitCatalog:
+                                    String(
+                                        line.workshopUnitCatalog || inv.workshopUnit || 
+str: ,
+                                    ).trim() || line.workshopUnitCatalog,
+                                conversionFactor:
+                                    line.conversionFactor ?? inv.conversionFactor,
+                                hasPreviousPurchase: hasPrev,
+                                lastPurchasePrice: hasPrev
+                                    ? Number(inv.lastPrice ?? 0)
+                                    : 0,
+                                lastPurchaseMeta: hasPrev
+                                    ? String(inv.lastPurchaseMeta || 
+str: ).trim()
+                                    : 
+str: ,
+                            },
+                            amountsTaxInclusive,
+                        );
+                    }),
+                );
+            })
+            .catch(() => {})
+            .finally(() => {
+                if (!cancelled) setLastPurchaseStockRefreshing(false);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [modalOpen, superSupplierId, amountsTaxInclusive]);
+
+    const catalogForSearch = catalogItems.length ? catalogItems : [];
+
+    const getSearchSuggestionsPi = (query) => {
+        const items = catalogForSearch;
+        const q = query.trim().toLowerCase();
+        if (!q) {
+            return [...items]
+                .sort((a, b) =>
+                    String(a.name || 
+str: ).localeCompare(String(b.name || 
+str: ), undefined, {
+                        sensitivity: 
+str: ,
+                    }),
+                )
+                .slice(0, SEARCH_QUICK_PICK_PI);
+        }
+        return items
+            .map((item) => ({ item, score: scorePurchaseSearchItem(item, q) }))
+            .filter((x) => x.score > 0)
+            .sort(
+                (a, b) =>
+                    b.score - a.score ||
+                    String(a.item.name || 
+str: ).localeCompare(String(b.item.name || 
+str: ).trim();
+        setSelectedIndex(q && results.length ? 0 : -1);
+    };
+
+    useEffect(() => {
+        if (!modalOpen || !showDropdown) return undefined;
+        const close = (e) => {
+            const el = piSearchWrapRef.current;
+            if (el && !el.contains(e.target)) setShowDropdown(false);
+        };
+        document.addEventListener(
+str: , close);
+    }, [modalOpen, showDropdown]);
+
+    useEffect(() => {
+        itemPickerInputRef.current = itemPickerInput;
+    }, [itemPickerInput]);
+
+    useEffect(() => {
+        itemPickerLineIdRef.current = itemPickerLineId;
+    }, [itemPickerLineId]);
+
+    const lineHasLinkedCatalogProduct = (line) =>
+        Boolean(
+            String(line?.masterProductId || line?.supplierProductId || 
+str: ).trim(),
+        );
+
+    const commitItemPickerLineText = (openLineId) => {
+        if (openLineId == null) return;
+        const text = String(itemPickerInputRef.current ?? 
+str: ).trim()) return l;
+                return { ...l, item: text };
+            }),
+        );
+    };
+
+    const closeLineItemPicker = (openLineId = itemPickerLineIdRef.current) => {
+        commitItemPickerLineText(openLineId);
+        setItemPickerLineId(null);
+        setItemPickerInput(
+str: );
+        setItemPickerFilter(
+str: ).trim());
+        const shouldOpen =
+            openMenu === true
+                ? true
+                : openMenu === false
+                  ? false
+                  : !linked && !hasLabel;
+        setItemPickerLineId(line.id);
+        setItemPickerInput(String(line.item ?? 
+str: ));
+        setItemPickerFilter(shouldOpen ? 
+str:  : String(line.item ?? 
+str: , onDocMouseDown);
+    }, [modalOpen, itemPickerLineId, itemPickerMenuOpen]);
+
+    useEffect(() => {
+        setItemPickerSelectedIndex(String(itemPickerFilter ?? 
+str: ).trim() ? 0 : -1);
+    }, [itemPickerFilter, itemPickerLineId]);
+
+    const getLineTabFields = useCallback(() => {
+        const fields = [
+str: ).trim();
+            if (mid) {
+                const inv =
+                    catalogItems.find((x) => String(x.masterProductId ?? 
+str: ) === mid) ||
+                    catalogItems.find((x) => String(x.id) === mid);
+                if (inv) {
+                    return {
+                        hasPrev: !!inv.hasPreviousPurchase,
+                        price: Number(inv.lastPrice ?? 0),
+                        meta: String(inv.lastPurchaseMeta || 
+str: ).trim(),
+                    };
+                }
+            }
+            return {
+                hasPrev: !!line.hasPreviousPurchase,
+                price: Number(line.lastPurchasePrice ?? 0),
+                meta: String(line.lastPurchaseMeta || 
+str: ,
+        ).trim();
+        const whUom = masterCatalogWarehouseUnit(catItem, 
+str: );
+        setLineItems((prev) =>
+            prev.map((line) => {
+                if (line.id !== lineId) return line;
+                const raw = {
+                    ...line,
+                    sku: catItem.sku || 
+str: ,
+                    item: catItem.name,
+                    supplierProductId: masterId || undefined,
+                    masterProductId: masterId || undefined,
+                    account:
+                        catItem.type === 
+str: ,
+                    uom: whUom,
+                    warehouseUnit: whUom,
+                    workshopUnitCatalog:
+                        String(catItem.workshopUnit ?? 
+str: ).trim() || null,
+                    conversionFactor: catItem.conversionFactor ?? 1,
+                    price: unitPrice,
+                    hasPreviousPurchase: !!catItem.hasPreviousPurchase,
+                    lastPurchasePrice: catItem.hasPreviousPurchase
+                        ? Number(catItem.lastPrice ?? 0)
+                        : Number(line.lastPurchasePrice ?? 0),
+                    lastPurchaseMeta: catItem.hasPreviousPurchase
+                        ? String(catItem.lastPurchaseMeta || 
+str: ).trim()
+                        : 
+str: ,
+                };
+                return applyLineTotals(raw, amountsTaxInclusive);
+            }),
+        );
+        setItemPickerLineId(null);
+        setItemPickerInput(
+str: ).trim() !== locked) {
+                        return line;
+                    }
+                }
+                let updated = { ...line, [field]: value };
+                if (field === 
+str: ) {
+                    const inv = findPiCapsRow(line, catalogItems);
+                    const cf = Number(inv?.conversionFactor) || 1;
+                    const oldIsWh = isPiWarehouseUomLine(line, inv);
+                    const newIsWh = isPiWarehouseUomLine(updated, inv);
+                    if (inv && cf > 0 && oldIsWh !== newIsWh) {
+                        const p = parseFloat(String(line.price).replace(
+str: )) || 0;
+        const freightIn = roundMoney2(Math.max(0, freightNum));
+
+        let invDisc = 0;
+        const invRaw =
+            parseFloat(String(invoiceDiscountValue).replace(
+str: )) || 0;
+        if (invoiceDiscountMode === 
+str: 
+                    ? `Invoice discount (${invPctDisplayed}%):`
+                    : 
+str: ,
+        };
+    };
+    const summary = getSummary();
+
+    const addEmptyPurchaseLine = () => {
+        const lineId = nextLineId();
+        const raw = {
+            id: lineId,
+            item: 
+str: ,
+            sku: 
+str: ,
+            supplierProductId: undefined,
+            account: 
+str: ,
+            description: 
+str: ,
+            uom: 
+str: ,
+            warehouseUnit: null,
+            workshopUnitCatalog: null,
+            qty: 1,
+            price: 0,
+            discount: 0,
+            discountMode: 
+str: ,
+            taxCode: 
+str: ,
+            taxAmt: 
+str: ,
+            totalFinal: 
+str: ,
+            hasPreviousPurchase: false,
+            lastPurchasePrice: 0,
+            lastPurchaseMeta: 
+str: ,
+        };
+        const newLine = applyLineTotals(raw, amountsTaxInclusive);
+        setLineItems((prev) => [...prev, newLine]);
+        pendingFocusLineFieldRef.current = { lineId, fieldName: 
+str:  };
+        return lineId;
+    };
+
+    const handleLineFieldTab = (e, lineId, fieldName, lineIndex) => {
+        if (e.key !== 
+str:  || e.shiftKey) return;
+        const fields = getLineTabFields();
+        const fieldIdx = fields.indexOf(fieldName);
+        if (fieldIdx < 0 || fieldIdx !== fields.length - 1) return;
+        if (lineIndex !== lineItems.length - 1) return;
+        e.preventDefault();
+        addEmptyPurchaseLine();
+    };
+
+    const handleLineItemPickerKeyDown = (e, line) => {
+        if (itemPickerLineId !== line.id) return;
+        const suggestions = getSearchSuggestionsPi(itemPickerFilter);
+        if (e.key === 
+str: ) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!itemPickerMenuOpen) setItemPickerMenuOpen(true);
+            setItemPickerSelectedIndex((i) => {
+                const start = i < 0 ? 0 : i + 1;
+                return Math.min(start, Math.max(0, suggestions.length - 1));
+            });
+            return;
+        }
+        if (e.key === 
+str: ) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!itemPickerMenuOpen) setItemPickerMenuOpen(true);
+            setItemPickerSelectedIndex((i) => Math.max(i - 1, 0));
+            return;
+        }
+        if (e.key === 
+str: ) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (
+                itemPickerMenuOpen &&
+                itemPickerLineId === line.id &&
+                itemPickerSelectedIndex >= 0 &&
+                suggestions[itemPickerSelectedIndex]
+            ) {
+                applyCatalogPurchaseItemToLine(
+                    line.id,
+                    suggestions[itemPickerSelectedIndex],
+                );
+                return;
+            }
+            closeLineItemPicker(line.id);
+            focusLineField(line.id, 
+str: );
+            return;
+        }
+        if (e.key === 
+str: ) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeLineItemPicker(line.id);
+        }
+    };
+
+    const addItemToLines = (item) => {
+        const lineId = nextLineId();
+        const unitPrice = Number(item.price) || 0;
+        const masterId = String(item?.masterProductId ?? item?.id ?? 
+str: ).trim();
+        const whUom = masterCatalogWarehouseUnit(item, 
+str: );
+        const raw = {
+            id: lineId,
+            sku: item.sku || 
+str: ,
+            item: item.name,
+            supplierProductId: masterId || undefined,
+            masterProductId: masterId || undefined,
+            account:
+                item.type === 
+str: ,
+            uom: whUom,
+            warehouseUnit: whUom,
+            workshopUnitCatalog: String(item.workshopUnit ?? 
+str: ).trim() || null,
+            conversionFactor: item.conversionFactor ?? 1,
+            qty: 1,
+            price: unitPrice,
+            discount: 0,
+            discountMode: 
+str: ,
+            hasPreviousPurchase: !!item.hasPreviousPurchase,
+            lastPurchasePrice: item.hasPreviousPurchase ? Number(item.lastPrice ?? 0) : 0,
+            lastPurchaseMeta: item.hasPreviousPurchase
+                ? String(item.lastPurchaseMeta || 
+str: ).trim()
+                : 
+str: ,
+        };
+        const newLine = applyLineTotals(raw, amountsTaxInclusive);
+        setLineItems((prev) => [...prev, newLine]);
+        setSearchQuery(
+str: );
+        setShowDropdown(false);
+        pendingFocusLineFieldRef.current = { lineId, fieldName: 
+str:  };
+        return lineId;
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 
+str:  || e.key === 
+str: ) {
+            e.preventDefault();
+            if (!showDropdown) {
+                openPiLineSearch();
+                return;
+            }
+            if (e.key === 
+str: ) {
+                setSelectedIndex((i) => {
+                    if (searchResults.length === 0) return -1;
+                    if (i < 0) return 0;
+                    return i < searchResults.length - 1 ? i + 1 : i;
+                });
+            } else {
+                setSelectedIndex((i) => (i > 0 ? i - 1 : -1));
+            }
+            return;
+        }
+        if (!showDropdown) return;
+        if (e.key === 
+str:  && selectedIndex >= 0 && searchResults[selectedIndex]) {
+            e.preventDefault();
+            addItemToLines(searchResults[selectedIndex]);
+        } else if (e.key === 
+str: ) {
+            e.preventDefault();
+            const evaluated = evalMath(e.target.value);
+            updateLineItem(lineId, field, evaluated);
+            e.target.value = evaluated;
+        }
+    };
+    const handleMathBlur = (e, lineId, field) => {
+        const evaluated = evalMath(e.target.value);
+        if (evaluated !== e.target.value) updateLineItem(lineId, field, evaluated);
+    };
+
+    const calculateDueDate = () => {
+        const issue = new Date(issueDate);
+        if (isNaN(issue.getTime())) return 
+str: ;
+        let due = new Date(issue);
+        if (dueDateType === 
+str: ) due.setDate(issue.getDate() + parseInt(netDays || 0, 10));
+        else if (dueDateType === 
+str: ) return customDueDate || 
+str: ;
+        else if (dueDateType === 
+str: );
+        cols.push(
+str: );
+    };
+
+    const resetCreateForm = () => {
+        setLineItems([]);
+        setRefNo(
+str: );
+        setRefAutoGenerate(false);
+        setSuperSupplierId(
+str: );
+        setDescription(
+str: );
+        setInternalNotes(
+str: );
+        setNetDays(30);
+        setCustomDueDate(
+str: );
+        setSearchQuery(
+str: );
+        setCreateError(
+str: );
+        setShowLineNum(false);
+        setShowDesc(false);
+        setShowDiscount(false);
+        setAmountsTaxInclusive(false);
+        setFreightCharges(
+str: );
+        setInvoiceDiscountValue(
+str: );
+        setInvoiceDiscountMode(
+str: );
+        setItemPickerLineId(null);
+        setItemPickerInput(
+str: );
+        setItemPickerMenuOpen(false);
+        setSspPurchaseModalMode(
+str: );
+        setEditingSspPurchaseId(null);
+        setEditingSspPurchaseStatus(null);
+        setSspPurchaseEditLoading(false);
+    };
+
+    const openSuperSupplierPurchaseForEdit = async (purchaseId) => {
+        setCreateError(
+str: );
+        setSspPurchaseModalMode(
+str: );
+        setEditingSspPurchaseId(String(purchaseId));
+        setSspPurchaseEditLoading(true);
+        setModalOpen(true);
+        setApTab(
+str: );
+        try {
+            const res = await getSupplierSuperSupplierPurchase(purchaseId);
+            const p = res?.purchase ?? res?.data ?? res;
+            if (!p?.id) {
+                setCreateError(
+str: );
+                return;
+            }
+            setEditingSspPurchaseStatus(
+                String(p.status || 
+str: ).trim().toLowerCase(),
+            );
+            setIssueDate((p.purchaseDate || 
+str: ).toString().slice(0, 10));
+            setSuperSupplierId(String(p.superSupplierId ?? 
+str: ));
+            setRefNo(String(p.vendorRef ?? p.referenceNo ?? 
+str: ).trim());
+            setDescription(String(p.description ?? 
+str: ).trim());
+            const { userNotes, dueIso } = splitSuperSupplierPurchaseNotes(p.notes);
+            setInternalNotes(userNotes);
+            const issue = new Date((p.purchaseDate || 
+str: );
+                        setNetDays(diffDays || 30);
+                    } else {
+                        setDueDateType(
+str: );
+                        setCustomDueDate(dueIso);
+                    }
+                } else {
+                    setDueDateType(
+str: );
+                    setNetDays(30);
+                }
+            } else {
+                setDueDateType(
+str: );
+                setNetDays(30);
+            }
+
+            const m =
+                p.purchaseFormMeta != null && typeof p.purchaseFormMeta === 
+str: 
+                    ? p.purchaseFormMeta
+                    : {};
+            const taxIncl = !!m.amountsTaxInclusive;
+            setShowLineNum(!!m.showLineNum);
+            setShowDesc(!!m.showDesc);
+            setShowDiscount(!!m.showDiscount);
+            setAmountsTaxInclusive(taxIncl);
+            if (m.invoiceDiscountMode === 
+str: ) {
+                setInvoiceDiscountMode(
+str: );
+                if (m.invoiceDiscountInput != null && Number.isFinite(Number(m.invoiceDiscountInput))) {
+                    setInvoiceDiscountValue(String(m.invoiceDiscountInput));
+                } else {
+                    setInvoiceDiscountValue(
+str: );
+                }
+            } else {
+                setInvoiceDiscountMode(
+str: );
+                if (m.invoiceDiscountInput != null && Number.isFinite(Number(m.invoiceDiscountInput))) {
+                    setInvoiceDiscountValue(String(m.invoiceDiscountInput));
+                } else {
+                    setInvoiceDiscountValue(String(Number(p.invoiceDiscount ?? 0)));
+                }
+            }
+            setFreightCharges(String(Number(p.freightIn ?? 0)));
+
+            const linesFromApi = Array.isArray(p.items) && p.items.length ? p.items : [];
+            setLineItems(
+                linesFromApi.map((it) => {
+                    const taxCode = 
+str: ;
+                    const discVal = Number(it.lineDiscountValue ?? 0);
+                    const discMode =
+                        it.lineDiscountMode === 
+str: ;
+                    const priceStr = reconstructSSPUnitPriceInput(it, taxIncl, taxCode);
+                    return applyLineTotals(
+                        {
+                            id: nextLineId(),
+                            sku: String(it.sku ?? 
+str: ).trim(),
+                            item: it.productName || 
+str: ,
+                            supplierProductId:
+                                it.supplierProductId != null &&
+                                String(it.supplierProductId).trim() !== 
+str: 
+                                    ? String(it.supplierProductId).trim()
+                                    : undefined,
+                            account: 
+str: ,
+                            description: String(it.lineDescription ?? 
+str: ).trim(),
+                            uom: it.unit || 
+str: ,
+                            warehouseUnit: it.unit || null,
+                            workshopUnitCatalog: null,
+                            qty: String(it.qty ?? 1),
+                            price: priceStr,
+                            discount: discVal,
+                            discountMode: discMode,
+                            taxCode,
+                            taxAmt: 
+str: ,
+                            totalFinal: 
+str: ,
+                            hasPreviousPurchase: false,
+                            lastPurchasePrice: 0,
+                            lastPurchaseMeta: 
+str: ,
+                        },
+                        taxIncl,
+                    );
+                }),
+            );
+        } catch (e) {
+            setCreateError(e?.message || 
+str: );
+        } finally {
+            setSspPurchaseEditLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        try {
+            if (sessionStorage.getItem(PI_PRESET_FROM_STOCK_FLAG) !== 
+str: );
+
+            if (!raw) {
+                return undefined;
+            }
+            const line = JSON.parse(raw);
+            if (
+                line == null ||
+                typeof line !== 
+str:  ||
+                String(line.supplierProductId ?? 
+str: ).trim() === 
+str:  ||
+                String(line.name ?? 
+str: 
+            ) {
+                return undefined;
+            }
+
+            window.setTimeout(() => {
+                addItemToLines({
+                    id: String(line.masterProductId || line.supplierProductId).trim(),
+                    masterProductId: String(
+                        line.masterProductId || line.supplierProductId,
+                    ).trim(),
+                    sku: String(line.sku || 
+str: ).trim(),
+                    name: String(line.name || 
+str: ).trim(),
+                    price: Number(line.price) || 0,
+                    unit: String(line.unit || 
+str: ,
+                    warehouseUnit: line.warehouseUnit,
+                    workshopUnit: line.workshopUnit,
+                    conversionFactor: line.conversionFactor,
+                    type: 
+str: ) => {
+        const isDraftSave = saveMode === 
+str: ;
+        setCreateError(
+str: );
+        if (!superSupplierId) {
+            setCreateError(
+str: );
+            return;
+        }
+        if (lineItems.length === 0) {
+            setCreateError(
+str: );
+            return;
+        }
+        const supplierRow = superSuppliers.find((s) => String(s.id) === String(superSupplierId));
+        if (!supplierRow) {
+            setCreateError(
+str: );
+            return;
+        }
+        if (supplierRow.isActive === false) {
+            setCreateError(
+str: );
+            return;
+        }
+
+        const normalizedLines = lineItems.map((line, idx) => {
+            const fin = computeLineFinancials(line, amountsTaxInclusive);
+            const qtyNum = parseFloat(String(line.qty).replace(
+str: ).trim() || productName;
+            }
+            return {
+                idx,
+                productName,
+                sku: String(line.sku || inv?.sku || 
+str: ).trim() || undefined,
+                supplierProductId:
+                    line.supplierProductId != null &&
+                    String(line.supplierProductId).trim() !== 
+str: ,
+                );
+                return;
+            }
+        } else {
+            const bad = normalizedLines.find(
+                (l) =>
+                    !l.productName ||
+                    isLikelyGlAccountLabel(l.productName) ||
+                    !(l.qty > 0) ||
+                    l.unitPrice < 0 ||
+                    !l.supplierProductId,
+            );
+            if (bad) {
+                setCreateError(
+                    `Line ${bad.idx + 1}: select a product from the master catalog, qty > 0, and unit price cannot be negative.`,
+                );
+                return;
+            }
+        }
+
+        const totals = getSummary();
+        const vatAmount = roundMoney2(
+            totals.rawTotalTax ??
+                normalizedLines.reduce((s, l) => s + l.vatLine, 0),
+        );
+        const subtotalExVat = roundMoney2(
+            totals.rawSubtotal ??
+                normalizedLines.reduce((s, l) => s + l.qty * l.unitPrice, 0),
+        );
+        if (!isDraftSave && !(subtotalExVat + vatAmount > 0)) {
+            setCreateError(
+str: );
+            return;
+        }
+
+        const items = normalizedLines.map((l, idx) => {
+            const row = lineItems[idx];
+            const discRaw =
+                parseFloat(String(row?.discount ?? 0).replace(
+str: )) || 0;
+            const desc = String(row?.description ?? 
+str: ,
+            };
+            if (desc) {
+                body.lineDescription = desc;
+            }
+            return body;
+        });
+
+        const due =
+            calculatedDueDate === 
+str:  : calculatedDueDate;
+        const notesParts = [internalNotes.trim(), due ? `Due date: ${due}` : 
+str: ].filter(Boolean);
+
+        const purchaseFormMeta = {
+            showLineNum,
+            showDesc,
+            showDiscount,
+            amountsTaxInclusive,
+            invoiceDiscountMode,
+            invoiceDiscountInput:
+                parseFloat(String(invoiceDiscountValue).replace(
+str: )) || 0,
+        };
+
+        const payload = {
+            superSupplierId: String(superSupplierId),
+            purchaseDate: issueDate,
+            vendorRef: refNo.trim() || undefined,
+            referenceNo: refNo.trim() || undefined,
+            description: description.trim() || undefined,
+            notes: notesParts.length ? notesParts.join(
+str: ,
+        };
+
+        setCreateSubmitting(true);
+        try {
+            if (sspPurchaseModalMode === 
+str: );
+                    setSspPanelKey((k) => k + 1);
+                    await loadSuperSuppliers();
+                    return;
+                }
+            } else {
+                const res = await createSupplierSuperSupplierPurchase(payload);
+                if (isDraftSave) {
+                    const newId = res?.purchase?.id ?? res?.data?.id ?? null;
+                    if (newId) {
+                        setSspPurchaseModalMode(
+str: );
+                        setEditingSspPurchaseId(String(newId));
+                        setEditingSspPurchaseStatus(
+str: );
+                    }
+                    setSspPanelKey((k) => k + 1);
+                    await loadSuperSuppliers();
+                    return;
+                }
+            }
+            setModalOpen(false);
+            resetCreateForm();
+            setSspPanelKey((k) => k + 1);
+            setApTab(
+str: );
+            await loadSuperSuppliers();
+        } catch (err) {
+            console.error(
+str: , err);
+            setCreateError(err?.message || 
+str: 
+                    style={{
+                        marginBottom: 16,
+                        padding: 14,
+                        background: 
+str: ,
+                        border: 
+str: ,
+                        borderRadius: 12,
+                        color: 
+str: ,
+                        fontSize: 
+str: , gap: 10, flexWrap: 
+str: , justifyContent: 
+str:  }}>
+                    <button
+                        type=
+str: 
+                        onClick={() => {
+                            setSsErr(
+str: 
+                        onClick={() => {
+                            setCreateError(
+str:  aria-label=
+str:  style={{ marginBottom: 16 }}>
+                {[
+                    { id: 
+str: , label: 
+str:  },
+                    { id: 
+str:  },
+                ].map((t) => {
+                    const active = apTab === t.id;
+                    return (
+                        <button
+                            key={t.id}
+                            type=
+str: 
+                            role=
+str: 
+                role=
+str: 
+                aria-labelledby=
+str: 
+                hidden={apTab !== 
+str: 
+                style={{ display: apTab === 
+str:  ? undefined : 
+str:  }}
+            >
+                <div
+                    style={{
+                        display: 
+str: ,
+                        flexWrap: 
+str: ,
+                        gap: 12,
+                        alignItems: 
+str: ,
+                        justifyContent: 
+str: ,
+                        padding: 
+str: ,
+                        borderBottom: 
+str: ,
+                        background: 
+str: ,
+                    }}
+                >
+                    <div style={{ display: 
+str: , flexWrap: 
+str: , gap: 10 }}>
+                        <div
+                            style={{
+                                background: 
+str: ,
+                                padding: 
+str: ,
+                                borderRadius: 10,
+                                fontSize: 
+str: , minWidth: 220 }}>
+                        <Search
+                            size={16}
+                            style={{
+                                position: 
+str: ,
+                                left: 10,
+                                top: 
+str: ,
+                                transform: 
+str: ,
+                                color: 
+str: 
+                            value={supplierSearch}
+                            onChange={(e) => setSupplierSearch(e.target.value)}
+                            placeholder=
+str: 
+                            style={{
+                                width: 
+str: ,
+                                borderRadius: 8,
+                                border: 
+str: ,
+                                fontSize: 
+str: , borderCollapse: 
+str: >
+                                    {ssListError
+                                        ? 
+str: 
+                                        : superSuppliers.length === 0
+                                          ? 
+str: >
+                                            <button
+                                                type=
+str: 
+                                                onClick={() =>
+                                                    openSuperSupplierLedger(String(ss.id), ss.name)
+                                                }
+                                                style={{
+                                                    display: 
+str: ,
+                                                    background: 
+str: ,
+                                                    border: 
+str: ,
+                                                    padding: 0,
+                                                    margin: 0,
+                                                    cursor: 
+str: ,
+                                                    textAlign: 
+str: ,
+                                                    font: 
+str: ,
+                                                }}
+                                                title=
+str: 
+                                            >
+                                                <strong
+                                                    style={{
+                                                        color: 
+str: ,
+                                                        textDecoration: 
+str: ,
+                                                        color: 
+str: 
+                                                style={{
+                                                    ...apStatusBadgeStyle(apStatus),
+                                                    fontWeight: 700,
+                                                    textTransform: 
+str: 
+                                                style={{ padding: 
+str: , fontSize: 
+str: 
+                style={{
+                    marginTop: 0,
+                    padding: 0,
+                    overflow: 
+str: ,
+                    display: apTab === 
+str: ,
+                }}
+            >
+                <div style={{ padding: 
+str: , borderBottom: 
+str:  }}>
+                    <h3
+                        style={{
+                            margin: 0,
+                            fontSize: 
+str: ,
+                            fontWeight: 800,
+                            display: 
+str: ,
+                            alignItems: 
+str:  onClick={() => openAuditModal(
+str:  style={{ border: 
+str:  }}>
+                    <table style={{ width: 
+str: 
+                                                onClick={() => openSuperSupplierProducts(String(ss.id), ss.name)}
+                                                style={{
+                                                    display: 
+str: 
+                                            >
+                                                <strong style={{ color: 
+str: , textDecoration: 
+str: >
+                                            <div>{ss.vatNumber || 
+str:  }}>
+                                                {[ss.mobile, ss.email].filter(Boolean).join(
+str: }`}>
+                                                {ss.isActive ? 
+str: >
+                                            <div
+                                                style={{
+                                                    display: 
+str: ,
+                                                    gap: 10,
+                                                    flexWrap: 
+str: ,
+                                                    alignItems: 
+str: 
+                                                    }`}
+                                                    title={
+                                                        ss.isActive
+                                                            ? 
+str: 
+                                                    }
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <input
+                                                        type=
+str: 
+                                                        checked={Boolean(ss.isActive)}
+                                                        disabled={ssTogglingId === String(ss.id)}
+                                                        onChange={() =>
+                                                            handleToggleSuperSupplierActive(ss)
+                                                        }
+                                                        aria-label={
+                                                            ss.isActive
+                                                                ? 
+str: }`}
+                                                    items={[
+                                                        {
+                                                            label: 
+str: ,
+                                                            onClick: () => openEditSuperSupplier(ss),
+                                                        },
+                                                        {
+                                                            label:
+                                                                ssDeletingId === String(ss.id)
+                                                                    ? 
+str: }
+                style={{ display: apTab === 
+str: , alignItems: 
+str: }
+                                {editingSuperSupplierId ? 
+str: );
+                            }
+                        }}
+                        width=
+str: 
+                        footer={
+                            <div style={{ display: 
+str: , gap: 10 }}>
+                                <button
+                                    type=
+str: 
+                                    disabled={ssSaving}
+                                    onClick={() => {
+                                        setAddSsOpen(false);
+                                        setEditingSuperSupplierId(null);
+                                        setSsErr(
+str:  disabled={ssSaving} onClick={handleSaveSuperSupplier}>
+                                    {ssSaving ? 
+str:  : editingSuperSupplierId ? 
+str: , padding: 10, background: 
+str: , borderRadius: 8, color: 
+str: 
+                                value={ssForm.name}
+                                onChange={(e) => setSsForm((s) => ({ ...s, name: e.target.value }))}
+                                placeholder=
+str: , gridTemplateColumns: 
+str: ,
+                            }}
+                        >
+                            <p
+                                style={{
+                                    margin: 
+str: ,
+                                    fontSize: 
+str: ,
+                                    fontWeight: 700,
+                                    color: 
+str: ,
+                                    color: 
+str: ,
+                                        padding: 10,
+                                        borderRadius: 8,
+                                        background: 
+str: ,
+                                        fontSize: 
+str: ,
+                                        color: 
+str: 
+                                        step=
+str: 
+                                        value={ssForm.openingBalance}
+                                        disabled={ssOpeningLocked}
+                                        onChange={(e) =>
+                                            setSsForm((s) => ({
+                                                ...s,
+                                                openingBalance: e.target.value,
+                                            }))
+                                        }
+                                        placeholder=
+str: 
+                                        value={ssForm.openingBalanceDate || 
+str: }
+                                    disabled={ssOpeningLocked || ssCoaLoading}
+                                    onChange={(e) =>
+                                        setSsForm((s) => ({
+                                            ...s,
+                                            openingOffsetAccountId: e.target.value,
+                                        }))
+                                    }
+                                >
+                                    <option value=
+str: >
+                                        {ssCoaLoading
+                                            ? 
+str: }
+                                {ssLedgerData?.supplier?.name || 
+str: 
+                        footer={
+                            <div
+                                style={{
+                                    display: 
+str: ,
+                                    justifyContent: 
+str: ,
+                                    alignItems: 
+str: ,
+                                    width: 
+str: ,
+                                    flexWrap: 
+str: ,
+                                    gap: 8,
+                                }}
+                            >
+                                <span style={{ fontSize: 
+str: , fontWeight: 700 }}>
+                                    Current accounts payable:{
+str: , flexDirection: 
+str: , gap: 12 }}>
+                                <div style={{ display: 
+str: , gap: 10 }}>
+                                    <div
+                                        style={{
+                                            background: 
+str: ,
+                                            padding: 
+str: ,
+                                            borderRadius: 10,
+                                            fontSize: 
+str: ,
+                                        }}
+                                    >
+                                        Account:{
+str: ,
+                                        }}
+                                    >
+                                        Current balance:{
+str: 
+                                        style={{
+                                            ...apStatusBadgeStyle(ssLedgerData?.apStatus ?? 
+str: ),
+                                            fontWeight: 700,
+                                            textTransform: 
+str: ,
+                                            alignSelf: 
+str: ,
+                                        }}
+                                    >
+                                        {apStatusLabel(ssLedgerData?.apStatus ?? 
+str:  style={{ width: 
+str:  }}>
+                                        <thead>
+                                            <tr>
+                                                <th style={{ textAlign: 
+str: , verticalAlign: 
+str:  }}>
+                                                            {ln.date || 
+str:  }}>{ln.entryNumber || 
+str:  }}>{ln.description || 
+str:  }}>{ln.reference || 
+str:  }}>
+                                                            {Number(ln.debit) > 0
+                                                                ? `SAR ${fmtApMoney(ln.debit)}`
+                                                                : 
+str:  }}>
+                                                            {Number(ln.credit) > 0
+                                                                ? `SAR ${fmtApMoney(ln.credit)}`
+                                                                : 
+str: }
+                                {ssProductsData?.supplier?.name || 
+str: , fontWeight: 700 }}>
+                                    {ssProductsData?.summary
+                                        ? `${ssProductsData.summary.lineCount} line(s) · Qty ${Number(ssProductsData.summary.totalQty || 0).toLocaleString(undefined, { maximumFractionDigits: 3 })} · Total SAR ${fmtApMoney(ssProductsData.summary.totalAmount || 0)}`
+                                        : 
+str: ,
+                                flexWrap: 
+str: ,
+                                gap: 10,
+                                alignItems: 
+str:  style={{ flex: 
+str:  }}>
+                                    <Search
+                                        size={16}
+                                        style={{
+                                            position: 
+str: ,
+                                            left: 10,
+                                            top: 
+str: ,
+                                            transform: 
+str: ,
+                                            color: 
+str: 
+                                        value={ssProductsProductFilter}
+                                        onChange={(e) => setSsProductsProductFilter(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 
+str: ) applySuperSupplierProductsFilters();
+                                        }}
+                                        placeholder=
+str: 
+                                        style={{ paddingLeft: 34, width: 
+str: , gap: 8, flexWrap: 
+str:  }}>
+                                <button
+                                    type=
+str:  }}>
+                                                            {ln.purchaseDate || 
+str:  }}>{ln.invoiceNo || 
+str:  }}>{ln.referenceNo || 
+str:  }}>
+                                                        <div>{ln.productName || 
+str: ,
+                                                                    color: 
+str:  }}>{ln.sku || 
+str:  }}>
+                                                        {Number(ln.qty).toLocaleString(undefined, {
+                                                            maximumFractionDigits: 3,
+                                                        })}{
+str: }
+                                                        {ln.unit || 
+str: 
+                        footer={
+                            <button type=
+str:  }}>
+                                    <thead>
+                                        <tr>
+                                            <th style={{ textAlign: 
+str: , whiteSpace: 
+str:  }}>
+                                                        {a.createdAt?.slice(0, 19)?.replace(
+str:  }}>{a.summary || 
+str:  }}>{a.actorName || 
+str: >
+                                    Purchase Invoices ›{
+str: >
+                                        {sspPurchaseModalMode === 
+str: >
+                                    <button
+                                        type=
+str: >
+                                    {(sspPurchaseModalMode === 
+str:  ||
+                                        editingSspPurchaseStatus === 
+str: ) && (
+                                        <button
+                                            type=
+str: 
+                                            disabled={
+                                                createSubmitting ||
+                                                sspPurchaseEditLoading ||
+                                                lineItems.length === 0 ||
+                                                !superSupplierId ||
+                                                (!ssLoading && superSuppliers.length === 0)
+                                            }
+                                            onClick={() => handleCreateInvoice(
+str: )}
+                                        >
+                                            {createSubmitting ? 
+str: 
+                                        disabled={
+                                            createSubmitting ||
+                                            sspPurchaseEditLoading ||
+                                            lineItems.length === 0 ||
+                                            !superSupplierId ||
+                                            (!ssLoading && superSuppliers.length === 0)
+                                        }
+                                        onClick={() => handleCreateInvoice(
+str: )}
+                                    >
+                                        {createSubmitting
+                                            ? sspPurchaseModalMode === 
+str: 
+                                            : editingSspPurchaseStatus === 
+str: 
+                                              : sspPurchaseModalMode === 
+str: ,
+                                        textAlign: 
+str: >
+                                        <input type=
+str: }`}>
+                                        <select value={dueDateType} onChange={(e) => setDueDateType(e.target.value)}>
+                                            <option value=
+str: >
+                                                <input type=
+str: 
+                                    value={refNo}
+                                    onChange={setRefNo}
+                                    readOnly={sspPurchaseModalMode === 
+str: }
+                                    onChange={(e) => setSuperSupplierId(e.target.value)}
+                                    style={{
+                                        width: 
+str: ,
+                                        padding: 
+str: ,
+                                        borderRadius: 10,
+                                        border: 
+str: ,
+                                        fontWeight: 600,
+                                        background: 
+str: ,
+                                    }}
+                                >
+                                    <option value=
+str: >
+                                        {ssLoading ? 
+str: }
+                                            {ss.vatNumber ? ` — VAT ${ss.vatNumber}` : 
+str: 
+                                        style={{ color: 
+str: , marginTop: 8, display: 
+str:  placeholder=
+str: , margin: 
+str:  }}>
+                                {catalogLoading
+                                    ? 
+str: 
+                                    : catalogForSearch.length
+                                      ? 
+str: >
+                                        Unit price
+                                        {amountsTaxInclusive ? (
+                                            <span
+                                                style={{
+                                                    display: 
+str: ,
+                                                    fontWeight: 400,
+                                                    fontSize: 11,
+                                                    color: 
+str: 
+                                            style={{
+                                                position: 
+str: ,
+                                                minWidth: 0,
+                                            }}
+                                        >
+                                            <div
+                                                ref={
+                                                    itemPickerLineId === line.id
+                                                        ? lineItemPickerWrapRef
+                                                        : null
+                                                }
+                                                style={{
+                                                    position: 
+str: ,
+                                                    width: 
+str: ,
+                                                }}
+                                            >
+                                                <div
+                                                    style={{
+                                                        display: 
+str: ,
+                                                        alignItems: 
+str: ,
+                                                        gap: 4,
+                                                        width: 
+str: 
+                                                        style={{
+                                                            flex: 1,
+                                                            minWidth: 0,
+                                                        }}
+                                                        value={
+                                                            itemPickerLineId === line.id
+                                                                ? itemPickerInput
+                                                                : (line.item ?? 
+str: )
+                                                        }
+                                                        placeholder=
+str: 
+                                                        title=
+str: 
+                                                        aria-label=
+str: 
+                                                        onMouseDown={(e) => e.preventDefault()}
+                                                        onClick={() => {
+                                                            if (
+                                                                itemPickerLineId === line.id
+                                                                && itemPickerMenuOpen
+                                                            ) {
+                                                                closeLineItemPicker(line.id);
+                                                            } else {
+                                                                activateLineItemField(line, {
+                                                                    openMenu: true,
+                                                                });
+                                                                focusLineField(line.id, 
+str: );
+                                                            }
+                                                        }}
+                                                        style={{
+                                                            flex: 
+str: ,
+                                                            display: 
+str: ,
+                                                            alignItems: 
+str: ,
+                                                            justifyContent: 
+str: ,
+                                                            padding: 
+str: ,
+                                                            borderRadius: 8,
+                                                            border: 
+str: ,
+                                                            background: 
+str: ,
+                                                            cursor: 
+str: ,
+                                                            color: 
+str: 
+                                                        style={{
+                                                            position: 
+str: ,
+                                                            left: 0,
+                                                            right: 0,
+                                                            top: 
+str: ,
+                                                            zIndex: 90,
+                                                            maxHeight: 240,
+                                                            overflowY: 
+str: ,
+                                                            boxShadow: 
+str: 
+                                                                        }`}
+                                                                        onMouseDown={(ev) => {
+                                                                            ev.preventDefault();
+                                                                            applyCatalogPurchaseItemToLine(
+                                                                                line.id,
+                                                                                invItem,
+                                                                            );
+                                                                        }}
+                                                                        onMouseEnter={() =>
+                                                                            setItemPickerSelectedIndex(i)
+                                                                        }
+                                                                        role=
+str: 
+                                                                                style={{
+                                                                                    flexDirection: 
+str: ,
+                                                                                    alignItems: 
+str: ,
+                                                                                    gap: 4,
+                                                                                }}
+                                                                            >
+                                                                                <span
+                                                                                    style={{
+                                                                                        display: 
+str: ,
+                                                                                        gap: 8,
+                                                                                        flexWrap: 
+str: >
+                                                                                        {invItem.type === 
+str: >
+                                                                                per {invItem.unit || 
+str:  }}>
+                                                                    {catalogForSearch.length === 0
+                                                                        ? 
+str: 
+                                                value={line.account}
+                                                ref={(el) => {
+                                                    lineFieldRefs.current[`${line.id}:account`] = el;
+                                                }}
+                                                onChange={(e) => updateLineItem(line.id, 
+str: , e.target.value)}
+                                                onKeyDown={(e) =>
+                                                    handleLineFieldTab(e, line.id, 
+str: >
+                                                <input
+                                                    type=
+str: 
+                                                    value={line.description ?? 
+str: 
+                                                    placeholder=
+str: 
+                                                    onChange={(e) =>
+                                                        updateLineItem(
+                                                            line.id,
+                                                            
+str: ,
+                                                            e.target.value,
+                                                        )
+                                                    }
+                                                    onKeyDown={(e) =>
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            
+str: >
+                                            {capsRow || line.supplierProductId ? (
+                                                <input
+                                                    type=
+str: 
+                                                    readOnly
+                                                    autoComplete=
+str: 
+                                                    data-1p-ignore=
+str: 
+                                                    data-lpignore=
+str: 
+                                                    name={`pi-uom-locked-${line.id}`}
+                                                    title=
+str: 
+                                                    value={
+                                                        (capsRow
+                                                            ? masterCatalogWarehouseUnit(capsRow, 
+str: ) ||
+                                                        String(line.warehouseUnit || line.uom || 
+str: ).trim() ||
+                                                        
+str: 
+                                                    }
+                                                    ref={(el) => {
+                                                        lineFieldRefs.current[`${line.id}:uom`] = el;
+                                                    }}
+                                                    onKeyDown={(e) =>
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            
+str: 
+                                                placeholder=
+str: 
+                                                autoComplete=
+str: 
+                                                data-1p-ignore=
+str: 
+                                                data-lpignore=
+str: 
+                                                name={`pi-uom-${line.id}`}
+                                                value={line.uom ?? 
+str: }
+                                                    ref={(el) => {
+                                                        lineFieldRefs.current[`${line.id}:uom`] = el;
+                                                    }}
+                                                onChange={(e) =>
+                                                    updateLineItem(
+                                                        line.id,
+                                                        
+str: ,
+                                                        e.target.value,
+                                                    )
+                                                }
+                                                    onKeyDown={(e) =>
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            
+str: >
+                                            <input
+                                                type=
+str: 
+                                                ref={(el) => {
+                                                    lineFieldRefs.current[`${line.id}:qty`] = el;
+                                                }}
+                                                onChange={(e) => updateLineItem(line.id, 
+str: , e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    handleMathKeyDown(e, line.id, 
+str: );
+                                                    handleLineFieldTab(e, line.id, 
+str: , idx);
+                                                }}
+                                                onBlur={(e) => handleMathBlur(e, line.id, 
+str: ,
+                                                        lineHeight: 1.3,
+                                                        marginTop: 2,
+                                                        whiteSpace: 
+str: 
+                                                value={
+                                                    line.price === undefined || line.price === null
+                                                        ? 
+str: 
+                                                ref={(el) => {
+                                                    lineFieldRefs.current[`${line.id}:price`] = el;
+                                                }}
+                                                onChange={(e) => updateLineItem(line.id, 
+str: 
+                                                style={{
+                                                    display: 
+str: ,
+                                                    gap: 6,
+                                                    alignItems: 
+str: ,
+                                                    minWidth: 0,
+                                                }}
+                                            >
+                                                <input
+                                                    type=
+str: 
+                                                    style={{ flex: 1, minWidth: 0 }}
+                                                    value={
+                                                        line.discount === undefined ||
+                                                        line.discount === null
+                                                            ? 
+str: 
+                                                            : String(line.discount)
+                                                    }
+                                                    onChange={(e) =>
+                                                        updateLineItem(
+                                                            line.id,
+                                                            
+str: ,
+                                                            e.target.value,
+                                                        )
+                                                    }
+                                                    onKeyDown={(e) => {
+                                                        handleMathKeyDown(
+                                                            e,
+                                                            line.id,
+                                                            
+str: ,
+                                                        );
+                                                        handleLineFieldTab(
+                                                            e,
+                                                            line.id,
+                                                            
+str: ,
+                                                            idx,
+                                                        );
+                                                    }}
+                                                    onBlur={(e) =>
+                                                        handleMathBlur(
+                                                            e,
+                                                            line.id,
+                                                            
+str: 
+                                                    style={{
+                                                        flex: 
+str: ,
+                                                        maxWidth: 76,
+                                                        padding: 
+str: ,
+                                                        fontSize: 12,
+                                                    }}
+                                                    value={
+                                                        line.discountMode === 
+str: 
+                                                    }
+                                                    onChange={(e) =>
+                                                        updateLineItem(
+                                                            line.id,
+                                                            
+str: ,
+                                                            idx,
+                                                        )
+                                                    }
+                                                >
+                                                    <option value=
+str: >
+                                            SAR{
+str: 
+                                                value={line.taxCode}
+                                                ref={(el) => {
+                                                    lineFieldRefs.current[`${line.id}:taxCode`] = el;
+                                                }}
+                                                onChange={(e) => updateLineItem(line.id, 
+str: 
+                                            style={{
+                                                background: 
+str: ,
+                                                fontWeight: 600,
+                                            }}
+                                        >
+                                            {(() => {
+                                                if (
+                                                    lastPurchaseStockRefreshing &&
+                                                    line.supplierProductId
+                                                ) {
+                                                    return (
+                                                        <div
+                                                            style={{
+                                                                display: 
+str: ,
+                                                                alignItems: 
+str: 
+                                                                aria-hidden
+                                                                style={{
+                                                                    color: 
+str: ,
+                                                            flexDirection: 
+str: ,
+                                                            gap: 2,
+                                                            lineHeight: 1.2,
+                                                        }}
+                                                    >
+                                                        <span>
+                                                            SAR{
+str: ,
+                                                                    fontWeight: 500,
+                                                                    whiteSpace: 
+str: ,
+                                                            fontSize: 
+str: ,
+                                                            fontWeight: 500,
+                                                        }}
+                                                    >
+                                                        {superSupplierId
+                                                            ? 
+str: ,
+                                                alignItems: 
+str: ,
+                                                justifyContent: 
+str: ,
+                                            }}
+                                        >
+                                            <button
+                                                type=
+str: 
+                                                title=
+str: 
+                                                aria-label=
+str: ,
+                                                    color: 
+str: ,
+                                                    cursor: 
+str: 
+                                        style={{ position: 
+str: }`}
+                                                            onClick={() => addItemToLines(item)}
+                                                            onMouseEnter={() => setSelectedIndex(index)}
+                                                            role=
+str:  }}>
+                                                        {catalogForSearch.length === 0
+                                                            ? 
+str: >
+                                    <input type=
+str: >
+                                    <input
+                                        type=
+str: 
+                                            inputMode=
+str: 
+                                            autoComplete=
+str: 
+                                            value={
+                                                freightCharges != null
+                                                    ? String(freightCharges)
+                                                    : 
