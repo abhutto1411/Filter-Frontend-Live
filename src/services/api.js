@@ -4,8 +4,11 @@ import { notifyUserActivity } from '../utils/sessionIdle';
 // Nest routes (e.g. COA adjust) work before they are deployed to Railway.
 //staging url (production default when VITE_API_BASE_URL is unset)
 // LOCAL-ONLY-TOGGLE (do not commit): 
-export const BASE_URL = 'https://filterbackend-production.up.railway.app';
+// export const BASE_URL = 'https://filterbackend-production.up.railway.app';
 // export const BASE_URL = 'http://localhost:3000';
+
+export const BASE_URL = 'https://api.filtercarservices.com';
+
 
 const API_LOADING_EVENT = 'filter-api-loading';
 /** Fired when the API rejects a call for a missing permission (session permissions may be stale). */
