@@ -1,0 +1,27 @@
+.inactive-tag {
+    display: inline-flex;
+    align-items: center;
+    margin-inline-start: 6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 0.625rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    line-height: 1.5;
+    text-transform: uppercase;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+/* Inactive row in a search result: dimmed next to active matches. */
+.is-inactive-option {
+    opacity: 0.55;
+}
+
+.is-inactive-option.is-locked,
+.is-inactive-option.is-locked * {
+    cursor: not-allowed !important;
+}
