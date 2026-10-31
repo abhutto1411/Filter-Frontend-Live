@@ -4,10 +4,10 @@ import { notifyUserActivity } from '../utils/sessionIdle';
 //export const BASE_URL = 'https://filterbackend-production.up.railway.app';
 
 // Production URL
-// export const BASE_URL = 'https://api.filtercarservices.com';
+export const BASE_URL = 'https://api.filtercarservices.com';
 
 // Local Development URL
-export const BASE_URL = 'http://localhost:3000';
+// export const BASE_URL = 'http://localhost:3000';
 
 const API_LOADING_EVENT = 'filter-api-loading';
 /** Fired when the API rejects a call for a missing permission (session permissions may be stale). */
