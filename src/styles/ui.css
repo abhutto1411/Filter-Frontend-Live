@@ -1,0 +1,2777 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   FILTER admin design system — the single source of truth for the panel.
+
+   Scoped under .ui-root so it can be adopted one screen at a time without
+   touching anything that has not been migrated yet.
+
+   Principles:
+     · Neutrals do the work; brand yellow is an accent, never a background.
+     · One border, one radius scale, one shadow. No gradients, no glass.
+     · Density first — this is an operations console, not a landing page.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.ui-root,
+.ui-tokens {
+  /* Neutral ramp — replaces the 3 competing greys found in the audit
+     (#64748b / #6b7280 / #6C757D) with one scale. */
+  --ui-n-0:  #ffffff;
+  --ui-n-25: #fcfcfd;
+  --ui-n-50: #f8f9fb;
+  --ui-n-100:#f1f3f6;
+  --ui-n-200:#e4e7ec;
+  --ui-n-300:#cfd4dc;
+  --ui-n-400:#98a2b3;
+  --ui-n-500:#667085;
+  --ui-n-600:#475467;
+  --ui-n-700:#344054;
+  --ui-n-800:#1d2939;
+  --ui-n-900:#101828;
+
+  /* Brand — carried over from index.css, used sparingly. */
+  --ui-brand:      #fcc245;
+  --ui-brand-ink:  #1d2939;   /* text that sits on brand yellow */
+  --ui-brand-dark: #e0a800;
+  --ui-brand-wash: #fff8e8;
+
+  /* Semantics — one hue per meaning, three steps each. */
+  --ui-ok:    #067647;  --ui-ok-wash:   #ecfdf3;  --ui-ok-line:   #abefc6;
+  --ui-warn:  #b54708;  --ui-warn-wash: #fffaeb;  --ui-warn-line: #fedf89;
+  --ui-dang:  #b42318;  --ui-dang-wash: #fef3f2;  --ui-dang-line: #fecdca;
+  --ui-info:  #175cd3;  --ui-info-wash: #eff8ff;  --ui-info-line: #b2ddff;
+
+  /* One radius scale, one shadow. */
+  --ui-r-sm: 6px;
+  --ui-r-md: 8px;
+  --ui-r-lg: 12px;
+  --ui-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.1);
+}
+
+/* The page canvas itself. Carrying .ui-tokens alone gives an element the
+   variables without this chrome — which is what a fixed toast needs. */
+.ui-root {
+  background: var(--ui-n-50);
+  color: var(--ui-n-900);
+  min-height: 100%;
+  padding: 28px 32px 80px;
+  font-feature-settings: 'tnum' off;
+}
+
+/* ─── Page chrome ─────────────────────────────────────────────────────── */
+
+.ui-head { margin-bottom: 28px; max-width: 760px; }
+.ui-head h1 {
+  margin: 0 0 6px;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--ui-n-900);
+}
+.ui-head p { margin: 0; font-size: 13px; color: var(--ui-n-500); line-height: 1.55; }
+
+.ui-section { margin-bottom: 36px; }
+.ui-section > h2 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ui-n-500);
+}
+.ui-section > .ui-note {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  color: var(--ui-n-500);
+  max-width: 720px;
+  line-height: 1.5;
+}
+
+.ui-card {
+  background: var(--ui-n-0);
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-lg);
+  padding: 20px;
+}
+.ui-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.ui-stack { display: flex; flex-direction: column; gap: 18px; }
+.ui-stack > * { min-width: 0; }
+.ui-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(188px, 1fr)); }
+
+.ui-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ui-n-400);
+  margin-bottom: 8px;
+}
+
+/* Before / after comparison — the whole point of the board. */
+.ui-compare { display: grid; gap: 0; grid-template-columns: 1fr 1fr; border: 1px solid var(--ui-n-200); border-radius: var(--ui-r-lg); overflow: hidden; }
+.ui-compare > div { padding: 18px; }
+.ui-compare > div:first-child { background: var(--ui-n-25); border-inline-end: 1px solid var(--ui-n-200); }
+.ui-compare h3 { margin: 0 0 12px; font-size: 11px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase; }
+.ui-compare .ui-before h3 { color: var(--ui-dang); }
+.ui-compare .ui-after h3 { color: var(--ui-ok); }
+@media (max-width: 860px) {
+  .ui-compare { grid-template-columns: 1fr; }
+  .ui-compare > div:first-child { border-inline-end: 0; border-bottom: 1px solid var(--ui-n-200); }
+}
+
+/* ─── Swatches ────────────────────────────────────────────────────────── */
+
+.ui-sw { border: 1px solid var(--ui-n-200); border-radius: var(--ui-r-md); overflow: hidden; }
+.ui-sw-chip { height: 54px; }
+.ui-sw-meta { padding: 8px 10px; background: var(--ui-n-0); }
+.ui-sw-name { font-size: 12px; font-weight: 600; color: var(--ui-n-800); }
+.ui-sw-val { font-size: 11px; color: var(--ui-n-400); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* ─── Buttons — ONE family, five intents, three sizes ─────────────────── */
+
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--ui-r-md);
+  border: 1px solid transparent;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 560;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+.ui-btn:focus-visible { outline: 2px solid var(--ui-info); outline-offset: 2px; }
+.ui-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.ui-btn--sm { height: 30px; padding: 0 10px; font-size: 12.5px; }
+.ui-btn--lg { height: 42px; padding: 0 18px; font-size: 14px; }
+.ui-btn--block { width: 100%; }
+.ui-btn--icon { width: 36px; padding: 0; }
+
+/* Primary — the single most important action on a screen. One per view. */
+.ui-btn--primary { background: var(--ui-n-900); color: var(--ui-n-0); }
+.ui-btn--primary:hover:not(:disabled) { background: var(--ui-n-800); }
+
+/* Brand — reserved for the money action (Approve, Pay, Post). */
+.ui-btn--brand { background: var(--ui-brand); color: var(--ui-brand-ink); }
+.ui-btn--brand:hover:not(:disabled) { background: var(--ui-brand-dark); }
+
+/* Default — everything else. */
+.ui-btn--default { background: var(--ui-n-0); border-color: var(--ui-n-300); color: var(--ui-n-700); }
+.ui-btn--default:hover:not(:disabled) { background: var(--ui-n-50); border-color: var(--ui-n-400); }
+
+/* Subtle — toolbars, table rows, anywhere a border would add noise. */
+.ui-btn--subtle { color: var(--ui-n-600); }
+.ui-btn--subtle:hover:not(:disabled) { background: var(--ui-n-100); color: var(--ui-n-800); }
+
+/* Danger — destructive only. Never for "Cancel". */
+.ui-btn--danger { background: var(--ui-n-0); border-color: var(--ui-dang-line); color: var(--ui-dang); }
+.ui-btn--danger:hover:not(:disabled) { background: var(--ui-dang-wash); }
+
+/* ─── Status pill — ONE component, semantic tone ──────────────────────── */
+
+.ui-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+.ui-pill::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.ui-pill--neutral { background: var(--ui-n-100); border-color: var(--ui-n-200); color: var(--ui-n-600); }
+.ui-pill--ok      { background: var(--ui-ok-wash);   border-color: var(--ui-ok-line);   color: var(--ui-ok); }
+.ui-pill--warn    { background: var(--ui-warn-wash); border-color: var(--ui-warn-line); color: var(--ui-warn); }
+.ui-pill--dang    { background: var(--ui-dang-wash); border-color: var(--ui-dang-line); color: var(--ui-dang); }
+.ui-pill--info    { background: var(--ui-info-wash); border-color: var(--ui-info-line); color: var(--ui-info); }
+
+/* ─── Form controls ───────────────────────────────────────────────────── */
+
+.ui-field { display: flex; flex-direction: column; gap: 6px; }
+.ui-field > label { font-size: 12.5px; font-weight: 560; color: var(--ui-n-700); }
+
+/* A label for a control that is not wrapped in .ui-field — same type, but it
+   owns its own bottom gap because no flex parent provides one. */
+.ui-fieldlabel {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--ui-n-700);
+  margin-bottom: 6px;
+}
+
+/* Label markers. Unscoped, so they read the same on either kind of label. */
+.ui-req { color: var(--ui-dang); margin-inline-start: 2px; }
+.ui-field-opt { font-weight: 450; color: var(--ui-n-400); }
+/* Its twin: the asterisk on a field that cannot be left blank. Colour
+   alone never carries the meaning — the character does. */
+.ui-field-req { color: var(--ui-dang); }
+.ui-input,
+.ui-select,
+.ui-textarea {
+  width: 100%;
+  height: 36px;
+  padding: 0 11px;
+  border: 1px solid var(--ui-n-300);
+  border-radius: var(--ui-r-md);
+  background: var(--ui-n-0);
+  font-size: 13px;
+  color: var(--ui-n-900);
+  font-family: inherit;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+}
+.ui-textarea { height: auto; min-height: 76px; padding: 9px 11px; resize: vertical; line-height: 1.5; }
+/* A field holding a document rather than a note. */
+.ui-textarea--tall { min-height: 300px; }
+.ui-input::placeholder, .ui-textarea::placeholder { color: var(--ui-n-400); }
+.ui-input:focus, .ui-select:focus, .ui-textarea:focus {
+  outline: none;
+  border-color: var(--ui-n-900);
+  box-shadow: 0 0 0 3px rgba(16, 24, 40, 0.07);
+}
+.ui-input--err { border-color: var(--ui-dang); }
+.ui-input--err:focus { box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.12); }
+.ui-help { font-size: 11.5px; color: var(--ui-n-500); }
+/* Inside a gapped column the browser's paragraph margin stacks on top of the
+   gap, so a help line under an input sits twice as far away as it should.
+   A standalone <p class="ui-help"> elsewhere keeps its own spacing. */
+.ui-field > .ui-help,
+.ui-stack-sm > .ui-help { margin: 0; }
+/* The one sentence above an action form that says what is about to happen. */
+.ui-lead { margin: 0 0 var(--ui-s-4); font-size: 13px; color: var(--ui-n-700); line-height: 1.55; }
+
+/* Blocks that carry a trailing gap for standalone use drop it inside a stack,
+   which already supplies one — the same reason .ui-field > .ui-help does. */
+.ui-stack > .ui-head,
+.ui-stack > .ui-lead,
+.ui-stack > .ui-section,
+.ui-stack-sm > .ui-label { margin-bottom: 0; }
+/* Same the other way round: the form footer spaces itself off the fields when
+   it follows them directly, and lets the stack do it when there is one. */
+.ui-stack > .ui-form-foot,
+.ui-stack-sm > .ui-form-foot { margin-top: 0; }
+.ui-help--err { color: var(--ui-dang); }
+.ui-input:disabled, .ui-select:disabled { background: var(--ui-n-100); color: var(--ui-n-400); cursor: not-allowed; }
+
+/* ─── Table — one system, dense, scannable ────────────────────────────── */
+
+.ui-table-wrap { border: 1px solid var(--ui-n-200); border-radius: var(--ui-r-lg); overflow: hidden; background: var(--ui-n-0); }
+.ui-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.ui-table th {
+  text-align: start;
+  padding: 9px 14px;
+  background: var(--ui-n-50);
+  border-bottom: 1px solid var(--ui-n-200);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ui-n-500);
+  white-space: nowrap;
+}
+.ui-table td { padding: 11px 14px; border-bottom: 1px solid var(--ui-n-100); color: var(--ui-n-700); }
+.ui-table tbody tr:last-child td { border-bottom: 0; }
+.ui-table tbody tr:hover td { background: var(--ui-n-25); }
+.ui-table .ui-num { text-align: end; font-variant-numeric: tabular-nums; }
+.ui-table .ui-strong { color: var(--ui-n-900); font-weight: 560; }
+/* Money direction. An amount that leaves is not the same as one that arrives,
+   and in a column of figures the sign alone is easy to miss. */
+.ui-table .ui-money { font-weight: 560; white-space: nowrap; }
+.ui-table .ui-nowrap { white-space: nowrap; color: var(--ui-n-500); }
+.ui-table .ui-money--in { color: var(--ui-ok); }
+.ui-table .ui-money--out { color: var(--ui-dang); }
+
+/* ─── Metric tile ─────────────────────────────────────────────────────── */
+
+.ui-metric { background: var(--ui-n-0); border: 1px solid var(--ui-n-200); border-radius: var(--ui-r-lg); padding: 15px 16px; }
+.ui-metric-label { font-size: 11.5px; font-weight: 560; color: var(--ui-n-500); margin-bottom: 7px; }
+.ui-metric-value { font-size: 23px; font-weight: 640; letter-spacing: -0.02em; color: var(--ui-n-900); font-variant-numeric: tabular-nums; }
+.ui-metric-foot { margin-top: 6px; font-size: 11.5px; color: var(--ui-n-400); }
+
+/* ─── Banner / inline message ─────────────────────────────────────────── */
+
+.ui-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 11px 13px;
+  border-radius: var(--ui-r-md);
+  border: 1px solid;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+/* The leading icon keeps its size and sits on the first line of text. */
+.ui-banner > svg { flex-shrink: 0; margin-top: 1px; }
+.ui-banner--ok   { background: var(--ui-ok-wash);   border-color: var(--ui-ok-line);   color: var(--ui-ok); }
+.ui-banner--warn { background: var(--ui-warn-wash); border-color: var(--ui-warn-line); color: var(--ui-warn); }
+.ui-banner--dang { background: var(--ui-dang-wash); border-color: var(--ui-dang-line); color: var(--ui-dang); }
+.ui-banner--info { background: var(--ui-info-wash); border-color: var(--ui-info-line); color: var(--ui-info); }
+
+/* ─── Empty state ─────────────────────────────────────────────────────── */
+
+.ui-empty { text-align: center; padding: 40px 20px; }
+.ui-empty-icon { width: 38px; height: 38px; border-radius: 50%; background: var(--ui-n-100); color: var(--ui-n-400); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 11px; }
+.ui-empty-title { font-size: 13.5px; font-weight: 600; color: var(--ui-n-800); margin-bottom: 3px; }
+.ui-empty-sub { font-size: 12.5px; color: var(--ui-n-500); }
+/* An empty state that offers a way out — retry, or create the first row. */
+.ui-empty > .ui-btn { margin-top: var(--ui-s-3); }
+
+/* ─── Specimens of the CURRENT mess, for comparison ───────────────────── */
+
+.ui-old-a { padding: 9px 16px; border-radius: 8px; border: none; background: #FCC245; color: #111; font-weight: 700; font-size: 14px; cursor: pointer; }
+.ui-old-b { padding: 10px 18px; border-radius: 10px; border: 1px solid #cbd5e1; background: #fff; color: #0f172a; font-weight: 600; font-size: 0.875rem; cursor: pointer; }
+.ui-old-c { padding: 8px 12px; border-radius: 6px; border: none; background: #16a34a; color: #fff; font-weight: 600; font-size: 13px; cursor: pointer; }
+.ui-old-d { padding: 6px 10px; border-radius: 999px; border: 1px solid #FECACA; background: #fef2f2; color: #B91C1C; font-weight: 700; font-size: 12px; cursor: pointer; }
+.ui-old-pill-a { display: inline-block; padding: 4px 10px; border-radius: 4px; background: #dcfce7; color: #166534; font-size: 11px; font-weight: 700; }
+.ui-old-pill-b { display: inline-block; padding: 3px 8px; border-radius: 999px; background: #0f172a; color: #fff; font-size: 10px; font-weight: 600; text-transform: uppercase; }
+.ui-old-pill-c { display: inline-block; padding: 5px 12px; border-radius: 8px; border: 1px dashed #94a3b8; color: #64748b; font-size: 12px; }
+
+/* ─── Spec list ───────────────────────────────────────────────────────── */
+
+.ui-spec { margin: 0; padding: 0; list-style: none; font-size: 12.5px; color: var(--ui-n-600); }
+.ui-spec li { padding: 7px 0; border-bottom: 1px dashed var(--ui-n-200); display: flex; gap: 12px; line-height: 1.5; }
+.ui-spec li:last-child { border-bottom: 0; }
+.ui-spec b { color: var(--ui-n-800); font-weight: 600; min-width: 128px; flex-shrink: 0; }
+.ui-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; background: var(--ui-n-100); padding: 1.5px 5px; border-radius: 4px; color: var(--ui-n-700); }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Layout rhythm — the part that makes a console feel engineered rather than
+   assembled. Content is capped, fields snap to a 12-column grid, and every
+   gap comes from one 4px scale.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.ui-root,
+.ui-tokens {
+  --ui-s-1: 4px;  --ui-s-2: 8px;  --ui-s-3: 12px; --ui-s-4: 16px;
+  --ui-s-5: 20px; --ui-s-6: 24px; --ui-s-8: 32px; --ui-s-10: 40px;
+
+}
+
+/* Full-bleed: the console uses whatever width the screen gives it. Rhythm comes
+   from the 12-column grid below, not from a fixed cap — so the same form reads
+   correctly on a laptop and on an ultrawide. */
+.ui-shell { width: 100%; }
+
+/* Section header gets a hairline so sections read as blocks, not a list. */
+.ui-section > h2 {
+  padding-bottom: var(--ui-s-2);
+  border-bottom: 1px solid var(--ui-n-200);
+  margin-bottom: var(--ui-s-4);
+}
+
+/* ─── 12-column form grid ─────────────────────────────────────────────── */
+
+.ui-form-grid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--ui-s-4);
+}
+.ui-col-2  { grid-column: span 2; }
+.ui-col-3  { grid-column: span 3; }
+.ui-col-4  { grid-column: span 4; }
+.ui-col-6  { grid-column: span 6; }
+.ui-col-8  { grid-column: span 8; }
+.ui-col-12 { grid-column: span 12; }
+
+/* Reflow ladder. Each step halves the row rather than collapsing straight to
+   one column, so a form never jumps from four-across to stacked. */
+
+/* Laptop — quarters become thirds, thirds become halves. */
+@media (max-width: 1280px) {
+  .ui-col-2 { grid-column: span 3; }
+  .ui-col-3 { grid-column: span 4; }
+}
+/* Small laptop / large tablet — everything narrow becomes a half. */
+@media (max-width: 1024px) {
+  .ui-col-2, .ui-col-3, .ui-col-4 { grid-column: span 6; }
+  .ui-col-8 { grid-column: span 12; }
+}
+/* Tablet — halves survive, nothing smaller. */
+@media (max-width: 820px) {
+  .ui-col-2, .ui-col-3, .ui-col-4 { grid-column: span 6; }
+}
+/* Phone — single column. */
+@media (max-width: 600px) {
+  .ui-col-2, .ui-col-3, .ui-col-4, .ui-col-6, .ui-col-8 { grid-column: span 12; }
+  .ui-form-foot { flex-direction: column-reverse; }
+  .ui-form-foot .ui-btn { width: 100%; }
+}
+
+/* Forms run full-bleed like everything else. Spans always total 12, so the row
+   fills the width at any screen size and never leaves dead space. */
+
+/* Form footer: actions always right, separated by a rule. */
+.ui-form-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ui-s-2);
+  margin-top: var(--ui-s-5);
+  padding-top: var(--ui-s-4);
+  border-top: 1px solid var(--ui-n-200);
+}
+
+/* Visual grid overlay so the column rhythm is legible on the board itself. */
+.ui-grid-demo { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--ui-s-4); }
+.ui-grid-demo span {
+  height: 30px;
+  border-radius: var(--ui-r-sm);
+  background: var(--ui-brand-wash);
+  border: 1px solid var(--ui-warn-line);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ui-warn);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ─── Tabs ────────────────────────────────────────────────────────────── */
+
+.ui-tabs { display: flex; gap: var(--ui-s-5); border-bottom: 1px solid var(--ui-n-200); }
+.ui-tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 0 0 10px;
+  font-size: 13px;
+  font-weight: 560;
+  color: var(--ui-n-500);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.ui-tab:hover { color: var(--ui-n-800); }
+.ui-tab[aria-selected='true'] { color: var(--ui-n-900); border-bottom-color: var(--ui-n-900); }
+.ui-tab-count {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--ui-n-100);
+  color: var(--ui-n-600);
+  font-size: 10.5px;
+  font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ui-tab[aria-selected='true'] .ui-tab-count { background: var(--ui-n-900); color: var(--ui-n-0); }
+
+/* A strip with more tabs than fit scrolls sideways. Wrapping is not an option:
+   the strip's single rule is what the active underline sits on, and a tab on an
+   earlier line would underline itself in mid-air. Inside a scroll container a
+   border cannot hang 1px outside, so the active marker becomes an inset shadow
+   — painted within the box, and still flush on the strip's rule. */
+.ui-tabs--scroll { overflow-x: auto; }
+.ui-tabs--scroll .ui-tab {
+  flex-shrink: 0;
+  margin-bottom: 0;
+  border-bottom: 0;
+  padding-bottom: 11px;
+}
+.ui-tabs--scroll .ui-tab[aria-selected='true'] {
+  box-shadow: inset 0 -2px 0 var(--ui-n-900);
+}
+
+/* A second strip that belongs to a group names it inline, so the row reads as
+   "Accounting: …" and needs no heading above it. */
+.ui-tabs-label {
+  align-self: center;
+  margin-bottom: 11px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ui-n-400);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+/* Splits one strip into groups — reports after the ledgers, say. */
+.ui-tab-divider {
+  align-self: center;
+  margin-bottom: 11px;
+  width: 1px;
+  height: 14px;
+  background: var(--ui-n-200);
+  flex-shrink: 0;
+}
+
+/* ─── Modal ───────────────────────────────────────────────────────────── */
+
+.ui-modal {
+  width: 100%;
+  max-width: 460px;
+  background: var(--ui-n-0);
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-lg);
+  box-shadow: 0 12px 32px rgba(16, 24, 40, 0.12);
+  overflow: hidden;
+}
+.ui-modal-head { padding: var(--ui-s-4) var(--ui-s-5); border-bottom: 1px solid var(--ui-n-200); }
+.ui-modal-title { font-size: 14.5px; font-weight: 620; color: var(--ui-n-900); }
+.ui-modal-sub { margin-top: 2px; font-size: 12.5px; color: var(--ui-n-500); }
+.ui-modal-body { padding: var(--ui-s-5); }
+.ui-modal-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--ui-s-2);
+  padding: var(--ui-s-3) var(--ui-s-5);
+  background: var(--ui-n-25);
+  border-top: 1px solid var(--ui-n-200);
+}
+
+/* ─── Pagination ──────────────────────────────────────────────────────── */
+
+.ui-pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-s-4);
+  padding: 10px var(--ui-s-4);
+  border-top: 1px solid var(--ui-n-200);
+  background: var(--ui-n-25);
+  font-size: 12.5px;
+  color: var(--ui-n-500);
+}
+.ui-pager-nav { display: flex; gap: var(--ui-s-1); }
+.ui-pager-gap { padding: 0 2px; color: var(--ui-n-400); }
+.ui-page-btn {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 7px;
+  border: 1px solid var(--ui-n-300);
+  border-radius: var(--ui-r-sm);
+  background: var(--ui-n-0);
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--ui-n-700);
+  cursor: pointer;
+}
+.ui-page-btn:hover:not(:disabled) { background: var(--ui-n-50); }
+.ui-page-btn[aria-current='page'] { background: var(--ui-n-900); border-color: var(--ui-n-900); color: var(--ui-n-0); }
+.ui-page-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ─── Toast ───────────────────────────────────────────────────────────── */
+
+.ui-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  max-width: 380px;
+  padding: var(--ui-s-3) var(--ui-s-4);
+  background: var(--ui-n-900);
+  color: var(--ui-n-0);
+  border-radius: var(--ui-r-md);
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.18);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.ui-toast-dot { width: 7px; height: 7px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+.ui-toast--ok   .ui-toast-dot { background: #75e0a7; }
+.ui-toast--dang .ui-toast-dot { background: #fda29b; }
+.ui-toast b { font-weight: 600; }
+.ui-toast-x { margin-inline-start: auto; background: none; border: 0; color: var(--ui-n-400); cursor: pointer; padding: 0; line-height: 1; }
+
+/* ─── Toolbar — the row above every table ─────────────────────────────── */
+
+.ui-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s-2);
+  padding: var(--ui-s-3) var(--ui-s-4);
+  border-bottom: 1px solid var(--ui-n-200);
+  background: var(--ui-n-0);
+  /* A toolbar sometimes states something rather than only holding controls;
+     controls set their own size, so this only lands on that bare text. */
+  font-size: 13px;
+  color: var(--ui-n-700);
+}
+/* A leading icon labels the row — it is not a control. */
+.ui-toolbar > svg { color: var(--ui-n-400); flex-shrink: 0; }
+/* Standalone filter row — not glued to a table, so it closes its own box. */
+.ui-toolbar--standalone {
+  flex-wrap: wrap;
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-lg);
+}
+
+.ui-search { position: relative; flex: 1; max-width: 300px; }
+.ui-search svg { position: absolute; inset-inline-start: 10px; top: 50%; transform: translateY(-50%); color: var(--ui-n-400); }
+.ui-search .ui-input { padding-inline-start: 32px; }
+.ui-toolbar-end { margin-inline-start: auto; display: flex; gap: var(--ui-s-2); }
+
+/* A search that can be cleared. The control sits at the trailing edge, and the
+   input reserves room for it only while it is there — so a placeholder is not
+   padded away on a field with nothing to clear. */
+.ui-search-clear {
+  position: absolute;
+  inset-inline-end: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.ui-input--clearable { padding-inline-end: 32px; }
+
+/* A search field used bare in a toolbar, without the icon wrapper. Capped so a
+   row of filters does not hand the whole line to one input. */
+.ui-search-input { max-width: 300px; }
+
+/* A labelled field that takes the slack in a row of controls. */
+.ui-field--grow { flex: 1 1 300px; max-width: 440px; }
+
+/* Rows-per-page sits on the left of the pager, matching the 30px nav buttons. */
+.ui-pager-left { display: flex; align-items: center; gap: var(--ui-s-2); }
+.ui-page-size {
+  height: 30px;
+  padding: 0 26px 0 9px;
+  border: 1px solid var(--ui-n-300);
+  border-radius: var(--ui-r-sm);
+  background: var(--ui-n-0);
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--ui-n-700);
+  font-family: inherit;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23667085' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+}
+.ui-page-size:hover { border-color: var(--ui-n-400); }
+.ui-page-size:focus-visible { outline: 2px solid var(--ui-info); outline-offset: 1px; }
+
+@media (max-width: 620px) {
+  .ui-pager { flex-wrap: wrap; row-gap: var(--ui-s-3); }
+  .ui-pager-left { width: 100%; }
+}
+
+/* ─── KPI card ────────────────────────────────────────────────────────────
+   An oversized icon bleeds off the top-right corner, clipped by the card.
+   It sits behind the numbers at low opacity, so it reads as texture rather
+   than a second thing competing for attention.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-metric { position: relative; overflow: hidden; }
+
+.ui-metric-icon {
+  position: absolute;
+  top: -14px;
+  inset-inline-end: -10px;
+  color: var(--ui-n-200);
+  /* Light enough to read as watermark, never as a second focal point. */
+  opacity: 0.45;
+  /* Tilt off the corner; origin keeps the bleed anchored while it rotates. */
+  transform: rotate(-18deg);
+  transform-origin: top right;
+  pointer-events: none;
+  line-height: 0;
+}
+.ui-metric-label,
+.ui-metric-value,
+.ui-metric-foot { position: relative; }
+
+/* Tone variants tint the bleed icon instead of the whole card, so a wall of
+   KPI tiles still reads as one row. */
+.ui-metric--ok   .ui-metric-icon { color: var(--ui-ok-line); }
+.ui-metric--warn .ui-metric-icon { color: var(--ui-warn-line); }
+.ui-metric--dang .ui-metric-icon { color: var(--ui-dang-line); }
+.ui-metric--info .ui-metric-icon { color: var(--ui-info-line); }
+.ui-metric--brand .ui-metric-icon { color: #fde9b8; }
+
+/* Delta chip under the value. */
+.ui-delta { display: inline-flex; align-items: center; gap: 3px; font-size: 11.5px; font-weight: 600; }
+.ui-delta--up { color: var(--ui-ok); }
+.ui-delta--down { color: var(--ui-dang); }
+
+/* Selects get the same chevron as the pager's — the native arrow renders
+   differently on every OS, which is half of why forms look unmatched. */
+.ui-select {
+  appearance: none;
+  padding-inline-end: 32px;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23667085' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  cursor: pointer;
+}
+.ui-select:disabled { cursor: not-allowed; opacity: 0.7; }
+/* `background-position` has no logical form — RTL moves the chevron by hand. */
+[dir="rtl"] .ui-select { background-position: left 10px center; }
+
+/* Help text keeps its line whether or not a message is showing, so validation
+   appearing never nudges the row below it. */
+.ui-help { min-height: 16px; }
+
+/* Inputs sit flush: a disabled field should read as locked, not as a hole. */
+.ui-input:disabled,
+.ui-select:disabled { border-color: var(--ui-n-200); }
+
+/* ─── Skeleton / shimmer ──────────────────────────────────────────────────
+   Loading placeholders mirror the shape of the content they stand in for, so
+   nothing jumps when real data lands. The sweep is deliberately low-contrast —
+   a bright gradient racing across the screen reads as cheap.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-sk {
+  --ui-sk-base: var(--ui-n-100);
+  --ui-sk-peak: var(--ui-n-50);
+  background-color: var(--ui-sk-base);
+  background-image: linear-gradient(
+    90deg,
+    var(--ui-sk-base) 0%,
+    var(--ui-sk-peak) 42%,
+    var(--ui-sk-peak) 58%,
+    var(--ui-sk-base) 100%
+  );
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  border-radius: var(--ui-r-sm);
+  animation: ui-shimmer 1.5s ease-in-out infinite;
+  /* Nothing inside a skeleton should be selectable or announced. */
+  user-select: none;
+  color: transparent;
+}
+
+@keyframes ui-shimmer {
+  from { background-position: 140% 0; }
+  to   { background-position: -40% 0; }
+}
+
+/* Respect the OS setting — a pulse is calmer and still signals "working". */
+@media (prefers-reduced-motion: reduce) {
+  .ui-sk {
+    animation: ui-sk-pulse 1.6s ease-in-out infinite;
+    background-image: none;
+  }
+}
+@keyframes ui-sk-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+
+/* Shapes — height matches the real element so rows keep their rhythm. */
+.ui-sk--text   { height: 12px; }
+.ui-sk--strong { height: 14px; }
+.ui-sk--title  { height: 23px; border-radius: var(--ui-r-sm); }
+.ui-sk--label  { height: 10px; }
+.ui-sk--pill   { height: 22px; width: 76px; border-radius: 999px; }
+.ui-sk--btn    { height: 30px; width: 58px; border-radius: var(--ui-r-md); }
+.ui-sk--input  { height: 36px; border-radius: var(--ui-r-md); }
+.ui-sk--circle { border-radius: 50%; }
+/* The square glyph badge a record card leads with. */
+.ui-sk--icon   { width: 32px; height: 32px; border-radius: var(--ui-r-sm); }
+
+/* Width helpers so a block of lines does not look machine-cut. */
+.ui-sk--w90 { width: 90%; }
+.ui-sk--w70 { width: 70%; }
+.ui-sk--w55 { width: 55%; }
+.ui-sk--w40 { width: 40%; }
+.ui-sk--w25 { width: 25%; }
+
+/* Stagger the sweep down a list — rows lighting up in unison looks synthetic. */
+.ui-sk-row:nth-child(2) .ui-sk { animation-delay: 0.08s; }
+.ui-sk-row:nth-child(3) .ui-sk { animation-delay: 0.16s; }
+.ui-sk-row:nth-child(4) .ui-sk { animation-delay: 0.24s; }
+.ui-sk-row:nth-child(5) .ui-sk { animation-delay: 0.32s; }
+
+/* Toggle used on the board to flip a section between loading and loaded. */
+.ui-switch { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--ui-n-600); cursor: pointer; user-select: none; }
+.ui-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.ui-switch-track {
+  width: 34px; height: 20px; border-radius: 999px;
+  background: var(--ui-n-300); position: relative; transition: background 0.16s ease;
+}
+.ui-switch-track::after {
+  content: ''; position: absolute; top: 2px; inset-inline-start: 2px;
+  width: 16px; height: 16px; border-radius: 50%; background: var(--ui-n-0);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.2); transition: transform 0.16s ease;
+}
+.ui-switch input:checked + .ui-switch-track { background: var(--ui-n-900); }
+.ui-switch input:checked + .ui-switch-track::after { transform: translateX(14px); }
+[dir="rtl"] .ui-switch input:checked + .ui-switch-track::after { transform: translateX(-14px); }
+.ui-switch input:focus-visible + .ui-switch-track { outline: 2px solid var(--ui-info); outline-offset: 2px; }
+
+/* Section heading can carry the toggle on its right. */
+.ui-section-head { display: flex; align-items: center; justify-content: space-between; gap: var(--ui-s-4); }
+.ui-section-head > h2 { flex: 1; margin-bottom: 0; }
+
+/* ─── Mobile ──────────────────────────────────────────────────────────────
+   Tables are the hard part: a 6-column financial table cannot shrink, so on a
+   phone each row becomes a stacked card with the header as the label. Nothing
+   is hidden — a number the accountant needs must never be a horizontal scroll
+   away.
+   ──────────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 760px) {
+  .ui-root { padding: 16px 14px 56px; }
+
+  /* Toolbar stacks; search takes the full row. */
+  .ui-toolbar { flex-wrap: wrap; }
+  .ui-search { max-width: none; flex: 1 1 100%; }
+  .ui-toolbar-end { margin-inline-start: 0; width: 100%; }
+  .ui-toolbar-end .ui-btn { flex: 1; }
+
+  /* Table → cards. Each cell carries its column name via data-label. */
+  .ui-table,
+  .ui-table tbody,
+  .ui-table tr,
+  .ui-table td { display: block; width: 100%; }
+  .ui-table thead { display: none; }
+
+  .ui-table tr {
+    border: 1px solid var(--ui-n-200);
+    border-radius: var(--ui-r-md);
+    margin: 10px;
+    padding: 4px 0;
+    background: var(--ui-n-0);
+  }
+  .ui-table tbody tr:hover td { background: transparent; }
+
+  .ui-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--ui-s-4);
+    padding: 9px 13px;
+    border-bottom: 1px solid var(--ui-n-100);
+    text-align: start;
+  }
+  .ui-table td:last-child { border-bottom: 0; }
+  .ui-table td::before {
+    content: attr(data-label);
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--ui-n-500);
+    flex-shrink: 0;
+  }
+  /* A cell with no label (the actions column) gives its control the row. */
+  .ui-table td:not([data-label]) > * { width: 100%; }
+  .ui-table .ui-num { text-align: end; }
+
+  /* Pager stacks, nav centres. */
+  .ui-pager { flex-direction: column; align-items: stretch; gap: var(--ui-s-3); }
+  .ui-pager-nav { justify-content: center; }
+
+  /* Modal fills the viewport width. */
+  .ui-modal { max-width: none; }
+  .ui-modal-foot { flex-direction: column-reverse; }
+  .ui-modal-foot .ui-btn { width: 100%; }
+
+  /* KPI tiles one per row — two-up makes the numbers unreadable. */
+  .ui-grid { grid-template-columns: 1fr; }
+
+  /* Before/after comparison stacks rather than squeezing. */
+  .ui-compare { grid-template-columns: 1fr; }
+
+  /* Tabs scroll horizontally instead of wrapping into a second line. */
+  .ui-tabs { overflow-x: auto; scrollbar-width: none; }
+  .ui-tabs::-webkit-scrollbar { display: none; }
+  .ui-tab { white-space: nowrap; }
+
+  /* Spec rows stack so the term is not squeezed to one word per line. */
+  .ui-spec li { flex-direction: column; gap: 2px; }
+  .ui-spec b { min-width: 0; }
+
+  /* Toast spans the screen. */
+  .ui-toast { max-width: none; }
+}
+
+/* Touch targets: 36px is fine with a mouse, tight with a thumb. */
+@media (hover: none) and (pointer: coarse) {
+  .ui-btn { height: 40px; }
+  .ui-btn--sm { height: 34px; }
+  .ui-input, .ui-select { height: 40px; }
+  .ui-page-btn { min-width: 36px; height: 36px; }
+}
+
+/* ─── Mobile table-card corrections ──────────────────────────────────────
+   Three things the first pass got wrong once rows became cards.
+   ──────────────────────────────────────────────────────────────────────── */
+
+@media (max-width: 760px) {
+  /* 1. Each row is already a bordered card, so the wrapper framing it as well
+        produced a box inside a box. Drop the outer chrome; keep the toolbar
+        and pager attached to it. */
+  .ui-table-wrap { border: 0; border-radius: 0; background: transparent; }
+  /* Scoped to the table wrapper: a toolbar that heads a panel keeps the
+     panel frame and must not draw a second box inside it. */
+  .ui-table-wrap .ui-toolbar {
+    border: 1px solid var(--ui-n-200);
+    border-radius: var(--ui-r-lg);
+    margin-bottom: 4px;
+  }
+  .ui-table-wrap .ui-pager {
+    border: 1px solid var(--ui-n-200);
+    border-radius: var(--ui-r-lg);
+    margin-top: 4px;
+    background: var(--ui-n-0);
+  }
+  .ui-table tr { margin: 10px 0; }
+
+  /* 2. A Subtle button has no border by design — alone in a card it read as
+        plain text. The row action becomes a real, tappable control. */
+  .ui-table td:not([data-label]) {
+    padding: 11px 13px;
+    background: var(--ui-n-25);
+    border-top: 1px solid var(--ui-n-100);
+  }
+  .ui-table td:not([data-label]) .ui-btn {
+    width: 100%;
+    height: 38px;
+    border: 1px solid var(--ui-n-300);
+    background: var(--ui-n-0);
+    color: var(--ui-n-700);
+    font-weight: 560;
+  }
+
+  /* 3. Long values (Arabic names, big figures) collided with the label.
+        Cap the label, let the value wrap, keep it hard right. */
+  .ui-table td[data-label] { align-items: baseline; text-align: end; }
+  .ui-table td[data-label]::before { max-width: 45%; text-align: start; }
+  .ui-table td[data-label] { word-break: break-word; }
+}
+
+/* ─── Console surfaces ────────────────────────────────────────────────────
+   Everything below is what a dashboard/overview screen needs beyond forms
+   and tables: metric rows, hairline stat strips, list panels, action grids,
+   nav rows and portal tiles. They are plain system components — any screen
+   can use them, the dashboard is just the first.
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* A page that sits inside an existing layout shell already has its padding
+   and canvas from that shell; .ui-root must not add a second set. */
+.ui-root--flush {
+  padding: 0;
+  background: transparent;
+  min-height: 0;
+}
+
+/* Vertical rhythm between console bands — tighter than .ui-section, which is
+   spaced for a document. */
+.ui-band + .ui-band { margin-top: var(--ui-s-5); }
+
+/* Band header: a label, an optional count, and actions pushed to the end. */
+.ui-band-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s-2);
+  margin-bottom: var(--ui-s-3);
+}
+.ui-band-head h2 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ui-n-500);
+}
+.ui-band-head .ui-band-end { margin-inline-start: auto; }
+
+/* ─── Metric row ──────────────────────────────────────────────────────── */
+
+.ui-kpis {
+  display: grid;
+  gap: var(--ui-s-3);
+  grid-template-columns: repeat(auto-fit, minmax(208px, 1fr));
+}
+
+/* ─── Stat strip ──────────────────────────────────────────────────────────
+   Secondary figures that deserve a number but not a card. One hairline grid
+   (gap over a darker background) so it stays square however many cells wrap.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1px;
+  background: var(--ui-n-200);
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-lg);
+  overflow: hidden;
+}
+.ui-stat {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s-2);
+  padding: 12px 14px;
+  background: var(--ui-n-0);
+  min-width: 0;
+}
+.ui-stat-icon { color: var(--ui-n-400); flex-shrink: 0; line-height: 0; }
+.ui-stat-label {
+  font-size: 11.5px;
+  font-weight: 560;
+  color: var(--ui-n-500);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-stat-value {
+  margin-inline-start: auto;
+  font-size: 15px;
+  font-weight: 620;
+  color: var(--ui-n-900);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Panels ──────────────────────────────────────────────────────────────
+   A bordered card with a titled header and a list body. Panels sit in an
+   auto-fit grid so three of them become two, then one, without breakpoints.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-panels {
+  display: grid;
+  gap: var(--ui-s-3);
+  grid-template-columns: repeat(auto-fit, minmax(318px, 1fr));
+  align-items: start;
+}
+.ui-panel {
+  background: var(--ui-n-0);
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-lg);
+  min-width: 0;
+  overflow: hidden;
+}
+.ui-panel-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s-2);
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--ui-n-200);
+  background: var(--ui-n-25);
+}
+.ui-panel-title { font-size: 13px; font-weight: 620; color: var(--ui-n-900); }
+.ui-panel-head .ui-panel-end { margin-inline-start: auto; }
+.ui-panel-body { min-width: 0; }
+
+/* Panels hold short lists, so their empty state is lighter than .ui-empty. */
+.ui-panel .ui-empty { padding: 28px 18px; }
+
+/* ─── List rows ───────────────────────────────────────────────────────── */
+
+.ui-list { margin: 0; padding: 0; list-style: none; }
+.ui-list-row {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s-3);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ui-n-100);
+  min-width: 0;
+}
+.ui-list-row:last-child { border-bottom: 0; }
+.ui-list-main { flex: 1; min-width: 0; }
+.ui-list-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 560;
+  color: var(--ui-n-800);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ui-list-meta {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--ui-n-500);
+  font-variant-numeric: tabular-nums;
+}
+/* A row can end in more than one control: a pill, the switch that turns the
+   row on, and the two buttons that act on it. A single trailing element lays
+   out exactly as before — several now sit in a row rather than stacking. */
+.ui-list-end { flex-shrink: 0; display: flex; align-items: center; gap: var(--ui-s-2); }
+.ui-list-amount {
+  flex-shrink: 0;
+  font-size: 12.5px;
+  font-weight: 580;
+  color: var(--ui-n-800);
+  font-variant-numeric: tabular-nums;
+}
+/* A row whose lead line is a kind rather than a name (approvals, audit). */
+.ui-list-kind {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ui-n-400);
+  margin-bottom: 2px;
+}
+
+/* ─── Action grid ─────────────────────────────────────────────────────────
+   Flat destinations. Deliberately not buttons with a primary colour — on a
+   dashboard nothing here is the one thing to do.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-actions {
+  display: grid;
+  gap: var(--ui-s-2);
+  grid-template-columns: repeat(auto-fit, minmax(158px, 1fr));
+}
+
+/* The two or three small controls that belong to one table row: tight, and
+   trailing, so the column reads as a margin of actions rather than content. */
+.ui-rowacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+/* On a card-stacked row the controls take the width they are given. */
+@media (max-width: 560px) {
+  .ui-rowacts { justify-content: stretch; }
+  .ui-rowacts .ui-btn { flex: 1; }
+}
+
+/* A leading glyph in a cell or a label: present, never competing with the
+   text beside it. */
+.ui-glyph { color: var(--ui-n-400); flex-shrink: 0; }
+.ui-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ui-s-2);
+  height: 36px;
+  padding: 0 11px;
+  background: var(--ui-n-0);
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-md);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 540;
+  color: var(--ui-n-700);
+  cursor: pointer;
+  text-align: start;
+  transition: background 0.14s ease, border-color 0.14s ease;
+  min-width: 0;
+}
+.ui-action > svg { color: var(--ui-n-400); flex-shrink: 0; }
+.ui-action > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-action:hover { background: var(--ui-n-50); border-color: var(--ui-n-300); }
+.ui-action:focus-visible { outline: 2px solid var(--ui-info); outline-offset: 2px; }
+
+/* ─── Nav rows ────────────────────────────────────────────────────────────
+   A full-width destination with an icon, a title, a line of context and a
+   chevron. Stack them inside a .ui-panel-body.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-navrow {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s-3);
+  width: 100%;
+  padding: 12px 14px;
+  background: var(--ui-n-0);
+  border: 0;
+  border-bottom: 1px solid var(--ui-n-100);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: start;
+  transition: background 0.14s ease;
+}
+.ui-navrow:last-child { border-bottom: 0; }
+.ui-navrow:hover { background: var(--ui-n-25); }
+.ui-navrow:focus-visible { outline: 2px solid var(--ui-info); outline-offset: -2px; }
+.ui-navrow-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--ui-r-md);
+  background: var(--ui-n-100);
+  color: var(--ui-n-600);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ui-navrow-text { flex: 1; min-width: 0; }
+.ui-navrow-text strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 580;
+  color: var(--ui-n-800);
+}
+.ui-navrow-text span {
+  display: block;
+  margin-top: 1px;
+  font-size: 11.5px;
+  color: var(--ui-n-500);
+}
+.ui-navrow-chev { color: var(--ui-n-400); flex-shrink: 0; }
+
+/* Trailing chevron — the "there is more this way" glyph, pushed to the end of
+   whatever row it sits in. It points the way the language runs. */
+.ui-chev { color: var(--ui-n-400); flex-shrink: 0; margin-inline-start: auto; }
+[dir="rtl"] .ui-chev,
+[dir="rtl"] .ui-navrow-chev { transform: scaleX(-1); }
+
+/* ─── Portal tiles ────────────────────────────────────────────────────────
+   Square launchers. The corner glyph marks the ones that open a separate
+   session, so the row needs no sentence explaining it.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-tiles {
+  display: grid;
+  gap: var(--ui-s-2);
+  grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
+}
+.ui-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ui-s-2);
+  padding: 12px;
+  background: var(--ui-n-0);
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-md);
+  font-family: inherit;
+  cursor: pointer;
+  text-align: start;
+  transition: background 0.14s ease, border-color 0.14s ease;
+  min-width: 0;
+}
+.ui-tile:hover { background: var(--ui-n-25); border-color: var(--ui-n-300); }
+.ui-tile:focus-visible { outline: 2px solid var(--ui-info); outline-offset: 2px; }
+.ui-tile-icon { color: var(--ui-n-600); line-height: 0; }
+.ui-tile-label {
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--ui-n-800);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-tile-ext {
+  position: absolute;
+  top: 9px;
+  inset-inline-end: 9px;
+  color: var(--ui-n-300);
+}
+
+/* ─── Console surfaces on a phone ─────────────────────────────────────── */
+
+@media (max-width: 760px) {
+  /* Metrics one per row; two-up makes a five-digit figure unreadable. */
+  .ui-kpis { grid-template-columns: 1fr; }
+  /* The stat strip stays two-up — these are small numbers, not headlines. */
+  .ui-stat-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ui-panels { grid-template-columns: 1fr; }
+  .ui-actions { grid-template-columns: 1fr 1fr; }
+  .ui-tiles { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); }
+}
+
+/* ─── Record cards ─────────────────────────────────────────────────────────
+   A queue of requests (approvals, returns, payouts) is a list of records, not
+   a table: each one carries a type, a status, a few facts and its own two or
+   three actions. A .ui-panel holds it; these are the parts inside.
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* A pill that leads with a real icon instead of the status dot. */
+.ui-pill--icon::before { display: none; }
+.ui-pill--icon > svg { margin-inline-end: 1px; }
+
+/* Padded body, for panels holding prose or fields rather than flush rows. */
+.ui-panel-pad { padding: 13px 14px; }
+
+/* Action footer. Buttons sit at the end so a column of cards lines up. */
+.ui-panel-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ui-s-2);
+  padding: 11px 14px;
+  border-top: 1px solid var(--ui-n-200);
+  background: var(--ui-n-25);
+}
+.ui-panel-foot .ui-panel-end { margin-inline-start: auto; }
+
+.ui-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ui-n-900);
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* ─── Meta line ───────────────────────────────────────────────────────────
+   Who, when, and the reference — one wrapping line of small facts. Each item
+   may carry a leading icon.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ui-s-1) var(--ui-s-4);
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--ui-n-500);
+}
+.ui-meta > span { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.ui-meta svg { color: var(--ui-n-400); flex-shrink: 0; }
+.ui-meta-ref {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--ui-n-600);
+  background: var(--ui-n-100);
+  padding: 1.5px 6px;
+  border-radius: 4px;
+}
+
+/* ─── Key/value chips ─────────────────────────────────────────────────────
+   The two-to-six facts that decide an approval. Label above value so long
+   Arabic labels never squeeze the number, and a hairline separates them.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 1px;
+  margin: 12px 0 0;
+  background: var(--ui-n-200);
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-md);
+  overflow: hidden;
+}
+/* A fact whose value is a sentence takes the whole row rather than being
+   squeezed into one tile. */
+.ui-kv-wide { grid-column: 1 / -1; }
+.ui-kv > div {
+  background: var(--ui-n-0);
+  padding: 7px 10px;
+  min-width: 0;
+}
+.ui-kv dt,
+.ui-kv-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ui-n-400);
+  margin-bottom: 2px;
+}
+.ui-kv dd,
+.ui-kv-value {
+  display: block;
+  margin: 0;
+  font-size: 12.5px;
+  font-weight: 540;
+  color: var(--ui-n-800);
+  word-break: break-word;
+}
+
+/* ─── Field list ──────────────────────────────────────────────────────────
+   Read-only detail fields. Same 12-column feel as a form, but nothing here
+   is editable, so values are text rather than disabled inputs.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-fields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--ui-s-4);
+}
+/* A fixed four-up with a reflow ladder, not auto-fit: on a wide monitor
+   auto-fit produced seven columns of label/value, which reads as a wall. */
+@media (max-width: 1180px) { .ui-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 880px)  { .ui-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.ui-fieldro { min-width: 0; }
+.ui-fieldro-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ui-n-400);
+  margin-bottom: 3px;
+}
+.ui-fieldro-value {
+  display: block;
+  font-size: 13px;
+  color: var(--ui-n-800);
+  line-height: 1.5;
+  word-break: break-word;
+}
+.ui-fieldro-value--mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.ui-fieldro-value--muted { color: var(--ui-n-400); }
+
+/* A labelled block inside a detail screen. */
+.ui-subsection + .ui-subsection { margin-top: var(--ui-s-5); }
+.ui-subsection-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: var(--ui-s-2);
+  margin-bottom: var(--ui-s-3);
+  border-bottom: 1px solid var(--ui-n-200);
+}
+.ui-subsection-head h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ui-n-600);
+}
+
+/* "Nothing here" inside a subsection — one line, not a whole empty state. */
+.ui-noneline { margin: 0; font-size: 12.5px; color: var(--ui-n-400); }
+
+/* A short list of facts. Marker is a dash, not a disc — a bulleted disc at
+   this size reads heavier than the text it introduces. */
+.ui-bullets { margin: 0; padding: 0; list-style: none; }
+.ui-bullets li {
+  position: relative;
+  padding-inline-start: 15px;
+  padding-block: 3px;
+  font-size: 12.5px;
+  color: var(--ui-n-600);
+  line-height: 1.55;
+}
+.ui-bullets li::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 11px;
+  width: 7px;
+  height: 1px;
+  background: var(--ui-n-300);
+}
+
+/* ─── Tag list ────────────────────────────────────────────────────────────
+   Named selections (branches, categories, products) as read-only tags, each
+   optionally carrying a smaller qualifier.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.ui-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  background: var(--ui-n-50);
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-sm);
+  font-size: 12.5px;
+  color: var(--ui-n-800);
+  max-width: 100%;
+}
+.ui-tag-sub { font-size: 11px; color: var(--ui-n-500); }
+
+/* ─── Settings rows ───────────────────────────────────────────────────────
+   A module with a master switch and a set of sub-switches. The switch is the
+   whole statement; no sentence is needed to explain it.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-setting-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s-3);
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ui-n-200);
+  background: var(--ui-n-25);
+}
+.ui-setting-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--ui-r-md);
+  background: var(--ui-n-100);
+  color: var(--ui-n-600);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ui-setting-name { font-size: 13px; font-weight: 620; color: var(--ui-n-900); }
+/* The setting name sits over the state it is currently in; side by side
+   the two run together into one unreadable string. */
+.ui-setting-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ui-setting-head[role='button'] { cursor: pointer; }
+.ui-setting-head[role='button']:hover { background: var(--ui-n-50); }
+.ui-setting-head[role='button']:focus-visible { outline: 2px solid var(--ui-info); outline-offset: 2px; }
+.ui-setting-head .ui-switch-track { margin-inline-start: auto; }
+.ui-setting-head .ui-switch { margin-inline-start: auto; }
+
+.ui-setting-sub {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s-3);
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--ui-n-100);
+  font-size: 12.5px;
+  color: var(--ui-n-700);
+}
+.ui-setting-sub:last-child { border-bottom: 0; }
+.ui-setting-sub .ui-switch { margin-inline-start: auto; }
+
+/* ─── Toast position ─────────────────────────────────────────────────────
+   .ui-toast styles the bubble; this pins it to the corner of the viewport.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-toast--fixed {
+  position: fixed;
+  top: 18px;
+  inset-inline-end: 18px;
+  z-index: 1200;
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.18);
+}
+
+@media (max-width: 760px) {
+  .ui-toast--fixed { top: 12px; inset-inline: 12px; }
+  .ui-fields { grid-template-columns: 1fr; }
+  .ui-kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ui-panel-foot .ui-btn { flex: 1; }
+  .ui-panel-foot .ui-panel-end { margin-inline-start: 0; }
+}
+
+/* ─── Detail-screen parts ─────────────────────────────────────────────────
+   What a request's detail view needs on top of fields and tables: nested
+   groups, attached documents, links, and a raw payload dump.
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* A field that wants two columns of the auto-fit field grid. */
+.ui-span-2 { grid-column: span 2; }
+
+/* A smaller group inside a .ui-subsection. */
+.ui-subgroup + .ui-subgroup { margin-top: var(--ui-s-4); }
+.ui-subgroup-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 var(--ui-s-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ui-n-700);
+}
+/* A group that frames itself — used when several sit stacked in one section. */
+.ui-subgroup--card {
+  padding: 12px 13px;
+  background: var(--ui-n-25);
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-md);
+}
+.ui-stack-sm { display: flex; flex-direction: column; gap: var(--ui-s-3); }
+
+/* A wide table keeps its columns and scrolls, rather than crushing them.
+   Below 760px the base stylesheet turns it into cards instead. */
+.ui-table-wrap--scroll { overflow-x: auto; }
+/* The pager is a block inside the scroller, so it sits at the container
+   width and would slide out of view when a wide table scrolls sideways.
+   Pinning it to the inline start keeps the controls where they were. */
+.ui-table-wrap--scroll > .ui-pager { position: sticky; inset-inline-start: 0; }
+.ui-table .ui-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--ui-n-600);
+}
+
+/* ─── Links ───────────────────────────────────────────────────────────── */
+
+.ui-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  font-weight: 560;
+  color: var(--ui-info);
+  text-decoration: none;
+}
+.ui-link:hover { text-decoration: underline; }
+/* A row that opens something is often a <button>, not an <a>: strip the
+   control chrome so it reads as the link it behaves like. */
+button.ui-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+/* In a table cell the link is the row name, so it matches the cell text. */
+.ui-table .ui-link { font-size: 13px; }
+.ui-link--subtle { color: var(--ui-n-500); }
+.ui-link--inline { margin-inline-start: 8px; }
+/* A URL is long and must be allowed to break; inline-flex would not wrap. */
+.ui-link--wrap { display: inline; word-break: break-all; }
+/* Footer that pairs a note on the left with the action on the right. */
+.ui-form-foot--split { justify-content: space-between; align-items: center; }
+/* A caveat that belongs to the fields above it, not to the actions below. */
+.ui-form-grid + .ui-banner { margin-top: var(--ui-s-4); }
+
+/* ─── Attached documents ─────────────────────────────────────────────────
+   A licence, a CR, a proof of payment. The thumbnail is the control: it
+   opens the file, and a missing file still occupies a card so the reviewer
+   can see at a glance what was not supplied.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-docs {
+  display: grid;
+  gap: var(--ui-s-3);
+  grid-template-columns: repeat(auto-fit, minmax(166px, 1fr));
+}
+.ui-doc {
+  background: var(--ui-n-0);
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-md);
+  overflow: hidden;
+  min-width: 0;
+}
+.ui-doc-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 118px;
+  background: var(--ui-n-50);
+  color: var(--ui-n-400);
+  border-bottom: 1px solid var(--ui-n-200);
+  overflow: hidden;
+}
+.ui-doc-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ui-doc-thumb--empty { background: var(--ui-n-25); color: var(--ui-n-300); }
+.ui-doc-meta { padding: 9px 11px; }
+.ui-doc-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 560;
+  color: var(--ui-n-800);
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+.ui-doc-acts { display: flex; flex-wrap: wrap; gap: var(--ui-s-3); }
+.ui-doc-none { font-size: 11.5px; color: var(--ui-n-400); }
+
+/* ─── Raw payload ─────────────────────────────────────────────────────── */
+
+.ui-pre {
+  margin: 0;
+  padding: var(--ui-s-3) var(--ui-s-4);
+  background: var(--ui-n-900);
+  color: #e4e7ec;
+  border-radius: var(--ui-r-md);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  max-height: 420px;
+  overflow: auto;
+}
+
+/* A page-level loading or failure state inside a detail shell. */
+.ui-state { padding: 44px 20px; text-align: center; }
+.ui-state svg { color: var(--ui-n-400); }
+.ui-state-title { margin: 10px 0 2px; font-size: 13.5px; font-weight: 600; color: var(--ui-n-800); }
+.ui-state-sub { margin: 0; font-size: 12.5px; color: var(--ui-n-500); }
+
+@media (max-width: 600px) {
+  .ui-fields { grid-template-columns: 1fr; }
+  .ui-span-2 { grid-column: span 1; }
+}
+
+@media (max-width: 760px) {
+  .ui-docs { grid-template-columns: 1fr 1fr; }
+}
+
+/* ─── Request rows ────────────────────────────────────────────────────────
+   A queue is read top to bottom, so it is a list, not a card grid: four
+   narrow columns force a zig-zag and squeeze the title, the facts and the
+   actions into ~360px each. One full-width row per request gives the title
+   room, lets the facts run as a labelled line instead of a bordered grid,
+   and puts the actions where the eye already is.
+
+   One border per row. Nothing nested.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-rows {
+  background: var(--ui-n-0);
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-lg);
+  overflow: hidden;
+}
+
+.ui-req {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ui-s-5);
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--ui-n-100);
+}
+.ui-req:last-child { border-bottom: 0; }
+.ui-req:hover { background: var(--ui-n-25); }
+
+.ui-req-main { flex: 1; min-width: 0; }
+
+.ui-req-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--ui-s-3);
+}
+.ui-req-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ui-n-900);
+  line-height: 1.35;
+  min-width: 0;
+}
+
+/* The request's kind leads the meta line, so it costs no second pill. */
+.ui-req-type { font-weight: 580; color: var(--ui-n-600); }
+.ui-req-type svg { color: var(--ui-n-500); }
+
+/* The facts that decide the request. Label small and quiet above-left of its
+   value, all on one wrapping line — the bordered grid was the main source of
+   the clutter at this width. */
+.ui-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px var(--ui-s-5);
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--ui-n-800);
+}
+.ui-facts > span { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; }
+.ui-facts em {
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ui-n-400);
+  white-space: nowrap;
+}
+
+.ui-req-acts { display: flex; gap: var(--ui-s-2); flex-shrink: 0; }
+
+/* Below a laptop the actions drop under the request rather than squeezing it. */
+@media (max-width: 980px) {
+  .ui-req { flex-direction: column; gap: var(--ui-s-3); }
+  .ui-req-acts { width: 100%; }
+  .ui-req-acts .ui-btn { flex: 1; }
+}
+
+/* ─── Removable tags ─────────────────────────────────────────────────────
+   A tag the user put there and can take away again (selected cities, picked
+   categories). The × is part of the tag, not a separate control.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-tag > svg { color: var(--ui-n-400); flex-shrink: 0; }
+.ui-tag-x {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-start: 2px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--ui-n-400);
+  cursor: pointer;
+  line-height: 0;
+}
+.ui-tag-x:hover { color: var(--ui-dang); }
+.ui-tag-x:focus-visible { outline: 2px solid var(--ui-info); outline-offset: 2px; border-radius: 2px; }
+
+/* ─── Add-a-value row ────────────────────────────────────────────────────
+   One input and the button that commits it, on a single line.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-addrow { display: flex; gap: var(--ui-s-2); }
+.ui-addrow .ui-input { flex: 1; min-width: 0; }
+
+/* ─── Pick list ──────────────────────────────────────────────────────────
+   A scrollable list of options, each with its own toggle — longer than a
+   select should be, shorter than its own screen.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-picklist { max-height: 340px; overflow-y: auto; }
+.ui-pick {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s-4);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--ui-n-100);
+}
+.ui-pick:last-child { border-bottom: 0; }
+.ui-pick:hover { background: var(--ui-n-25); }
+.ui-pick-main { flex: 1; min-width: 0; }
+.ui-pick-name { display: block; font-size: 13px; font-weight: 560; color: var(--ui-n-800); }
+.ui-pick-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--ui-n-500);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ui-pick > .ui-btn { flex-shrink: 0; }
+
+/* ─── Input with a unit ──────────────────────────────────────────────────
+   A percent, a currency, a unit of measure. The symbol belongs inside the
+   field — a borderless 4rem number with the unit floating beside it reads
+   like a hero banner, not a setting you can edit.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-affix { position: relative; display: block; }
+.ui-affix .ui-input { width: 100%; padding-inline-end: 32px; }
+.ui-affix-sym {
+  position: absolute;
+  inset-inline-end: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 13px;
+  font-weight: 560;
+  color: var(--ui-n-400);
+  pointer-events: none;
+}
+
+/* The one number a settings page exists to change. Still a field, just taller. */
+.ui-affix--hero .ui-input {
+  height: 54px;
+  font-size: 25px;
+  font-weight: 620;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  padding-inline-end: 42px;
+}
+.ui-affix--hero .ui-affix-sym { font-size: 17px; inset-inline-end: 14px; }
+/* …and one wide enough for a short value, not just a symbol. */
+.ui-affix--wide .ui-input { padding-inline-end: 76px; }
+
+/* Browser spinners fight the unit for the same corner. */
+.ui-affix .ui-input::-webkit-outer-spin-button,
+.ui-affix .ui-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.ui-affix input[type='number'].ui-input { appearance: textfield; -moz-appearance: textfield; }
+
+/* ─── Totals block ───────────────────────────────────────────────────────
+   Label on the left, figure on the right, one rule above the total. Used by
+   previews, invoices and any running sum.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-sum { font-size: 13px; }
+.ui-sum-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ui-s-4);
+  padding: 7px 0;
+  color: var(--ui-n-700);
+}
+.ui-sum-row > span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ui-sum-row--muted { color: var(--ui-n-500); font-size: 12.5px; }
+.ui-sum-sep { height: 1px; background: var(--ui-n-200); margin: 7px 0; }
+.ui-sum-row--total {
+  padding: 9px 0 0;
+  font-size: 15px;
+  font-weight: 640;
+  color: var(--ui-n-900);
+}
+
+/* ─── Switch at the end of a row ─────────────────────────────────────────
+   A column of switches must line up down the row end, but "Visible" and
+   "Hidden" are different widths. Putting the word before the track and
+   fixing its width keeps the tracks on one vertical line.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-switch--end .ui-switch-text { min-width: 52px; text-align: end; }
+
+/* ─── Spinner ────────────────────────────────────────────────────────────
+   A busy icon has to rotate. Pages used to reach for a bare `.spin` class
+   that is declared in whichever page stylesheet happened to be loaded
+   (ApprovalsPage.css, SignInPage.css, Workshop.css) — so a migrated page
+   that dropped its own CSS was left with a spinner that sat still. The
+   system owns it now, keyframes included.
+   ──────────────────────────────────────────────────────────────────────── */
+
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+.ui-spin { animation: ui-spin 0.8s linear infinite; }
+
+/* ─── Avatar ─────────────────────────────────────────────────────────────
+   A person in a row or a header. One initial on a neutral disc — a tinted
+   disc per account turns a user table into a colour chart.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--ui-n-100);
+  color: var(--ui-n-700);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 12.5px;
+  font-weight: 650;
+  text-transform: uppercase;
+}
+.ui-avatar--lg { width: 40px; height: 40px; font-size: 15px; }
+
+/* ─── Checkbox chips ─────────────────────────────────────────────────────
+   A row of permissions, each one on or off. The one thing the eye has to
+   read here is which are granted, so on/off owns the only colour: filled
+   when granted, outlined when not. A chip per action tinted by action type
+   would compete with that and say nothing a label does not.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.ui-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ui-n-300);
+  background: var(--ui-n-0);
+  color: var(--ui-n-600);
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 560;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.ui-chip input { position: absolute; opacity: 0; width: 0; height: 0; }
+.ui-chip:hover { border-color: var(--ui-n-400); color: var(--ui-n-800); }
+.ui-chip--on {
+  background: var(--ui-n-900);
+  border-color: var(--ui-n-900);
+  color: var(--ui-n-0);
+}
+.ui-chip--on:hover { border-color: var(--ui-n-900); color: var(--ui-n-0); }
+/* Granting a destructive action is worth one glance more than the others. */
+.ui-chip--on-dang {
+  background: var(--ui-dang-wash);
+  border-color: var(--ui-dang);
+  color: var(--ui-dang);
+}
+.ui-chip--on-dang:hover { border-color: var(--ui-dang); color: var(--ui-dang); }
+.ui-chip:focus-within { outline: 2px solid var(--ui-info); outline-offset: 2px; }
+
+/* ─── Selectable tile ────────────────────────────────────────────────────
+   The tile grid doubles as a picker: `aria-pressed` carries the choice, so
+   the selected state needs no extra class on the element.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-tile[aria-pressed='true'] {
+  border-color: var(--ui-n-900);
+  background: var(--ui-n-25);
+  box-shadow: inset 0 0 0 1px var(--ui-n-900);
+}
+.ui-tile[aria-pressed='true'] .ui-tile-icon { color: var(--ui-n-900); }
+.ui-tile-sub { font-size: 11.5px; color: var(--ui-n-500); line-height: 1.4; }
+
+/* A picker tile holds a sentence, so it needs more room than a launcher. */
+.ui-tiles--pick { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+
+/* A tab row can carry the page's actions at its trailing edge, so a console
+   screen needs no separate header band above the tabs. */
+.ui-tabs { align-items: flex-end; }
+.ui-tabs-end {
+  margin-inline-start: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ui-s-2);
+  padding-bottom: 6px;
+}
+
+/* A setting row that stands alone rather than heading a panel closes its own
+   box, the way .ui-toolbar--standalone does. */
+.ui-setting-head--boxed {
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-md);
+}
+
+/* ─── Master / detail ────────────────────────────────────────────────────
+   A list that picks on one side, the panel it opens on the other. Below the
+   breakpoint the two stack, and a screen that marks itself --picked hides
+   the list, so a phone is never scrolling past it to reach the choice it
+   already made. The list scrolls inside its own panel: a long roster must
+   not push the detail off the bottom of the page.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-split {
+  display: grid;
+  gap: var(--ui-s-3);
+  grid-template-columns: 330px minmax(0, 1fr);
+  align-items: start;
+}
+.ui-split-scroll { max-height: min(62vh, 560px); overflow-y: auto; }
+
+@media (max-width: 960px) {
+  .ui-split { grid-template-columns: 1fr; }
+  .ui-split--picked > .ui-split-aside { display: none; }
+  .ui-split-scroll { max-height: none; }
+}
+
+/* ─── Pick row ───────────────────────────────────────────────────────────
+   A list row that is also a button: the whole row is the target, and the
+   chosen one carries an inline-start marker rather than a fill, so the
+   pills inside it keep their own meaning.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-pickrow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ui-s-3);
+  width: 100%;
+  padding: 11px 14px;
+  border: 0;
+  border-bottom: 1px solid var(--ui-n-100);
+  border-inline-start: 2px solid transparent;
+  background: none;
+  font-family: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.ui-pickrow:last-child { border-bottom: 0; }
+.ui-pickrow:hover { background: var(--ui-n-25); }
+.ui-pickrow:focus-visible { outline: 2px solid var(--ui-info); outline-offset: -2px; }
+.ui-pickrow[aria-current='true'] {
+  background: var(--ui-n-50);
+  border-inline-start-color: var(--ui-n-900);
+}
+.ui-pickrow-main { flex: 1; min-width: 0; }
+
+/* ─── Figure ─────────────────────────────────────────────────────────────
+   The one number a detail panel is about — a balance, a total due. Bigger
+   than a metric card's value because nothing competes with it here.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-figure {
+  padding: 16px 18px;
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-lg);
+  background: var(--ui-n-25);
+}
+.ui-figure-label {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ui-n-500);
+}
+.ui-figure-value {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 640;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-n-900);
+}
+.ui-figure-value--dang { color: var(--ui-dang); }
+
+/* ─── Progress bar ────────────────────────────────────────────────────────
+   Actual against a target. The tone carries the verdict, so the number beside
+   it is confirmation rather than the only signal.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: var(--ui-n-200);
+  overflow: hidden;
+}
+.ui-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--ui-n-900);
+  transition: width 0.3s ease;
+}
+.ui-bar-fill--ok   { background: var(--ui-ok); }
+.ui-bar-fill--info { background: var(--ui-info); }
+.ui-bar-fill--warn { background: var(--ui-warn); }
+.ui-bar-fill--dang { background: var(--ui-dang); }
+.ui-figure-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--ui-n-500);
+}
+.ui-figure-foot svg { color: var(--ui-n-400); flex-shrink: 0; }
+
+/* ─── Overlay ────────────────────────────────────────────────────────────
+   The scrim behind a modal. Admin screens are full pages, not dialogs, so
+   this is for the few places that genuinely interrupt — a picker opened
+   from inside a form, where leaving the form would lose what is typed.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ui-s-4);
+  background: rgba(16, 24, 40, 0.5);
+}
+
+/* A modal that holds a table needs the width a table needs. */
+.ui-modal--wide { max-width: 780px; }
+/* …and a body that scrolls on its own, so the head and foot stay put. */
+.ui-modal--tall { display: flex; flex-direction: column; max-height: 85vh; }
+.ui-modal--tall .ui-modal-body { flex: 1; overflow-y: auto; min-height: 0; }
+.ui-modal-head { display: flex; align-items: center; gap: var(--ui-s-3); }
+.ui-modal-head .ui-modal-end { margin-inline-start: auto; }
+.ui-modal-foot--split { justify-content: space-between; align-items: center; flex-wrap: wrap; }
+
+/* A table inside a scrolling modal body keeps its header visible. */
+.ui-table--sticky thead th { position: sticky; top: 0; z-index: 1; }
+
+/* ─── Pick table rows ────────────────────────────────────────────────────
+   A table whose rows are selected rather than opened. Selection is the
+   signal, and the keyboard cursor is a separate, lighter one.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-table--pick tbody tr { cursor: pointer; }
+.ui-table--pick tbody tr[aria-selected='true'] td { background: var(--ui-ok-wash); }
+.ui-table--pick tbody tr[data-cursor='true'] td { background: var(--ui-n-100); }
+.ui-table--pick tbody tr[aria-selected='true'][data-cursor='true'] td {
+  background: var(--ui-ok-wash);
+  box-shadow: inset 0 0 0 1px var(--ui-ok-line);
+}
+
+/* ─── Input inside a table cell ──────────────────────────────────────────
+   An editable line-item grid: the field fills its cell, so it drops the
+   standing height and padding of a form input.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-input--cell { height: 28px; padding: 0 7px; font-size: 12.5px; }
+.ui-input--figure { text-align: end; font-variant-numeric: tabular-nums; }
+
+/* ─── Checklist ──────────────────────────────────────────────────────────
+   A fixed list of things ticked off on a job sheet. Each row carries the
+   same label twice, once per language, so the alternate sits muted at the
+   trailing edge rather than competing with the one being read.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-checks {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+.ui-check {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s-2);
+  padding: 7px 10px;
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-md);
+  background: var(--ui-n-0);
+  cursor: pointer;
+  user-select: none;
+}
+.ui-check:hover { background: var(--ui-n-25); }
+.ui-check:focus-within { outline: 2px solid var(--ui-info); outline-offset: 2px; }
+.ui-check-main { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 560; color: var(--ui-n-800); }
+.ui-check-alt { font-size: 12px; color: var(--ui-n-400); }
+
+/* ─── Record cards ───────────────────────────────────────────────────────
+   A grid of records, each one a card: a department, a category, a product.
+   A card earns its shape when a record is a handful of facts plus its own
+   controls — flattening that into a row loses the grouping. When a card
+   grid feels cramped the fix is room, not a different shape: widen the
+   track or drop a column, which is what the --wide variant is for.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-cards {
+  display: grid;
+  gap: var(--ui-s-3);
+  grid-template-columns: repeat(auto-fill, minmax(258px, 1fr));
+}
+.ui-cards--wide { grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
+
+.ui-rcard {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 15px 16px;
+  min-width: 0;
+  background: var(--ui-n-0);
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-lg);
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+}
+/* Only a card that opens something reacts to the pointer. */
+.ui-rcard--open { cursor: pointer; }
+.ui-rcard--open:hover {
+  border-color: var(--ui-n-300);
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
+}
+.ui-rcard--open:focus-visible { outline: 2px solid var(--ui-info); outline-offset: 2px; }
+
+/* Top line: the record's glyph, and its state pushed to the far edge. */
+.ui-rcard-top { display: flex; align-items: center; gap: var(--ui-s-2); }
+.ui-rcard-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--ui-r-sm);
+  background: var(--ui-n-100);
+  color: var(--ui-n-600);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.ui-rcard-top .ui-rcard-end { margin-inline-start: auto; }
+
+.ui-rcard-title {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ui-n-900);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.ui-rcard-sub { margin: 0; font-size: 12px; color: var(--ui-n-500); overflow-wrap: anywhere; }
+
+/* Footer sticks to the bottom so a row of cards lines its controls up even
+   when the cards hold different amounts of text. */
+.ui-rcard-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s-2);
+  margin-top: auto;
+  padding-top: 11px;
+  border-top: 1px solid var(--ui-n-100);
+}
+.ui-rcard-foot .ui-rcard-end { margin-inline-start: auto; }
+.ui-rcard-figure {
+  font-size: 13.5px;
+  font-weight: 620;
+  color: var(--ui-n-900);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Switch track driven by an attribute ────────────────────────────────
+   The switch normally reads its state from the checkbox beside it. Where
+   the control is a button that reports its own state instead, `data-on`
+   carries it, so the same track serves both.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-switch-track[data-on='true'] { background: var(--ui-n-900); }
+.ui-switch-track[data-on='true']::after { transform: translateX(14px); }
+[role='button'].ui-switch-track { cursor: pointer; flex-shrink: 0; }
+
+/* ─── Dropzone ───────────────────────────────────────────────────────────
+   The target for a file. Dashed because it accepts a drop, and it is a
+   label so the whole area opens the file picker.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ui-s-2);
+  padding: 26px 20px;
+  border: 1px dashed var(--ui-n-300);
+  border-radius: var(--ui-r-lg);
+  background: var(--ui-n-25);
+  color: var(--ui-n-600);
+  font-size: 12.5px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+.ui-dropzone:hover { border-color: var(--ui-n-400); background: var(--ui-n-50); }
+.ui-dropzone svg { color: var(--ui-n-400); }
+.ui-dropzone strong { font-weight: 600; color: var(--ui-n-800); }
+
+/* ─── Switch as a settings row ───────────────────────────────────────────
+   Inside a card the switch is one line of a small settings list: what it
+   governs on the leading edge, what it currently is next to the control it
+   is changed with. Reading the state before its own name is backwards.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-switch--row { display: flex; width: 100%; gap: var(--ui-s-2); }
+.ui-switch--row .ui-switch-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--ui-n-700);
+}
+.ui-switch--row .ui-switch-text {
+  min-width: 0;
+  text-align: end;
+  color: var(--ui-n-500);
+}
+.ui-switch--row .ui-switch-track { flex-shrink: 0; }
+
+/* ─── Tab row overflow ───────────────────────────────────────────────────
+   Eight tabs and a set of actions do not fit one line on a laptop. Tabs
+   keep their own width and wrap as a strip; the actions stay together and
+   drop as one block rather than shedding a single button to the next line.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-tabs { flex-wrap: wrap; row-gap: 0; }
+.ui-tab { white-space: nowrap; }
+/* The actions wrap among themselves rather than running off the page: a row
+   of five buttons is wider than the space a tab strip leaves beside it. */
+.ui-tabs-end { flex-wrap: wrap; justify-content: flex-end; }
+
+/* A filter bar that stands on its own has the width a table header does not,
+   so its search is allowed to grow into it rather than clipping a long
+   placeholder at 300px. */
+.ui-toolbar--standalone .ui-search { max-width: 400px; }
+
+/* ─── Toolbar that is itself the control ─────────────────────────────────
+   A panel whose header opens it: the header is a <button>, which brings a
+   width of its own content plus the browser's chrome. Strip both so it
+   fills the header row the way a plain toolbar does, and drop its rule
+   while the panel is shut so a closed row carries no stray line.
+   ──────────────────────────────────────────────────────────────────────── */
+
+button.ui-toolbar {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--ui-n-200);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: start;
+  cursor: pointer;
+}
+button.ui-toolbar:last-child { border-bottom: 0; }
+button.ui-toolbar:hover { background: var(--ui-n-25); }
+button.ui-toolbar:focus-visible { outline: 2px solid var(--ui-info); outline-offset: -2px; }
+/* The panel title is the row's name here, so it takes the slack. */
+button.ui-toolbar > .ui-panel-title { flex: 1; min-width: 0; }
+
+/* ─── Table wrapper without a frame ──────────────────────────────────────
+   A wide table inside a panel still has to scroll, but it must not draw a
+   second box inside the one the panel already drew.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-table-wrap--bare { border: 0; border-radius: 0; background: transparent; }
+
+/* ─── Suggestion list ────────────────────────────────────────────────────
+   A pick list that drops out of the field above it, so it floats over the
+   page rather than pushing it down. The field it belongs to has to be the
+   positioned ancestor — .ui-search already is.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-suggest {
+  position: absolute;
+  z-index: 40;
+  inset-inline: 0;
+  top: calc(100% + 4px);
+  background: var(--ui-n-0);
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-md);
+  box-shadow: 0 8px 20px rgba(16, 24, 40, 0.1);
+}
+/* A pick list a script positions, for a field inside a scrolling grid where an
+   absolutely-placed panel would be clipped. The chrome without the anchoring:
+   the component measures the field and supplies inset, width and height. */
+.ui-suggest--fixed {
+  position: fixed;
+  inset-inline: auto;
+  top: auto;
+  overflow-y: auto;
+}
+.ui-suggest .ui-pick { cursor: pointer; }
+.ui-suggest .ui-pick:hover,
+.ui-suggest .ui-pick[aria-selected='true'] { background: var(--ui-n-50); }
+
+/* The panel a tab strip switches between. The gap between the strip and the
+   panel comes from the .ui-stack they sit in, so this only has to let a wide
+   table inside it shrink rather than push the page sideways. */
+.ui-tabpanel { min-width: 0; }
+
+/* ─── Bilingual table header ───────────────────────────────────────────────
+   A statement that has to be read in both languages carries the second one
+   under the first, quieter and untransformed — an Arabic heading has no case
+   to upper, and letter-spacing only pulls its letters apart.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-table th .ui-th-sub {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ui-n-400);
+}
+
+/* ─── Ledger balance rows ─────────────────────────────────────────────────
+   Opening and closing balance are not entries, so they do not read as rows:
+   they bracket the ones between them.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.ui-table tr.ui-row-sum td {
+  background: var(--ui-n-50);
+  font-weight: 600;
+  color: var(--ui-n-800);
+}
+.ui-table tbody tr.ui-row-sum:hover td { background: var(--ui-n-50); }
+.ui-table tr.ui-row-sum--open td { border-bottom: 1px solid var(--ui-n-200); }
+.ui-table tr.ui-row-sum--close td { border-top: 1px solid var(--ui-n-200); }
+
+/* ─── Metric tile as a filter ─────────────────────────────────────────────
+   On a statement, each figure is also the filter for the lines behind it. A
+   <button> needs the browser's own chrome stripped before it can sit in a KPI
+   row beside a static tile without reading as a different kind of thing.
+   ──────────────────────────────────────────────────────────────────────── */
+
+button.ui-metric {
+  display: block;
+  width: 100%;
+  font-family: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: border-color 0.14s ease, background 0.14s ease;
+}
+button.ui-metric:hover { border-color: var(--ui-n-300); }
+.ui-metric[aria-pressed='true'] {
+  border-color: var(--ui-n-900);
+  background: var(--ui-n-25);
+  box-shadow: inset 0 0 0 1px var(--ui-n-900);
+}
+.ui-metric:focus-visible { outline: 2px solid var(--ui-info); outline-offset: 2px; }
+
+/* A row that mixes fields with buttons. `.ui-field` stacks a label over its
+   input, so centring puts a button halfway up the label instead of level with
+   the input it acts on. Align to the bottom edge and they share a line. */
+.ui-row--fields { align-items: flex-end; }
+.ui-row--fields > .ui-toolbar-end { align-items: flex-end; }
+/* ─── Grouped fields ────────────────────────────────────────────
+   A named band inside a form grid: a wash panel that is itself twelve
+   columns, so the fields inside keep the same `ui-col-*` spans as the fields
+   around it. It earns its keep where a form holds two parallel date ranges
+   and four labels reading "From" / "To" would not say which range is which.
+   ───────────────────────────────────────────────────────────────── */
+
+.ui-group {
+  grid-column: span 12;
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--ui-s-4);
+  padding: var(--ui-s-4);
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-lg);
+  background: var(--ui-n-25);
+}
+.ui-group-title {
+  grid-column: span 12;
+  font-size: 12px;
+  font-weight: 620;
+  color: var(--ui-n-700);
+}
+
+/* ─── Chart box ──────────────────────────────────────────────────
+   Recharts' <ResponsiveContainer> measures its parent, so the parent has to
+   carry a height in pixels: a percentage resolves against a box that is
+   itself sized by its content, and the chart collapses to nothing.
+   ───────────────────────────────────────────────────────────────── */
+
+.ui-chart { width: 100%; height: 280px; }
+
+/* ─── Segmented control ────────────────────────────────────────────
+   Two or three choices that switch how one thing is shown rather than
+   navigating anywhere, so they are not tabs: one pill holding buttons that
+   share an edge. `aria-pressed` carries the choice and is also what a
+   screen reader announces, so no second marker class is needed.
+   ───────────────────────────────────────────────────────────────── */
+
+.ui-seg {
+  display: inline-flex;
+  border: 1px solid var(--ui-n-200);
+  border-radius: 999px;
+  background: var(--ui-n-0);
+  overflow: hidden;
+}
+.ui-seg-btn {
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--ui-n-500);
+  height: 30px;
+  padding: 0 13px;
+  cursor: pointer;
+}
+.ui-seg-btn:hover { color: var(--ui-n-800); }
+.ui-seg-btn[aria-pressed='true'] { background: var(--ui-n-900); color: var(--ui-n-0); }
+.ui-seg-btn:focus-visible { outline: 2px solid var(--ui-info); outline-offset: -2px; }
+
+/* A metric tile with nothing behind its figure to open. It keeps its shape
+   so the row stays even, and only stops offering the click. */
+button.ui-metric:disabled { cursor: default; }
+button.ui-metric:disabled:hover { border-color: var(--ui-n-200); }
+
+@media (max-width: 720px) {
+  .ui-chart { height: 240px; }
+}
+/* ─── Combobox adapter ─────────────────────────────────────────────
+   `SearchableEntityCombobox` is shared with portals that are not on this
+   design system, so it keeps its own stylesheet and its own class names.
+   This is the one place that reaches into them: a form row holding a
+   combobox beside a plain input must not show two box heights, two border
+   colours and two corner radii. Only the box is restyled -- the pick list
+   is portalled to <body> and stays the component's own.
+   ───────────────────────────────────────────────────────────────── */
+
+.ui-combobox .pi-search-box {
+  min-height: 36px;
+  padding: 0 10px;
+  border-color: var(--ui-n-300);
+  border-radius: var(--ui-r-md);
+}
+.ui-combobox .pi-search-box input {
+  padding: 0;
+  font-size: 13px;
+}
+
+/* utility kept from deleted page CSS */
+.text-right { text-align: right; }
+/* A banner the reader can dismiss. Same shape as the toast's close control,
+   pushed to the trailing edge so the message keeps the width it was written
+   for, and inheriting the banner's own colour rather than fighting it. */
+.ui-banner-x {
+  margin-inline-start: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: currentColor;
+  opacity: 0.65;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.ui-banner-x:hover { opacity: 1; }
+/* ─── Document sheet ─────────────────────────────────────────────
+   A formal document — a tax invoice, a quote — shown inside a screen shell.
+   It keeps its own printed width and centres instead of stretching to the
+   panel: an invoice that reflows is no longer the document it certifies.
+   ───────────────────────────────────────────────────────────────── */
+
+.ui-sheet {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 8px 0;
+  overflow-y: auto;
+}
+
+/* ─── Printing one element ───────────────────────────────────────
+   A Print button on a screen that is mostly chrome has to print the document,
+   not the sidebar around it. Mark the document `.ui-print-root`.
+
+   The whole page is hidden by `visibility`, not `display`, so the document
+   keeps the layout it was measured in; then the root is pulled to the top of
+   the sheet. Colours are forced on, because a status pill printed white on
+   white says nothing.
+
+   The `:has()` guard matters: this stylesheet is loaded nearly everywhere, and
+   without it every page in the app would print blank. A page opts in by
+   putting the class on something.
+
+   The last rule reaches into the cashier invoice's own class names, the one
+   document this is used for so far: on screen its goods table scrolls inside
+   a fixed-width box, which on paper would clip the columns off the page.
+   ───────────────────────────────────────────────────────────────── */
+
+@media print {
+  @page { size: A4; margin: 10mm; }
+
+  html:has(.ui-print-root),
+  body:has(.ui-print-root) {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+  }
+  body:has(.ui-print-root) * { visibility: hidden !important; }
+
+  .ui-print-root,
+  .ui-print-root * {
+    visibility: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  .ui-print-root {
+    position: absolute !important;
+    inset-inline-start: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+
+  .ui-print-root .cti-goods-wrap { overflow: visible !important; }
+  .ui-print-root .cti-goods-table {
+    min-width: 0 !important;
+    width: 100% !important;
+    table-layout: fixed !important;
+  }
+}
+/* ─── Form page ─────────────────────────────────────────────────
+   A whole screen that is one form. It keeps a reading column instead of
+   stretching to the monitor: a label and the field it names stop being a
+   pair once there is a hand's width of nothing between them.
+   ───────────────────────────────────────────────────────────────── */
+
+.ui-formpage { max-width: 760px; }
+/* ─── Hero figure ───────────────────────────────────────────────
+   The one number a screen exists to show — a wallet balance, a period total.
+   Larger than a KPI tile's value because nothing on the panel competes with
+   it, and its unit sits beside it at reading size instead of being scaled up
+   with it, which would make the currency shout as loudly as the amount.
+   ───────────────────────────────────────────────────────────────── */
+
+.ui-hero-figure { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.ui-hero-amount {
+  font-size: 34px;
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--ui-n-900);
+  font-variant-numeric: tabular-nums;
+}
+.ui-hero-unit { font-size: 14px; font-weight: 560; color: var(--ui-n-500); }
+/* What the panel is about, stated once and quietly. */
+.ui-hero-icon { color: var(--ui-n-200); flex-shrink: 0; }
+/* ─── Trend ────────────────────────────────────────────────────────
+   Which way a number is heading. The arrow already says it; the colour only
+   has to agree, so these tint a glyph and nothing else.
+   ───────────────────────────────────────────────────────────────── */
+
+.ui-trend--up   { color: var(--ui-ok); }
+.ui-trend--down { color: var(--ui-dang); }
+.ui-trend--flat { color: var(--ui-n-400); }
+/* A table whose whole body is one "nothing here" line. `.ui-empty` is the
+   block for a panel; this is the cell version, so the column headings above
+   it stay readable as the shape of what is missing. */
+.ui-table td.ui-td-empty {
+  padding: 28px 14px;
+  text-align: center;
+  color: var(--ui-n-500);
+}
+
+/* Money that is neither in nor out yet — pending, held, awaiting approval.
+   The third state the in/out pair has no colour for. */
+.ui-table .ui-money--hold { color: var(--ui-warn); }
+/* ─── Colour swatch ────────────────────────────────────────────────
+   The chip that ties a row to its slice of a chart. Which colour is data,
+   so it arrives as an inline background; the shape is not.
+   ───────────────────────────────────────────────────────────────── */
+
+.ui-swatch {
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--ui-n-300);
+}
+
+/* ─── Colour field ─────────────────────────────────────────────────
+   A native colour input sized to stand in a row of `ui-input`s. The swatch
+   is the control itself rather than a preview beside it, so there is one
+   thing to click and no second square to keep in step with the value.
+   ───────────────────────────────────────────────────────────────── */
+
+.ui-color {
+  width: 100%;
+  height: 36px;
+  padding: 3px;
+  border: 1px solid var(--ui-n-300);
+  border-radius: var(--ui-r-md);
+  background: var(--ui-n-0);
+  cursor: pointer;
+}
+.ui-color::-webkit-color-swatch-wrapper { padding: 0; }
+.ui-color::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--ui-r-md) - 2px);
+}
+.ui-color::-moz-color-swatch {
+  border: 0;
+  border-radius: calc(var(--ui-r-md) - 2px);
+}
+.ui-color:focus-visible { outline: 2px solid var(--ui-info); outline-offset: 2px; }
+/* ─── Panel states ──────────────────────────────────────────────────
+   A card that is live right now gets an edge, not a tint: in a grid of cards
+   a filled background reads as a different kind of thing, an edge reads as
+   the same thing in a different state.
+
+   A head that opens the record it titles takes the pointer, and its own
+   hover, so the click target is visible before it is tried.
+   ───────────────────────────────────────────────────────────────── */
+
+.ui-panel--live { border-color: var(--ui-ok-line); }
+.ui-panel-head--click { cursor: pointer; }
+.ui-panel-head--click:hover { background: var(--ui-n-50); }
+.ui-panel-head--click:focus-visible { outline: 2px solid var(--ui-info); outline-offset: -2px; }
+/* ─── Scope picker ──────────────────────────────────────────────────
+   Pick the parents, then narrow to their children: workshops and the
+   branches inside them, a region and its cities. A child list only appears
+   once its parent is ticked, and sits indented past the parent's checkbox so
+   the nesting is visible rather than implied. Ticking no child is the normal
+   case and means all of them, which is why the head carries a running count
+   instead of a "select all".
+   ───────────────────────────────────────────────────────────────── */
+
+.ui-scope {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ui-s-2);
+  max-height: 420px;
+  overflow-y: auto;
+}
+.ui-scope-group {
+  padding: 8px 10px;
+  border: 1px solid var(--ui-n-200);
+  border-radius: var(--ui-r-md);
+  background: var(--ui-n-0);
+}
+.ui-scope-group--on { background: var(--ui-n-25); border-color: var(--ui-n-300); }
+.ui-scope-head {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-s-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ui-n-800);
+  cursor: pointer;
+  user-select: none;
+}
+.ui-scope-note {
+  margin-inline-start: auto;
+  padding-inline-start: 10px;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--ui-n-500);
+  text-align: end;
+}
+.ui-scope-children {
+  display: grid;
+  gap: 6px 10px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  margin-top: var(--ui-s-2);
+  padding-inline-start: 24px;
+}
+.ui-scope-hint {
+  margin: var(--ui-s-2) 0 0;
+  padding-inline-start: 24px;
+  font-size: 11.5px;
+  color: var(--ui-n-400);
+}

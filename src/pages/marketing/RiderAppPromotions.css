@@ -1,0 +1,38 @@
+/* Banner upload field */
+.rap-banner-preview {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  margin-bottom: 8px;
+  max-width: 420px;
+  overflow: hidden;
+}
+
+.rap-banner-preview img {
+  display: block;
+  max-height: 180px;
+  object-fit: cover;
+  width: 100%;
+}
+
+.rap-banner-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.rap-banner-actions .mkp-cancel-btn {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+}
+
+.rap-banner-link {
+  margin-top: 8px;
+}
+
+/* Upload / validation error under the banner field (BannerUploadField). */
+.rap-field-error {
+  color: var(--ui-dang, #b42318);
+  font-size: 12px;
+}
