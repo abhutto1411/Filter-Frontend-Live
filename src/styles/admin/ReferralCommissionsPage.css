@@ -1,0 +1,291 @@
+/* Commissions Page */
+.commissions-page {
+    animation: fadeIn 0.4s ease-out;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.commissions-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.commissions-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0;
+    color: #111827;
+}
+
+.commissions-subtitle {
+    font-size: 0.875rem;
+    color: #6B7280;
+    margin: 0;
+}
+
+.commissions-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+}
+
+.stat-card {
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.stat-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    color: #6B7280;
+}
+
+.icon-accrued { color: #F59E0B; }
+.icon-paid { color: #10B981; }
+.icon-selected { color: #3B82F6; }
+
+.stat-val {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #111827;
+}
+
+.stat-val.accrued { color: #F59E0B; }
+.stat-val.paid { color: #10B981; }
+.stat-val.selected { color: #3B82F6; }
+
+.commissions-controls-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    gap: 16px;
+    background: #F9FAFB;
+    padding: 16px;
+    border-radius: 8px;
+    border: 1px solid #E5E7EB;
+}
+
+.filter-group {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    flex: 1;
+}
+
+.filter-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.filter-item label {
+    font-size: 0.75rem;
+    color: #6B7280;
+    font-weight: 500;
+}
+
+.filter-item select,
+.filter-item input {
+    height: 36px;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+    padding: 0 12px;
+    font-size: 0.875rem;
+    color: #374151;
+    background: #FFFFFF;
+    outline: none;
+    min-width: 160px;
+}
+
+.filter-item select:focus,
+.filter-item input:focus {
+    border-color: #3B82F6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+.status-filter select {
+    min-width: 120px;
+}
+
+.date-input input {
+    min-width: 140px;
+}
+
+.action-buttons {
+    display: flex;
+    gap: 12px;
+}
+
+.btn-select-all {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 16px;
+    border: 1px solid #D1D5DB;
+    border-radius: 6px;
+    background: #FFFFFF;
+    color: #374151;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-select-all:hover {
+    background: #F3F4F6;
+}
+
+.btn-generate-payout {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 36px;
+    padding: 0 16px;
+    border: none;
+    border-radius: 6px;
+    background: #059669;
+    color: #FFFFFF;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.btn-generate-payout:hover {
+    background: #047857;
+}
+
+.commissions-table-container {
+    background: #FFFFFF;
+    border: 1px solid #E5E7EB;
+    border-radius: 8px;
+    overflow-x: auto;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.commissions-table {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: left;
+}
+
+.commissions-table th {
+    padding: 12px 16px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #4B5563;
+    border-bottom: 1px solid #E5E7EB;
+    text-transform: uppercase;
+}
+
+.commissions-table td {
+    padding: 16px;
+    font-size: 0.875rem;
+    color: #111827;
+    border-bottom: 1px solid #E5E7EB;
+}
+
+.commissions-table th.checkbox-col,
+.commissions-table td.checkbox-col {
+    width: 48px;
+    text-align: center;
+    padding: 12px 16px;
+}
+
+.commissions-table tbody tr:hover {
+    background: #F9FAFB;
+}
+
+.commissions-table tbody .empty-state {
+    text-align: center;
+    padding: 48px;
+    color: #9CA3AF;
+    font-size: 0.875rem;
+}
+
+/* Payout Modal Styles */
+.payout-summary-box {
+    background: #FFFBEB;
+    border: 1px solid #FEF3C7;
+    border-radius: 12px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 24px;
+}
+
+.summary-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #92400E;
+}
+
+.summary-count {
+    font-size: 0.875rem;
+    color: #B45309;
+}
+
+.summary-amount {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #92400E;
+    margin-top: 4px;
+}
+
+.journal-footnote {
+    font-size: 0.75rem;
+    color: #6B7280;
+    margin-top: 16px;
+}
+
+.btn-confirm-payout {
+    background: #6EE7B7;
+    color: #FFFFFF;
+    border: none;
+    padding: 10px 24px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-confirm-payout:hover:not(:disabled) {
+    background: #34D399;
+}
+
+.btn-confirm-payout:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.status-badge {
+    padding: 4px 10px;
+    border-radius: 99px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: capitalize;
+}
+
+.status-badge.accrued {
+    background: #FFFBEB;
+    color: #D97706;
+}
+
+.status-badge.paid {
+    background: #ECFDF5;
+    color: #059669;
+}
