@@ -1,0 +1,49 @@
+/* Shared segmented pill bar — imported by ThemeOnly.css (supplier) and Workshop.css. */
+
+.theme-segmented {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    width: fit-content;
+    max-width: 100%;
+    padding: 4px;
+    background: #ffffff;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.theme-segmented--full {
+    display: flex;
+    width: 100%;
+}
+
+.theme-segmented__btn {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--theme-muted-text, #6b7280);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.theme-segmented__btn:hover:not(.theme-segmented__btn--active) {
+    color: var(--theme-dark, #23262D);
+    background: var(--theme-muted-bg, #f3f4f6);
+}
+
+.theme-segmented__btn--active {
+    background: var(--theme-primary, var(--color-primary));
+    color: #111111;
+}
+
+.theme-segmented__btn--active:hover {
+    background: var(--color-primary-dark, var(--theme-primary, var(--color-primary)));
+    color: #111111;
+}

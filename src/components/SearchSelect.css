@@ -1,0 +1,162 @@
+.ss-combo {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+}
+
+.ss-combo__field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 42px;
+    padding: 0 10px;
+    border: 1px solid var(--color-border, #e2e8f0);
+    border-radius: 9px;
+    background: #fff;
+    box-sizing: border-box;
+    cursor: text;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ss-combo--sm .ss-combo__field {
+    min-height: 36px;
+    border-radius: 8px;
+}
+
+.ss-combo__field:hover {
+    border-color: #cbd5e1;
+}
+
+.ss-combo__field--open,
+.ss-combo__field:focus-within {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.18);
+}
+
+.ss-combo--disabled .ss-combo__field {
+    opacity: 0.6;
+    background: var(--color-bg-muted, #f8fafc);
+    cursor: not-allowed;
+}
+
+.ss-combo__icon {
+    flex-shrink: 0;
+    color: #94a3b8;
+}
+
+/* Beat form-wide rules such as `.ws-field input` that style every input. */
+.ss-combo .ss-combo__field input.ss-combo__input {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+    height: 28px;
+    margin: 0;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    outline: none;
+    box-shadow: none;
+    background: transparent;
+    font-size: 0.875rem;
+    color: #0f172a;
+    text-overflow: ellipsis;
+}
+
+.ss-combo--sm .ss-combo__field input.ss-combo__input {
+    font-size: 0.82rem;
+}
+
+.ss-combo .ss-combo__field input.ss-combo__input:disabled {
+    cursor: not-allowed;
+}
+
+.ss-combo__clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #64748b;
+    cursor: pointer;
+}
+
+.ss-combo__clear:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+/* Keeps native `required` validation: invisible, unfocusable proxy under the field. */
+.ss-combo input.ss-combo__required-proxy {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.ss-combo__menu .ms-combo__opt {
+    justify-content: space-between;
+    text-align: start;
+}
+
+.ss-combo__tick {
+    flex-shrink: 0;
+    color: #ea580c;
+}
+
+.ss-combo__menu .ms-combo__opt--hi .ss-combo__tick {
+    color: #1e2124;
+}
+
+.ss-combo__menu .ss-combo__opt--disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+/* Variant for dark surfaces such as the portal sidebar. */
+.ss-combo--dark .ss-combo__field {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.ss-combo--dark .ss-combo__field:hover {
+    border-color: rgba(255, 255, 255, 0.28);
+}
+
+.ss-combo--dark .ss-combo__icon {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.ss-combo.ss-combo--dark .ss-combo__field input.ss-combo__input {
+    color: #fff;
+    font-weight: 600;
+}
+
+.ss-combo.ss-combo--dark .ss-combo__field input.ss-combo__input::placeholder {
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.ss-combo--dark.ss-combo--disabled .ss-combo__field {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+/* Variant for a field that already sits inside a framed row. */
+.ss-combo--bare .ss-combo__field,
+.ss-combo--bare .ss-combo__field:hover,
+.ss-combo--bare .ss-combo__field--open,
+.ss-combo--bare .ss-combo__field:focus-within {
+    min-height: 0;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+}
