@@ -1,0 +1,335 @@
+/* Scoped accounting UI kit (UI-01). Selectors always start with [data-acct-ui]. */
+
+[data-acct-ui] {
+    --acct-ctl-h: 40px;
+    --acct-ctl-h-sm: 32px;
+    --acct-radius: 10px;
+    --acct-gap: 12px;
+    --acct-kpi-min-h: 92px;
+}
+
+/* ----- Buttons (geometry only; colours / hover stay from existing classes) ----- */
+[data-acct-ui] .btn-portal,
+[data-acct-ui] .btn-portal-outline,
+[data-acct-ui] .btn-portal-dark,
+[data-acct-ui] .btn-submit,
+[data-acct-ui] .btn-dark,
+[data-acct-ui] button.btn-portal,
+[data-acct-ui] button.btn-portal-outline,
+[data-acct-ui] button.btn-portal-dark,
+[data-acct-ui] button.btn-submit,
+[data-acct-ui] button.btn-dark {
+    box-sizing: border-box;
+    height: var(--acct-ctl-h);
+    min-height: var(--acct-ctl-h);
+    padding: 0 16px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1;
+    border-radius: var(--acct-radius);
+    white-space: nowrap;
+}
+
+[data-acct-ui] .btn-submit {
+    box-shadow: none;
+}
+
+[data-acct-ui] .ws-table td .btn-portal,
+[data-acct-ui] .ws-table td .btn-portal-outline,
+[data-acct-ui] .ws-table td .btn-portal-dark,
+[data-acct-ui] .ws-table td .btn-submit,
+[data-acct-ui] .ws-table td .btn-dark,
+[data-acct-ui] table td .btn-portal,
+[data-acct-ui] table td .btn-portal-outline,
+[data-acct-ui] table td .btn-portal-dark,
+[data-acct-ui] table td .btn-submit,
+[data-acct-ui] table td .btn-dark,
+[data-acct-ui] .table-cell .btn-portal,
+[data-acct-ui] .table-cell .btn-portal-outline,
+[data-acct-ui] .table-cell .btn-portal-dark,
+[data-acct-ui] .table-cell .btn-submit,
+[data-acct-ui] .table-cell .btn-dark {
+    height: var(--acct-ctl-h-sm);
+    min-height: var(--acct-ctl-h-sm);
+    padding: 0 12px;
+}
+
+/* ----- Inputs / selects / combobox control ----- */
+/* Height is 40px; drop the old 14px block padding so native <select> text is not clipped. */
+[data-acct-ui] .form-input,
+[data-acct-ui] .form-input-field,
+[data-acct-ui] select,
+[data-acct-ui] input[type='text'],
+[data-acct-ui] input[type='search'],
+[data-acct-ui] input[type='number'],
+[data-acct-ui] input[type='date'],
+[data-acct-ui] input[type='month'],
+[data-acct-ui] input[type='email'],
+[data-acct-ui] input[type='tel'],
+[data-acct-ui] input[type='datetime-local'],
+[data-acct-ui] input:not([type]) {
+    box-sizing: border-box;
+    height: var(--acct-ctl-h);
+    min-height: var(--acct-ctl-h);
+    padding-block: 0;
+    padding-inline: 12px;
+    line-height: calc(var(--acct-ctl-h) - 2px);
+    color: #0f172a;
+    background-color: #fff;
+}
+
+[data-acct-ui] select.form-input,
+[data-acct-ui] select.form-input-field,
+[data-acct-ui] select {
+    padding-block: 0;
+    padding-inline: 10px 28px;
+    line-height: normal;
+    color: #0f172a;
+    background-color: #fff;
+}
+
+[data-acct-ui] .ss-combo__field,
+[data-acct-ui] .sf-entity-combobox-anchor .pi-search-box {
+    height: var(--acct-ctl-h);
+    min-height: var(--acct-ctl-h);
+    padding-block: 0;
+    box-sizing: border-box;
+}
+
+/* Keep combobox inner fields auto-sized; a 40px inner input clips inside a 40px shell. */
+[data-acct-ui] .ss-combo .ss-combo__field input.ss-combo__input,
+[data-acct-ui] .sf-entity-combobox-anchor .pi-search-box input {
+    height: auto;
+    min-height: 0;
+    padding-block: 0;
+    padding-inline: 0;
+    line-height: 1.25;
+    color: #0f172a;
+    background-color: transparent;
+}
+
+/* ----- Filter bars ----- */
+[data-acct-ui] .acct-filter-bar,
+[data-acct-ui] .cash-bank-register-filters,
+[data-acct-ui] .gj-filter-bar,
+[data-acct-ui] .ws-tx-filters,
+[data-acct-ui] .cash-bank-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--acct-gap);
+    align-items: flex-end;
+    padding: 14px;
+    margin-block-end: 14px;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    background: #fff;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow: visible;
+}
+
+[data-acct-ui] .acct-filter-bar label,
+[data-acct-ui] .acct-filter-bar .form-label,
+[data-acct-ui] .gj-filter-bar label,
+[data-acct-ui] .ws-tx-filters label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+[data-acct-ui] .acct-filter-bar [role="radiogroup"] label,
+[data-acct-ui] .acct-filter-bar label:has(> input[type="radio"]),
+[data-acct-ui] .acct-filter-bar label:has(> input[type="checkbox"]) {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ----- KPI cards ----- */
+[data-acct-ui] .acct-kpi-grid,
+[data-acct-ui] .cash-bank-stats,
+[data-acct-ui] .cash-bank-stats-row,
+[data-acct-ui] .cash-bank-stat-grid,
+[data-acct-ui] .advances-stats,
+[data-acct-ui] .ws-tx-kpis,
+[data-acct-ui] .journal-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-block-end: 20px;
+    min-width: 0;
+}
+
+[data-acct-ui] .acct-kpi-card,
+[data-acct-ui] .cash-bank-stat-card,
+[data-acct-ui] .jr-stat-card,
+[data-acct-ui] .ws-tx-kpi {
+    container-type: inline-size;
+    min-width: 0;
+    min-height: var(--acct-kpi-min-h);
+    box-sizing: border-box;
+    padding: 16px;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    overflow: hidden;
+}
+
+[data-acct-ui] .acct-kpi-card--with-icon {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+}
+
+[data-acct-ui] .acct-kpi-icon,
+[data-acct-ui] .acct-kpi-card .cash-bank-stat-icon {
+    width: 40px;
+    height: 40px;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+}
+
+[data-acct-ui] .acct-kpi-body {
+    min-width: 0;
+    flex: 1;
+}
+
+[data-acct-ui] .acct-kpi-label,
+[data-acct-ui] .acct-kpi-card .cash-bank-stat-label,
+[data-acct-ui] .acct-kpi-card .adv-stat-label,
+[data-acct-ui] .jr-stat-label,
+[data-acct-ui] .ws-tx-kpi > span {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #6b7280;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+[data-acct-ui] .acct-kpi-value,
+[data-acct-ui] .acct-kpi-card .cash-bank-stat-value,
+[data-acct-ui] .acct-kpi-card .adv-stat-value,
+[data-acct-ui] .jr-stat-value,
+[data-acct-ui] .ws-tx-kpi > strong {
+    font-size: clamp(1rem, 9cqi, 1.5rem);
+    font-weight: 800;
+    line-height: 1.2;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    color: #0f172a;
+    text-align: end;
+}
+
+[data-acct-ui] .acct-kpi-value--ok {
+    color: #16a34a;
+}
+
+[data-acct-ui] .acct-kpi-value--bad {
+    color: #dc2626;
+}
+
+[data-acct-ui] .acct-kpi-value--muted {
+    color: #64748b;
+}
+
+[data-acct-ui] .acct-kpi-meta,
+[data-acct-ui] .acct-kpi-card .cash-bank-stat-meta,
+[data-acct-ui] .jr-stat-meta {
+    font-size: 12px;
+    color: #64748b;
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+[data-acct-ui] button.acct-kpi-card,
+[data-acct-ui] .acct-kpi-card--clickable {
+    cursor: pointer;
+    text-align: start;
+    width: 100%;
+    height: auto;
+    min-height: var(--acct-kpi-min-h);
+    padding: 16px;
+    white-space: normal;
+    font-weight: inherit;
+    box-shadow: none;
+}
+
+[data-acct-ui] .acct-kpi-card--clickable:hover {
+    border-color: #FCD34D;
+}
+
+[data-acct-ui] .acct-kpi-card--clickable.active,
+[data-acct-ui] .acct-kpi-card.active {
+    border-color: #FCC245;
+    box-shadow: 0 0 0 2px rgba(252, 194, 69, 0.25);
+}
+
+[data-acct-ui] .acct-kpi-card--muted {
+    cursor: default;
+}
+
+/* ----- Panels (not KPIs) ----- */
+[data-acct-ui] .acct-panel {
+    display: block;
+    box-sizing: border-box;
+    padding: 16px;
+    border: 1px solid #E5E7EB;
+    border-radius: 12px;
+    background: #fff;
+    min-width: 0;
+}
+
+[data-acct-ui] .acct-form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--acct-gap);
+    min-width: 0;
+}
+
+[data-acct-ui] .acct-form-note {
+    margin-block-start: 12px;
+}
+
+[data-acct-ui] .acct-submit-full {
+    width: 100%;
+    margin-block-start: 12px;
+}
+
+@media (min-width: 720px) {
+    [data-acct-ui] .acct-submit-full {
+        width: auto;
+    }
+}
+
+/* ----- Tables: tabular figures; amounts use logical end ----- */
+[data-acct-ui] .ws-table td,
+[data-acct-ui] .table-cell {
+    font-variant-numeric: tabular-nums;
+}
+
+[data-acct-ui] .ws-table th[style*='end'],
+[data-acct-ui] .ws-table td[style*='end'],
+[data-acct-ui] .ws-table th[style*='right'],
+[data-acct-ui] .ws-table td[style*='right'] {
+    text-align: end;
+}
