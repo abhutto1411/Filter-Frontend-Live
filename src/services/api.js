@@ -2,10 +2,10 @@ import { notifyUserActivity } from '../utils/sessionIdle';
 import { resolveApiBaseUrl } from './apiBaseUrl';
 
 // Staging URL
-export const BASE_URL = 'https://filterbackend-production.up.railway.app'
+//export const BASE_URL = 'https://filterbackend-production.up.railway.app'
 
 // Production URL
-//export const BASE_URL = 'https://api.filtercarservices.com'
+export const BASE_URL = 'https://api.filtercarservices.com'
 
 // Localhost URL
 // export const BASE_URL = 'http://localhost:3000'
