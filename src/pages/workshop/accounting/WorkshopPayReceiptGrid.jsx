@@ -1,0 +1,1160 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Plus, RotateCcw, Trash2 } from 'lucide-react';
+import VoucherRefField from '../../../components/accounting/VoucherRefField';
+import CashBalanceHint from '../../../components/accounting/CashBalanceHint';
+import { useCashBalance, handleCashGuard409 } from '../../../hooks/useCashBalance';
+import {
+    createPayments as createAcctPayments,
+    createReceipts as createAcctReceipts,
+    listCashBankAccounts as listAcctCashBank,
+    listCoaAccounts as listAcctCoa,
+    listPayees as listAcctPayees,
+    listPayments as listAcctPayments,
+    listReceipts as listAcctReceipts,
+    previewNextVouchers as previewAcctNextVouchers,
+    reverseJournalEntry,
+    updatePayment as updateAcctPayment,
+    updateReceipt as updateAcctReceipt,
+} from '../../../services/workshopAccountingApi';
+import { useAuth } from '../../../context/AuthContext';
+import {
+    canShowReverse,
+    isAccountingAdminActor,
+    isForbiddenError,
+    messageFromJournalError,
+    resolveJournalIdForReverse,
+} from '../../../utils/journalAuditDisplay';
+import { toRiyadhDateISO } from '../../../utils/riyadhBusinessRange';
+import JournalReversePanel from './JournalReversePanel';
+import {
+    AcctError,
+    Field,
+    inputStyle,
+    outlineBtnStyle,
+    primaryBtnStyle,
+} from '../../supplier/accounting/SupplierAccountingShared';
+import SupplierAccountingCombobox from '../../supplier/accounting/SupplierAccountingCombobox';
+import {
+    PAYEE_TYPES,
+    assignVouchersFromPool,
+    blankPaymentRow,
+    blankReceiptRow,
+    buildRowsFromVoucherPool,
+    filterAccountsForBranch,
+    filterPayeesForBranch,
+    mergePayeeDefaultAccountOptions,
+    postableAccountOptions,
+    normalizePayeeType,
+    payeesForTypeList,
+    resolvePayeeComboId,
+    sharedPayeeDefaultAccountId,
+    suggestPayeeAccountPatch,
+    todayIsoDate,
+} from './workshopAccountingShared';
+import { ALL_COMBO, accountComboLabel, cashAccountLabel, fmtDateYmd, moneySar } from './workshopTransactionUi';
+import {
+    accountById,
+    controlKind,
+    partyOptionsForKind,
+    payeeTypeForKind,
+} from './workshopControlAccounts';
+import { commitMathFieldValue } from '../../../utils/evalMathExpression';
+import { isInactiveRecord } from '../../../utils/inactiveRecords';
+import { parseDelimited, pastedCellsToPayRows } from '../../../utils/txImport';
+import { incompletePayRows, payRowStarted } from './txEntryRows';
+import {
+    EMPLOYEE_PURPOSE_ADVANCE,
+    EMPLOYEE_PURPOSE_SALARY,
+    buildEmployeePurposePreview,
+    isAdvanceAccountCode,
+    isEmployeePayeeType,
+    resolveEmployeePurposeAccountId,
+    validateEmployeePurposeRows,
+} from '../../../utils/txEmployeePurpose';
+
+function inferEmployeePurpose(editRow) {
+    const code = String(editRow?.accountCode || '').toUpperCase();
+    if (isAdvanceAccountCode(code)) return EMPLOYEE_PURPOSE_ADVANCE;
+    if (code === '2250' || /^2250-E\d+$/.test(code)) return EMPLOYEE_PURPOSE_SALARY;
+    return '';
+}
+
+function payReceiptRowFromEdit(editRow, makeBlank, payees, isPayment) {
+    if (!editRow?.id) return null;
+    const type = normalizePayeeType(editRow.payeeType) || (isPayment ? 'Supplier' : 'Customer');
+    return {
+        ...makeBlank(0, editRow.voucherNumber),
+        voucher: editRow.voucherNumber || '',
+        date: fmtDateYmd(editRow.date) || todayIsoDate(),
+        type,
+        payeeId: resolvePayeeComboId(editRow, payees),
+        payeeName: editRow.payeeName || '',
+        accountId: editRow.accountId ? String(editRow.accountId) : '',
+        accountAutoFilled: '',
+        employeePurpose: isPayment && type === 'Employee' ? inferEmployeePurpose(editRow) : '',
+        amount: editRow.amount != null ? String(editRow.amount) : '',
+        ref: editRow.reference || '',
+        notes: editRow.notes || '',
+    };
+}
+
+function PayeeCell({ row, payees, options: optionsOverride, onChange, t }) {
+    if (row.type === 'Other') {
+        return (
+            <input
+                style={inputStyle}
+                value={row.payeeName}
+                onChange={(e) => onChange(row.id, { payeeName: e.target.value, payeeId: '' })}
+                placeholder={t('tx.payeeNamePh')}
+            />
+        );
+    }
+    const options = optionsOverride || payeesForTypeList(row.type, payees);
+    return (
+        <SupplierAccountingCombobox
+            value={row.payeeId}
+            onChange={(v) => {
+                const opt = options.find((o) => String(o.id) === String(v));
+                onChange(row.id, {
+                    payeeId: v,
+                    payeeName: opt?.name ?? '',
+                    ...suggestPayeeAccountPatch(row, payees, row.type, v),
+                });
+            }}
+            placeholder={t('tx.selectPayee', { type: t(`tx.payee.${row.type}`).toLowerCase() })}
+            entityLabel="payee"
+            emptyHint={t('tx.selectPayee', { type: t(`tx.payee.${row.type}`).toLowerCase() })}
+            options={options.map((o) => ({
+                id: String(o.id),
+                label: o.sublabel ? `${o.name} — ${o.sublabel}` : o.name,
+                searchText: `${o.name || ''} ${o.sublabel || ''}`,
+                inactive: isInactiveRecord(o),
+            }))}
+        />
+    );
+}
+
+export default function WorkshopPayReceiptGrid({
+    variant,
+    cashBankAccounts = [],
+    accounts = [],
+    /** Full COA (optional) — used to resolve 1250 / 2250 purpose accounts. */
+    purposeAccounts = [],
+    payees = { supplier: [], employee: [], customer: [] },
+    branches = [],
+    defaultBranchId = '',
+    isAdminHqBooks = false,
+    t,
+    onPosted,
+    editRow = null,
+    onCancelEdit,
+    /** Imported / pasted entry to load: { key, header: { date, ref, note, branchId, cashAccountId }, rows }. */
+    seed = null,
+    /** Blank lines a fresh form starts with (batch entry uses several). */
+    initialRowCount = 1,
+}) {
+    const isPayment = variant === 'payment';
+    const startRows = Math.max(1, Math.min(50, Number(initialRowCount) || 1));
+    const prefix = isPayment ? 'PE' : 'RV';
+    const makeBlank = isPayment ? blankPaymentRow : blankReceiptRow;
+    const listFn = isPayment ? listAcctPayments : listAcctReceipts;
+    const createFn = isPayment ? createAcctPayments : createAcctReceipts;
+
+    const [headerDate, setHeaderDate] = useState(() => (editRow?.date ? fmtDateYmd(editRow.date) : todayIsoDate()));
+    const [headerRef, setHeaderRef] = useState(() => editRow?.reference || '');
+    const [refAutoGenerate, setRefAutoGenerate] = useState(false);
+    const [generalNote, setGeneralNote] = useState(() => editRow?.generalNote || '');
+    const [headerBranchId, setHeaderBranchId] = useState(() => (
+        editRow?.branchId
+            ? String(editRow.branchId)
+            : defaultBranchId && defaultBranchId !== 'all'
+              ? String(defaultBranchId)
+              : ''
+    ));
+    const [cashAccountId, setCashAccountId] = useState(() => (editRow?.cashBankAccountId ? String(editRow.cashBankAccountId) : ''));
+    const cashBal = useCashBalance({
+        cashBankAccountId: cashAccountId || undefined,
+        branchId: headerBranchId || undefined,
+        enabled: Boolean(cashAccountId) && isPayment,
+    });
+    const [voucherPool, setVoucherPool] = useState([`${prefix}0001`]);
+    const [rows, setRows] = useState(() => {
+        const fromEdit = payReceiptRowFromEdit(editRow, makeBlank, payees, isPayment);
+        return fromEdit ? [fromEdit] : buildRowsFromVoucherPool(makeBlank, [`${prefix}0001`], startRows);
+    });
+    const [saving, setSaving] = useState(false);
+    const [err, setErr] = useState('');
+    const [okMsg, setOkMsg] = useState('');
+    const [reverseOpen, setReverseOpen] = useState(false);
+    const [reverseBusy, setReverseBusy] = useState(false);
+    const { user, hasPermission } = useAuth();
+    const canAdmin = isAccountingAdminActor(user)
+        || hasPermission('workshop.accounting.journal-entries.approve');
+    const reverseJournalId = resolveJournalIdForReverse(editRow, false);
+    const showReverse = canAdmin && reverseJournalId && canShowReverse({
+        ...editRow,
+        id: reverseJournalId,
+    });
+    const cashTouchedRef = useRef(Boolean(editRow?.id));
+    const branchTouchedRef = useRef(Boolean(editRow?.branchId));
+    const editingIdRef = useRef(editRow?.id || null);
+    editingIdRef.current = editRow?.id || null;
+
+    // Load an imported entry (render-time state adjust; re-applies when seed.key changes).
+    const [appliedSeedKey, setAppliedSeedKey] = useState(null);
+    if (seed?.key && seed.key !== appliedSeedKey && !editRow?.id) {
+        setAppliedSeedKey(seed.key);
+        const h = seed.header || {};
+        if (h.date) setHeaderDate(h.date);
+        setHeaderRef(h.ref || '');
+        setRefAutoGenerate(false);
+        setGeneralNote(h.note || '');
+        if (!isAdminHqBooks) setHeaderBranchId(h.branchId ? String(h.branchId) : '');
+        setCashAccountId(h.cashAccountId ? String(h.cashAccountId) : '');
+        const seededRows = (seed.rows || []).map((r, i) => ({
+            ...makeBlank(i, voucherPool[i]),
+            ...r,
+            date: r.date || h.date || todayIsoDate(),
+            accountAutoFilled: '',
+        }));
+        setRows(seededRows.length ? seededRows : buildRowsFromVoucherPool(makeBlank, voucherPool, 1));
+        setErr('');
+        setOkMsg('');
+    }
+
+    /** Branch-scoped lookup slices (re-fetched when header branch changes). */
+    const [scopedCashBank, setScopedCashBank] = useState(() =>
+        filterAccountsForBranch(cashBankAccounts, headerBranchId),
+    );
+    // Account column is NOT branch-filtered (other-branch accounts are grouped instead).
+    const [scopedAccounts, setScopedAccounts] = useState(() => accounts || []);
+    const [scopedPayees, setScopedPayees] = useState(() => ({
+        supplier: filterPayeesForBranch(payees?.supplier, headerBranchId),
+        employee: filterPayeesForBranch(payees?.employee, headerBranchId),
+        customer: filterPayeesForBranch(payees?.customer, headerBranchId),
+    }));
+
+    const reloadVouchers = useCallback(async (count = 1) => {
+        const need = Math.max(count + 3, 5);
+        try {
+            const res = await previewAcctNextVouchers(prefix, need);
+            const pool = Array.isArray(res?.vouchers) ? res.vouchers : [];
+            if (pool.length) {
+                setVoucherPool(pool);
+                if (!editingIdRef.current) {
+                    setRows((prev) => assignVouchersFromPool(prev, pool, prefix));
+                }
+            }
+            return pool;
+        } catch {
+            return voucherPool;
+        }
+    }, [prefix, voucherPool]);
+
+    useEffect(() => {
+        if (editingIdRef.current) return;
+        if (seed?.key) return; // seeded entry: vouchers are assigned by the seed effect below
+        reloadVouchers(startRows).then((pool) => {
+            if (editingIdRef.current) return;
+            if (pool?.length) setRows(buildRowsFromVoucherPool(makeBlank, pool, startRows));
+        });
+        // Mount-only: seed the first voucher row.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [prefix]);
+
+    // After a seed is applied: keep its register / branch (no auto-defaults) and number the rows.
+    useEffect(() => {
+        if (!appliedSeedKey) return;
+        cashTouchedRef.current = true;
+        branchTouchedRef.current = true;
+        reloadVouchers(Math.max(1, (seed?.rows || []).length));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [appliedSeedKey]);
+
+    useEffect(() => {
+        if (!editRow?.id) return;
+        cashTouchedRef.current = true;
+        setHeaderDate(fmtDateYmd(editRow.date) || todayIsoDate());
+        setHeaderRef(editRow.reference || '');
+        setRefAutoGenerate(false);
+        setGeneralNote(editRow.generalNote || '');
+        setHeaderBranchId(editRow.branchId ? String(editRow.branchId) : '');
+        if (editRow.cashBankAccountId) setCashAccountId(String(editRow.cashBankAccountId));
+        const type = normalizePayeeType(editRow.payeeType) || (isPayment ? 'Supplier' : 'Customer');
+        setRows([{
+            ...makeBlank(0, editRow.voucherNumber),
+            voucher: editRow.voucherNumber || '',
+            date: fmtDateYmd(editRow.date) || todayIsoDate(),
+            type,
+            payeeId: resolvePayeeComboId(editRow, payees),
+            payeeName: editRow.payeeName || '',
+            accountId: editRow.accountId ? String(editRow.accountId) : '',
+            accountAutoFilled: '',
+            amount: editRow.amount != null ? String(editRow.amount) : '',
+            ref: editRow.reference || '',
+            notes: editRow.notes || '',
+        }]);
+        setErr('');
+        setOkMsg('');
+    }, [editRow?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    useEffect(() => {
+        if (cashTouchedRef.current) return;
+        if (cashAccountId) return;
+        if (scopedCashBank[0]?.id) setCashAccountId(String(scopedCashBank[0].id));
+    }, [scopedCashBank, cashAccountId]);
+
+    // When Paid From / Received Into is chosen while Branch = All, adopt that register's branch.
+    useEffect(() => {
+        if (!cashAccountId || isAdminHqBooks || branchTouchedRef.current) return;
+        if (headerBranchId) return;
+        const acc = scopedCashBank.find((a) => String(a.id) === String(cashAccountId))
+            || cashBankAccounts.find((a) => String(a.id) === String(cashAccountId));
+        if (acc?.branchId) setHeaderBranchId(String(acc.branchId));
+    }, [cashAccountId, scopedCashBank, cashBankAccounts, isAdminHqBooks, headerBranchId]);
+
+    // Re-load cash / COA / payees for the selected branch (All = full workshop lists).
+    useEffect(() => {
+        let cancelled = false;
+        const branchParam = headerBranchId || undefined;
+        (async () => {
+            try {
+                const [cb, coa, sup, emp, cust] = await Promise.all([
+                    listAcctCashBank({
+                        excludeCashierTills: '1',
+                        ...(branchParam ? { branchId: branchParam } : {}),
+                    }),
+                    listAcctCoa('postable', {
+                        includeOtherBranches: '1',
+                        ...(branchParam ? { branchId: branchParam } : {}),
+                    }),
+                    listAcctPayees('supplier', branchParam ? { branchId: branchParam } : {}),
+                    listAcctPayees('employee', {
+                        ...(branchParam ? { branchId: branchParam } : {}),
+                        includeInactive: 'true',
+                    }),
+                    listAcctPayees('customer', branchParam ? { branchId: branchParam } : {}),
+                ]);
+                if (cancelled) return;
+                const nextCash = cb?.accounts ?? [];
+                // Account column: all postable types incl. other-branch tags (do not
+                // filterAccountsForBranch). Registers stay branch-scoped above.
+                const nextAccounts = coa?.accounts ?? [];
+                const nextPayees = {
+                    supplier: filterPayeesForBranch(sup?.payees ?? [], branchParam),
+                    employee: filterPayeesForBranch(emp?.payees ?? [], branchParam),
+                    customer: filterPayeesForBranch(cust?.payees ?? [], branchParam),
+                };
+                setScopedCashBank(nextCash);
+                setScopedAccounts(nextAccounts);
+                setScopedPayees(nextPayees);
+
+                // Drop selections that are no longer valid for this branch.
+                setCashAccountId((prev) => {
+                    if (!prev) return prev;
+                    return nextCash.some((a) => String(a.id) === String(prev)) ? prev : '';
+                });
+                setRows((prev) => prev.map((r) => {
+                    let next = { ...r };
+                    const typeList = payeesForTypeList(next.type, nextPayees);
+                    if (next.payeeId && !typeList.some((p) => String(p.id) === String(next.payeeId))) {
+                        next.payeeId = '';
+                        next.payeeName = '';
+                    }
+                    if (
+                        next.accountId
+                        && !nextAccounts.some((a) => String(a.id) === String(next.accountId))
+                    ) {
+                        next.accountId = '';
+                        next.accountAutoFilled = '';
+                    }
+                    return next;
+                }));
+            } catch {
+                if (cancelled) return;
+                // Fall back to client-side filter of parent props.
+                setScopedCashBank(filterAccountsForBranch(cashBankAccounts, branchParam));
+                // Keep parent account list as-is on fallback (no branch filter on Account col).
+                setScopedAccounts(accounts);
+                setScopedPayees({
+                    supplier: filterPayeesForBranch(payees?.supplier, branchParam),
+                    employee: filterPayeesForBranch(payees?.employee, branchParam),
+                    customer: filterPayeesForBranch(payees?.customer, branchParam),
+                });
+            }
+        })();
+
+        return () => { cancelled = true; };
+        // Intentionally keyed on branch + variant; parent prop refresh is handled below.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [headerBranchId, isPayment]);
+
+    // Keep scoped lists in sync when parent reloads lookups and branch is All.
+    useEffect(() => {
+        if (headerBranchId) return;
+        setScopedCashBank(cashBankAccounts);
+        setScopedAccounts(accounts);
+        setScopedPayees({
+            supplier: payees?.supplier || [],
+            employee: payees?.employee || [],
+            customer: payees?.customer || [],
+        });
+    }, [cashBankAccounts, accounts, payees, headerBranchId]);
+
+    const fetchNextHeaderRef = useCallback(async () => {
+        const res = await previewAcctNextVouchers(prefix, 1);
+        return Array.isArray(res?.vouchers) ? (res.vouchers[0] || '') : '';
+    }, [prefix]);
+
+    const checkHeaderRefDuplicate = useCallback(async (reference) => {
+        const ref = String(reference || '').trim();
+        if (!ref) return false;
+        const res = await listFn({ q: ref, limit: 20 });
+        const list = Array.isArray(res?.rows) ? res.rows : [];
+        return list.some(
+            (r) =>
+                String(r.voucherNumber || '').toLowerCase() === ref.toLowerCase()
+                || String(r.reference || '').toLowerCase() === ref.toLowerCase(),
+        );
+    }, [listFn]);
+
+    const purposeAccountPool = useMemo(() => {
+        const byId = new Map();
+        for (const a of [...scopedAccounts, ...(purposeAccounts || [])]) {
+            if (a?.id != null) byId.set(String(a.id), a);
+        }
+        return [...byId.values()];
+    }, [scopedAccounts, purposeAccounts]);
+
+    const applyPurposeAccount = (row, purpose, payeeId) => {
+        if (!isPayment || !isEmployeePayeeType(row.type) || !purpose) {
+            return {};
+        }
+        const accountId = resolveEmployeePurposeAccountId(
+            purposeAccountPool,
+            purpose,
+            payeeId || row.payeeId,
+        );
+        if (!accountId) return { employeePurpose: purpose };
+        return {
+            employeePurpose: purpose,
+            accountId,
+            accountAutoFilled: accountId,
+        };
+    };
+
+    const updateRow = (id, patch) => {
+        setRows((prev) => prev.map((r) => {
+            if (r.id !== id) return r;
+            let next = { ...r, ...patch };
+            if ('accountId' in patch && !('type' in patch) && !('employeePurpose' in patch)) {
+                const kind = controlKind(accountById(scopedAccounts, next.accountId), scopedAccounts);
+                const lockedType = payeeTypeForKind(kind);
+                if (lockedType) {
+                    next.type = lockedType;
+                    const allowed = partyOptionsForKind(kind, scopedPayees);
+                    if (!allowed.some((o) => String(o.id) === String(next.payeeId))) {
+                        next.payeeId = '';
+                        next.payeeName = '';
+                    }
+                }
+            }
+            if ('type' in patch) {
+                const kind = controlKind(accountById(scopedAccounts, next.accountId), scopedAccounts);
+                if (kind) {
+                    next.type = payeeTypeForKind(kind) || next.type;
+                } else {
+                    next.payeeId = '';
+                    next.payeeName = '';
+                    next.employeePurpose = '';
+                    if (isEmployeePayeeType(next.type)) {
+                        next.accountId = '';
+                        next.accountAutoFilled = '';
+                    } else {
+                        const suggested = sharedPayeeDefaultAccountId(
+                            payeesForTypeList(next.type, scopedPayees),
+                        );
+                        next.accountId = suggested;
+                        next.accountAutoFilled = suggested;
+                    }
+                }
+            }
+            if ('employeePurpose' in patch && isPayment) {
+                Object.assign(next, applyPurposeAccount(next, patch.employeePurpose, next.payeeId));
+            }
+            if ('payeeId' in patch && isPayment && isEmployeePayeeType(next.type) && next.employeePurpose) {
+                Object.assign(next, applyPurposeAccount(next, next.employeePurpose, next.payeeId));
+            }
+            return next;
+        }));
+    };
+
+    useEffect(() => {
+        if (editingIdRef.current) return;
+        setRows((prev) => prev.map((r) => {
+            if (r.accountId && r.accountId !== r.accountAutoFilled) return r;
+            const suggested = r.payeeId
+                ? (suggestPayeeAccountPatch(
+                    { ...r, accountId: r.accountAutoFilled || '' },
+                    scopedPayees,
+                    r.type,
+                    r.payeeId,
+                ).accountId || '')
+                : sharedPayeeDefaultAccountId(payeesForTypeList(r.type, scopedPayees));
+            if (!suggested || String(r.accountId || '') === suggested) return r;
+            return { ...r, accountId: suggested, accountAutoFilled: suggested };
+        }));
+    }, [scopedPayees]);
+
+    const addRow = () => {
+        setRows((prev) => {
+            const next = [...prev, makeBlank(prev.length, voucherPool[prev.length])];
+            const need = next.length;
+            if (need > voucherPool.length) {
+                previewAcctNextVouchers(prefix, need + 3).then((res) => {
+                    const pool = Array.isArray(res?.vouchers) ? res.vouchers : [];
+                    if (pool.length) {
+                        setVoucherPool(pool);
+                        setRows((cur) => assignVouchersFromPool(cur, pool, prefix));
+                    }
+                });
+            }
+            queueMicrotask(() => {
+                document
+                    .querySelector(`[data-ws-tx-row="${variant}-${next.length}"] [data-ws-tx-focus="date"]`)
+                    ?.focus?.();
+            });
+            return next;
+        });
+    };
+
+    const removeRow = (id) => {
+        setRows((prev) => {
+            const next = prev.filter((r) => r.id !== id);
+            const keep = next.length ? next : [makeBlank(0, voucherPool[0])];
+            return assignVouchersFromPool(keep, voucherPool, prefix);
+        });
+    };
+
+    /** Excel paste (2+ cells / lines): date, payee type, payee, account, amount, reference, note. */
+    const handleGridPaste = (e) => {
+        if (editRow?.id) return;
+        const text = e.clipboardData?.getData('text/plain') || '';
+        if (!/[\t\n]/.test(text.trim())) return; // single value → normal paste into the cell
+        const cells = parseDelimited(text);
+        if (!cells.length) return;
+        e.preventDefault();
+        const { rows: pasted, issues } = pastedCellsToPayRows(
+            cells,
+            { accounts: scopedAccounts, cashBankAccounts: scopedCashBank, payees: scopedPayees, branches },
+            { variant: isPayment ? 'payment' : 'receipt' },
+        );
+        if (!pasted.length) return;
+        setRows((prev) => {
+            const kept = prev.filter(payRowStarted); // drop untouched lines (incl. auto-suggested account)
+            const next = [
+                ...kept,
+                ...pasted.map((r, i) => ({
+                    ...makeBlank(kept.length + i, voucherPool[kept.length + i]),
+                    ...r,
+                    date: r.date || headerDate,
+                    accountAutoFilled: '',
+                })),
+            ];
+            reloadVouchers(next.length);
+            return next;
+        });
+        setOkMsg(t('tx.paste.ok', { n: pasted.length }));
+        setErr(issues.length ? t('tx.paste.issues', { n: issues.length }) : '');
+    };
+
+    const handleLastFieldKeyDown = (rowIdx, totalRows) => (e) => {
+        if (e.key !== 'Tab' || e.shiftKey) return;
+        if (rowIdx !== totalRows - 1) return;
+        e.preventDefault();
+        addRow();
+    };
+
+    const validRows = rows.filter((r) => Number(r.amount) > 0 && r.accountId);
+    const total = rows.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+    const cashBlocked =
+        isPayment &&
+        Boolean(cashAccountId) &&
+        cashBal.available != null &&
+        Number(total) > Number(cashBal.available) + 0.0000001 &&
+        !cashBal.allowNegative;
+
+    const effectLines = useMemo(() => {
+        const cash = scopedCashBank.find((a) => String(a.id) === String(cashAccountId));
+        const cashLbl = cash ? cashAccountLabel(cash) : '—';
+        return validRows.map((r) => {
+            const against = accountComboLabel(scopedAccounts.find((a) => String(a.id) === String(r.accountId))) || '—';
+            const party = r.payeeName ? ` · ${r.payeeName}` : '';
+            const amt = moneySar(r.amount);
+            return isPayment
+                ? t('tx.effect.payment', { cash: cashLbl, against, amount: amt, party })
+                : t('tx.effect.receipt', { cash: cashLbl, against, amount: amt, party });
+        });
+    }, [scopedAccounts, cashAccountId, scopedCashBank, isPayment, t, validRows]);
+
+    const handleSave = async (e, { asDraft = false } = {}) => {
+        if (e?.preventDefault) e.preventDefault();
+        setErr('');
+        setOkMsg('');
+        const resolvedRows = rows.map((r) => ({
+            ...r,
+            amount: commitMathFieldValue(r.amount),
+        }));
+        setRows(resolvedRows);
+        const readyRows = resolvedRows.filter((r) => Number(r.amount) > 0 && r.accountId);
+        // Never drop a half-filled line silently (imports / paste): name the rows to fix.
+        const incomplete = incompletePayRows(resolvedRows);
+        if (incomplete.length) {
+            setErr(t('tx.err.incompleteRows', { rows: incomplete.join(', ') }));
+            return;
+        }
+        if (!cashAccountId) {
+            setErr(isPayment ? t('tx.err.paidFrom') : t('tx.err.receivedInto'));
+            return;
+        }
+        if (!readyRows.length) {
+            setErr(t('tx.err.row'));
+            return;
+        }
+        if (readyRows.some((r) => {
+            const kind = controlKind(accountById(scopedAccounts, r.accountId), scopedAccounts);
+            return kind && !String(r.payeeId || '').trim();
+        })) {
+            setErr(t('tx.je.needParty'));
+            return;
+        }
+        const purposeErr = validateEmployeePurposeRows(readyRows, { isPayment });
+        if (purposeErr) {
+            setErr(t(purposeErr));
+            return;
+        }
+        if (isPayment && readyRows.some((r) => {
+            if (!isEmployeePayeeType(r.type)) return false;
+            return !resolveEmployeePurposeAccountId(
+                purposeAccountPool,
+                r.employeePurpose,
+                r.payeeId,
+            ) && !r.accountId;
+        })) {
+            setErr(t('tx.purpose.accountMissing'));
+            return;
+        }
+        if (!asDraft && cashBlocked) {
+            setErr(t('tx.err.insufficientCash') || 'Insufficient cash balance');
+            return;
+        }
+        setSaving(true);
+        try {
+            const rowPayload = readyRows.map((r) => ({
+                voucherHint: r.voucher,
+                date: r.date || headerDate,
+                payeeType: r.type,
+                payeeId: r.payeeId || undefined,
+                payeeName: r.payeeName || undefined,
+                accountId: r.accountId,
+                amount: Number(r.amount),
+                reference: r.ref?.trim() || headerRef.trim() || undefined,
+                notes: r.notes || undefined,
+            }));
+            const header = {
+                date: headerDate,
+                ...(isAdminHqBooks ? {} : { branchId: headerBranchId || undefined }),
+                generalNote: generalNote || undefined,
+                cashBankAccountId: cashAccountId,
+                ...(asDraft ? { status: 'pending' } : {}),
+            };
+            let res;
+            if (editRow?.id) {
+                const first = rowPayload[0];
+                const updateFn = isPayment ? updateAcctPayment : updateAcctReceipt;
+                res = await updateFn(editRow.id, {
+                    ...header,
+                    payeeType: first.payeeType,
+                    payeeId: first.payeeId,
+                    payeeName: first.payeeName,
+                    accountId: first.accountId,
+                    amount: first.amount,
+                    reference: first.reference,
+                    notes: first.notes,
+                });
+                setOkMsg(
+                    isPayment
+                        ? t('tx.ok.updatedPayment', { doc: editRow.voucherNumber || editRow.id })
+                        : t('tx.ok.updatedReceipt', { doc: editRow.voucherNumber || editRow.id }),
+                );
+                setGeneralNote('');
+                setHeaderRef('');
+                setRefAutoGenerate(false);
+                const pool = await reloadVouchers(startRows);
+                setRows(buildRowsFromVoucherPool(makeBlank, pool?.length ? pool : voucherPool, startRows));
+                onPosted?.(res);
+                onCancelEdit?.();
+                return;
+            }
+            res = await createFn({
+                ...header,
+                rows: rowPayload,
+            });
+            setOkMsg(
+                asDraft
+                    ? (t('tx.ok.draftSaved') || 'Saved as draft')
+                    : isPayment
+                      ? t('tx.ok.payments', { n: res?.saved ?? validRows.length, total: Number(res?.total ?? total).toFixed(2) })
+                      : t('tx.ok.receipts', { n: res?.saved ?? validRows.length, total: Number(res?.total ?? total).toFixed(2) }),
+            );
+            setGeneralNote('');
+            setHeaderRef('');
+            setRefAutoGenerate(false);
+            const pool = await reloadVouchers(startRows);
+            setRows(buildRowsFromVoucherPool(makeBlank, pool?.length ? pool : voucherPool, startRows));
+            onPosted?.(res);
+        } catch (ex) {
+            setErr(
+                handleCashGuard409(ex, 'en')?.message ||
+                    ex?.message ||
+                    (isPayment ? t('tx.err.savePay') : t('tx.err.saveRcpt')),
+            );
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <form onSubmit={(e) => void handleSave(e, { asDraft: false })} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {editRow?.id ? (
+                <div className="ws-tx-editing">
+                    <span>{t('tx.editing', { doc: editRow.voucherNumber || editRow.id })}</span>
+                    {showReverse && !reverseOpen ? (
+                        <button
+                            type="button"
+                            style={outlineBtnStyle}
+                            onClick={() => setReverseOpen(true)}
+                        >
+                            <RotateCcw size={14} /> {t('gj.reverse')}
+                        </button>
+                    ) : null}
+                    <button
+                        type="button"
+                        style={outlineBtnStyle}
+                        onClick={() => {
+                            onCancelEdit?.();
+                            reloadVouchers(startRows).then((pool) => {
+                                if (pool?.length) setRows(buildRowsFromVoucherPool(makeBlank, pool, startRows));
+                            });
+                            setOkMsg('');
+                            setErr('');
+                            setReverseOpen(false);
+                        }}
+                    >
+                        {t('tx.cancelEdit')}
+                    </button>
+                </div>
+            ) : null}
+            {reverseOpen && reverseJournalId ? (
+                <JournalReversePanel
+                    t={t}
+                    defaultDate={toRiyadhDateISO(new Date())}
+                    busy={reverseBusy}
+                    onConfirm={async ({ date, reason }) => {
+                        setReverseBusy(true);
+                        setErr('');
+                        try {
+                            const res = await reverseJournalEntry(reverseJournalId, {
+                                reason,
+                                ...(date ? { date } : {}),
+                            });
+                            setReverseOpen(false);
+                            setOkMsg(t('gj.reversedOk', { code: res?.entryNumber || '' }));
+                            onPosted?.(res);
+                        } catch (ex) {
+                            const mapped = messageFromJournalError(ex, 'gj.reverse.failed');
+                            setErr(isForbiddenError(ex) ? t('gj.noPermission') : (ex?.message || t(mapped.key, mapped.vars)));
+                        } finally {
+                            setReverseBusy(false);
+                        }
+                    }}
+                    onCancel={() => setReverseOpen(false)}
+                />
+            ) : null}
+            <p style={{ margin: 0, fontSize: 12, color: '#64748B', lineHeight: 1.45 }}>
+                {isPayment ? t('tx.hint.paymentsPage') : t('tx.hint.receiptsPage')}
+            </p>
+            <div
+                style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                    gap: 12,
+                }}
+            >
+                <Field label={t('tx.date')} required>
+                    <input
+                        type="date"
+                        style={inputStyle}
+                        value={headerDate}
+                        onChange={(e) => {
+                            const v = e.target.value;
+                            setHeaderDate(v);
+                            setRows((ls) => ls.map((l, i) => (i === 0 && !l.date ? { ...l, date: v } : l)));
+                        }}
+                        required
+                    />
+                </Field>
+                <VoucherRefField
+                    label={t('tx.field.ref')}
+                    placeholder={t('tx.field.refPh')}
+                    autoGenerateLabel={t('tx.field.autoRef')}
+                    generatingLabel={t('tx.field.generating')}
+                    duplicateMessage={t('tx.field.refDup')}
+                    value={headerRef}
+                    onChange={setHeaderRef}
+                    autoGenerate={refAutoGenerate}
+                    onAutoGenerateChange={setRefAutoGenerate}
+                    fetchNextReference={fetchNextHeaderRef}
+                    checkDuplicate={checkHeaderRefDuplicate}
+                />
+                <Field label={t('tx.note')}>
+                    <input
+                        style={inputStyle}
+                        value={generalNote}
+                        onChange={(e) => setGeneralNote(e.target.value)}
+                        placeholder={t('tx.notePh')}
+                    />
+                </Field>
+                {!isAdminHqBooks ? (
+                    <Field label={t('tx.branch')}>
+                        <SupplierAccountingCombobox
+                            className="acct-table-combobox acct-filter-combobox"
+                            value={headerBranchId || ALL_COMBO}
+                            onChange={(id) => {
+                                branchTouchedRef.current = true;
+                                setHeaderBranchId(id === ALL_COMBO ? '' : String(id || ''));
+                            }}
+                            placeholder={t('tx.allBranches')}
+                            entityLabel="branch"
+                            options={[
+                                { id: ALL_COMBO, label: t('tx.allBranches'), searchText: t('tx.allBranches') },
+                                ...branches.map((b) => ({ id: String(b.id), label: b.name, searchText: b.name })),
+                            ]}
+                        />
+                    </Field>
+                ) : null}
+                <Field label={isPayment ? t('tx.paidFrom') : t('tx.receivedInto')} required>
+                    <SupplierAccountingCombobox
+                        className="acct-table-combobox acct-filter-combobox"
+                        value={cashAccountId}
+                        onChange={(v) => {
+                            cashTouchedRef.current = true;
+                            setCashAccountId(v);
+                        }}
+                        placeholder={isPayment ? t('tx.selectCb') : t('tx.selectDeposit')}
+                        entityLabel="account"
+                        required
+                        options={scopedCashBank.map((a) => ({
+                            id: String(a.id),
+                            label: cashAccountLabel(a),
+                            searchText: `${a.name || ''} ${a.type || ''} ${a.kind || ''} locker`,
+                        }))}
+                    />
+                    {isPayment && cashAccountId ? (
+                        <CashBalanceHint
+                            locale={typeof document !== 'undefined' && document.documentElement?.lang === 'ar' ? 'ar' : 'en'}
+                            available={cashBal.available}
+                            required={total}
+                            allowNegative={cashBal.allowNegative}
+                            loading={cashBal.loading}
+                        />
+                    ) : null}
+                </Field>
+            </div>
+
+            <div style={{ overflowX: 'auto' }} onPaste={handleGridPaste} data-testid={`ws-tx-grid-${variant}`}>
+                <table className="ws-table" style={{ width: '100%', minWidth: 1180, tableLayout: 'auto' }}>
+                    <thead>
+                        <tr>
+                            <th style={{ width: 88 }}>{t('tx.th.voucher')}</th>
+                            <th style={{ width: 130 }}>{t('tx.th.date')}</th>
+                            <th style={{ minWidth: 160, width: 180 }}>{t('tx.th.type')}</th>
+                            <th style={{ minWidth: 220 }}>
+                                {isPayment ? t('tx.th.payeeTo') : t('tx.th.receivedFrom')}
+                            </th>
+                            <th style={{ minWidth: 220 }}>
+                                {isPayment ? t('tx.th.accountDr') : t('tx.th.accountCr')}
+                            </th>
+                            <th style={{ width: 120, textAlign: 'right' }}>{t('tx.th.amount')}</th>
+                            <th style={{ width: 110 }}>{t('tx.th.ref')}</th>
+                            <th style={{ minWidth: 140 }}>{t('tx.th.notes')}</th>
+                            <th style={{ width: 44 }} />
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows.map((row, idx) => (
+                            <tr key={row.id} data-ws-tx-row={`${variant}-${idx + 1}`}>
+                                <td>
+                                    <span
+                                        style={{
+                                            display: 'inline-block',
+                                            padding: '4px 8px',
+                                            borderRadius: 8,
+                                            background: isPayment ? '#FEE2E2' : '#E0F2FE',
+                                            color: isPayment ? '#B91C1C' : '#0369A1',
+                                            fontWeight: 800,
+                                            fontSize: 12,
+                                        }}
+                                    >
+                                        {row.voucher || `${prefix}${String(idx + 1).padStart(4, '0')}`}
+                                    </span>
+                                </td>
+                                <td>
+                                    <input
+                                        data-ws-tx-focus="date"
+                                        type="date"
+                                        style={inputStyle}
+                                        value={row.date || headerDate}
+                                        onChange={(e) => updateRow(row.id, { date: e.target.value })}
+                                    />
+                                </td>
+                                <td>
+                                    <SupplierAccountingCombobox
+                                        className="acct-table-combobox acct-combo-type"
+                                        value={row.type}
+                                        onChange={(v) => {
+                                            if (!PAYEE_TYPES.includes(v)) return;
+                                            if (controlKind(accountById(scopedAccounts, row.accountId), scopedAccounts)) return;
+                                            updateRow(row.id, { type: v });
+                                        }}
+                                        placeholder={t('tx.type.search')}
+                                        entityLabel="type"
+                                        menuMinWidth={200}
+                                        options={(controlKind(accountById(scopedAccounts, row.accountId), scopedAccounts)
+                                            ? [row.type]
+                                            : PAYEE_TYPES
+                                        ).map((p) => ({
+                                            id: p,
+                                            label: t(`tx.payee.${p}`),
+                                            searchText: t(`tx.payee.${p}`),
+                                        }))}
+                                    />
+                                </td>
+                                <td>
+                                    <PayeeCell
+                                        row={row}
+                                        payees={scopedPayees}
+                                        options={
+                                            controlKind(accountById(scopedAccounts, row.accountId), scopedAccounts)
+                                                ? partyOptionsForKind(
+                                                    controlKind(accountById(scopedAccounts, row.accountId), scopedAccounts),
+                                                    scopedPayees,
+                                                )
+                                                : payeesForTypeList(row.type, scopedPayees)
+                                        }
+                                        onChange={updateRow}
+                                        t={t}
+                                    />
+                                    {isPayment && isEmployeePayeeType(row.type) ? (
+                                        <fieldset
+                                            style={{
+                                                marginTop: 8,
+                                                padding: 8,
+                                                border: '1px solid #E2E8F0',
+                                                borderRadius: 8,
+                                            }}
+                                        >
+                                            <legend style={{ fontSize: 12, fontWeight: 700, paddingInline: 4 }}>
+                                                {t('tx.purpose.label')}
+                                            </legend>
+                                            <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13, marginBottom: 4 }}>
+                                                <input
+                                                    type="radio"
+                                                    name={`emp-purpose-${row.id}`}
+                                                    checked={row.employeePurpose === EMPLOYEE_PURPOSE_ADVANCE}
+                                                    onChange={() => updateRow(row.id, { employeePurpose: EMPLOYEE_PURPOSE_ADVANCE })}
+                                                />
+                                                {t('tx.purpose.advance')}
+                                            </label>
+                                            <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
+                                                <input
+                                                    type="radio"
+                                                    name={`emp-purpose-${row.id}`}
+                                                    checked={row.employeePurpose === EMPLOYEE_PURPOSE_SALARY}
+                                                    onChange={() => updateRow(row.id, { employeePurpose: EMPLOYEE_PURPOSE_SALARY })}
+                                                />
+                                                {t('tx.purpose.salary')}
+                                            </label>
+                                            {!row.employeePurpose ? (
+                                                <p style={{ margin: '6px 0 0', fontSize: 12, color: '#B45309' }} role="alert">
+                                                    {t('tx.purpose.required')}
+                                                </p>
+                                            ) : null}
+                                            {row.employeePurpose ? (
+                                                <p style={{ margin: '6px 0 0', fontSize: 12, color: '#334155', lineHeight: 1.4 }}>
+                                                    {buildEmployeePurposePreview({
+                                                        purpose: row.employeePurpose,
+                                                        employeeName: row.payeeName,
+                                                        cashLabel: cashAccountLabel(
+                                                            scopedCashBank.find((a) => String(a.id) === String(cashAccountId)),
+                                                        ),
+                                                        t,
+                                                    })}
+                                                </p>
+                                            ) : null}
+                                        </fieldset>
+                                    ) : null}
+                                </td>
+                                <td>
+                                    <SupplierAccountingCombobox
+                                        value={row.accountId}
+                                        onChange={(v) => updateRow(row.id, { accountId: v, accountAutoFilled: '' })}
+                                        placeholder={t('tx.selectAccount')}
+                                        entityLabel="account"
+                                        emptyHint={t('tx.selectAccount')}
+                                        options={mergePayeeDefaultAccountOptions(
+                                            (() => {
+                                                const pool =
+                                                    isPayment && isEmployeePayeeType(row.type)
+                                                        ? purposeAccountPool
+                                                        : scopedAccounts;
+                                                // The header Pay-from / Receive-into register's own COA never
+                                                // appears as the counter account.
+                                                const register = scopedCashBank.find(
+                                                    (c) => String(c.id) === String(cashAccountId),
+                                                );
+                                                return postableAccountOptions(pool, {
+                                                    headerBranchId,
+                                                    excludeAccountIds: [register?.coaAccountId],
+                                                    labelFor: accountComboLabel,
+                                                    otherBranchesLabel: t('tx.otherBranches'),
+                                                });
+                                            })(),
+                                            payeesForTypeList(row.type, scopedPayees),
+                                        )}
+                                    />
+                                </td>
+                                <td>
+                                    <input
+                                        type="text"
+                                        inputMode="decimal"
+                                        autoComplete="off"
+                                        style={{ ...inputStyle, textAlign: 'right' }}
+                                        value={row.amount}
+                                        onChange={(e) => updateRow(row.id, { amount: e.target.value })}
+                                        onBlur={(e) => {
+                                            const v = commitMathFieldValue(e.target.value);
+                                            if (v !== e.target.value) updateRow(row.id, { amount: v });
+                                        }}
+                                        onKeyDown={(e) => {
+                                            if (e.key !== 'Enter') return;
+                                            e.preventDefault();
+                                            const v = commitMathFieldValue(e.currentTarget.value);
+                                            updateRow(row.id, { amount: v });
+                                        }}
+                                        placeholder="0.00"
+                                    />
+                                </td>
+                                <td>
+                                    <input
+                                        style={inputStyle}
+                                        value={row.ref}
+                                        onChange={(e) => updateRow(row.id, { ref: e.target.value })}
+                                        placeholder={t('tx.refPh')}
+                                    />
+                                </td>
+                                <td>
+                                    <input
+                                        style={inputStyle}
+                                        value={row.notes}
+                                        onChange={(e) => updateRow(row.id, { notes: e.target.value })}
+                                        placeholder={t('tx.notesPh')}
+                                        onKeyDown={handleLastFieldKeyDown(idx, rows.length)}
+                                    />
+                                </td>
+                                <td style={{ textAlign: 'right' }}>
+                                    <button
+                                        type="button"
+                                        tabIndex={-1}
+                                        style={{ ...outlineBtnStyle, color: '#B91C1C', borderColor: '#FECACA' }}
+                                        onClick={() => removeRow(row.id)}
+                                        disabled={rows.length === 1}
+                                        title={t('tx.deleteRow')}
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+
+            {effectLines.length > 0 ? (
+                <div
+                    style={{
+                        padding: '10px 12px',
+                        background: '#F8FAFC',
+                        border: '1px solid #E2E8F0',
+                        borderRadius: 8,
+                        fontSize: 13,
+                        color: '#0F172A',
+                        lineHeight: 1.55,
+                    }}
+                >
+                    {effectLines.map((text, i) => (
+                        <div key={i} style={{ fontWeight: 600 }}>{text}</div>
+                    ))}
+                </div>
+            ) : null}
+
+            {(err || okMsg) && (
+                <div>
+                    <AcctError message={err} />
+                    {okMsg ? (
+                        <div style={{ padding: 12, background: '#ECFDF5', color: '#047857', borderRadius: 10, fontSize: 13, fontWeight: 600 }}>
+                            {okMsg}
+                        </div>
+                    ) : null}
+                </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#475569' }}>
+                    {t(validRows.length === 1 ? 'tx.validRow' : 'tx.validRowsN', {
+                        count: validRows.length,
+                        amount: moneySar(total),
+                    })}
+                </div>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button type="button" style={outlineBtnStyle} onClick={addRow} disabled={saving || Boolean(editRow?.id)}>
+                        <Plus size={14} /> {t('tx.addRow')}
+                    </button>
+                    {!editRow?.id ? (
+                        <button
+                            type="button"
+                            style={outlineBtnStyle}
+                            disabled={saving || validRows.length === 0}
+                            onClick={() => void handleSave(null, { asDraft: true })}
+                        >
+                            {t('tx.btn.saveDraft') || 'Save as draft'}
+                        </button>
+                    ) : null}
+                    <button
+                        type="submit"
+                        style={primaryBtnStyle}
+                        disabled={saving || validRows.length === 0 || Boolean(cashBlocked)}
+                    >
+                        {saving
+                            ? t('tx.saving')
+                            : editRow?.id
+                              ? (isPayment ? t('tx.btn.updatePayment') : t('tx.btn.updateReceipt'))
+                              : isPayment
+                                ? t('tx.btn.savePayments')
+                                : t('tx.btn.saveReceipts')}
+                    </button>
+                </div>
+            </div>
+        </form>
+    );
+}
