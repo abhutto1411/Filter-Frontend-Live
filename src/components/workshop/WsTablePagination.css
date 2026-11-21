@@ -1,0 +1,23 @@
+/* Centered pager under paged tables */
+.ws-pager {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: center;
+    gap: 12px 24px; padding: 14px 12px;
+}
+.ws-pager__info { font-size: 0.8125rem; color: var(--color-text-muted); }
+.ws-pager__pages { display: flex; align-items: center; gap: 4px; }
+.ws-pager__btn {
+    min-width: 34px; height: 34px; padding: 0 10px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: 1px solid var(--color-border); border-radius: 8px; background: #fff;
+    font-size: 0.8125rem; font-weight: 600; color: var(--color-text-body); cursor: pointer;
+}
+.ws-pager__btn:hover:not(:disabled):not(.is-current) { background: #F9FAFB; }
+.ws-pager__btn.is-current { background: var(--color-primary); border-color: var(--color-primary); color: #111827; }
+.ws-pager__btn:disabled { opacity: 0.45; cursor: default; }
+.ws-pager__gap { padding: 0 4px; color: var(--color-text-muted); }
+.ws-pager__size { display: flex; align-items: center; gap: 8px; font-size: 0.8125rem; color: var(--color-text-muted); }
+.ws-pager__size select {
+    height: 34px; padding: 0 8px; border: 1px solid var(--color-border); border-radius: 8px;
+    background: #fff; font-size: 0.8125rem; color: var(--color-text);
+}
+[dir='rtl'] .ws-pager__pages svg { transform: scaleX(-1); }
