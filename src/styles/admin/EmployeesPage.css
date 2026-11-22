@@ -1,0 +1,17 @@
+/* Employees page.
+   The page itself is built from ui.css; all that is left here is letting the
+   shared approval shell run full width for the create / edit forms. */
+
+.employees-form-page-wrap--full .approvals-detail-page {
+    max-width: none;
+    width: 100%;
+}
+
+.employees-form-page-wrap--full .approval-page-panel {
+    width: 100%;
+}
+
+.employees-route-panel {
+    width: 100%;
+    max-width: none;
+}

@@ -1,0 +1,345 @@
+/**
+ * Workshop Admin shared tokens and primitives.
+ * Aliases the FILTER brand already in index.css. Does not restyle DAR print
+ * pages or invent a second brand.
+ */
+.workshop-layout {
+  --ws-brand: var(--color-primary, #fcc245);
+  --ws-brand-hover: var(--color-primary-dark, #e0a800);
+  --ws-brand-pressed: #c49200;
+  --ws-brand-ink: #111111;
+  --ws-brand-subtle: var(--color-accent, rgba(252, 194, 69, 0.12));
+
+  --ws-bg: var(--color-bg-canvas, #f5f5f7);
+  --ws-surface: var(--color-bg-card, #ffffff);
+  --ws-surface-muted: var(--color-bg-muted, #f9fafb);
+  --ws-border: var(--color-border, #e5e7eb);
+  --ws-heading: var(--color-text-dark, #111111);
+  --ws-body: var(--color-text-body, #374151);
+  --ws-muted: var(--color-text-muted, #6b7280);
+
+  --ws-ok: #067647;
+  --ws-ok-wash: #ecfdf3;
+  --ws-warn: #b54708;
+  --ws-warn-wash: #fffaeb;
+  --ws-dang: #b42318;
+  --ws-dang-wash: #fef3f2;
+  --ws-info: #175cd3;
+  --ws-info-wash: #eff8ff;
+  --ws-disabled: #98a2b3;
+
+  --ws-ctl-h: 36px;
+  --ws-radius: 10px;
+  --ws-shadow: var(--shadow-card, 0 2px 8px rgba(0, 0, 0, 0.06));
+  --ws-focus: 2px solid var(--ws-info);
+}
+
+.workshop-layout .ws-nav-btn:focus-visible,
+.workshop-layout .ws-nav-sub-btn:focus-visible,
+.workshop-layout .ws-lang-btn:focus-visible,
+.workshop-layout .btn-portal:focus-visible,
+.workshop-layout .btn-portal-outline:focus-visible,
+.workshop-layout .ws-logout-btn:focus-visible,
+.workshop-layout .ws-mobile-menu-toggle:focus-visible {
+  outline: var(--ws-focus);
+  outline-offset: 2px;
+}
+
+.workshop-layout .btn-portal:disabled,
+.workshop-layout .btn-portal-outline:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  color: var(--ws-brand-ink);
+}
+
+.workshop-layout .ws-table td.ws-num,
+.workshop-layout .ws-table th.ws-num {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.workshop-layout .ws-filterbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid var(--ws-border);
+  border-radius: var(--ws-radius);
+  background: var(--ws-surface);
+  overflow: visible;
+}
+
+.workshop-layout .ws-filterbar label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--ws-muted);
+}
+
+.workshop-layout .ws-filterbar input,
+.workshop-layout .ws-filterbar select {
+  box-sizing: border-box;
+  height: var(--ws-ctl-h);
+  min-height: var(--ws-ctl-h);
+  padding: 0 10px;
+  border: 1px solid var(--ws-border);
+  border-radius: 8px;
+  background: var(--ws-surface);
+  color: var(--ws-heading);
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+.workshop-layout .ws-filterbar input:focus-visible,
+.workshop-layout .ws-filterbar select:focus-visible {
+  outline: var(--ws-focus);
+  outline-offset: 1px;
+}
+
+.workshop-layout .ws-filterbar .ss-combo {
+  min-width: 160px;
+}
+
+.workshop-layout .ws-filterbar .ss-combo .ss-combo__field {
+  min-height: var(--ws-ctl-h);
+  height: var(--ws-ctl-h);
+}
+
+.workshop-layout .ws-kpi-icon--green {
+  background: var(--ws-ok-wash);
+  color: var(--ws-ok);
+}
+.workshop-layout .ws-kpi-icon--red {
+  background: var(--ws-dang-wash);
+  color: var(--ws-dang);
+}
+.workshop-layout .ws-kpi-icon--blue {
+  background: var(--ws-info-wash);
+  color: var(--ws-info);
+}
+.workshop-layout .ws-kpi-icon--orange {
+  background: var(--ws-warn-wash);
+  color: var(--ws-warn);
+}
+.workshop-layout .ws-kpi-icon--yellow,
+.workshop-layout .ws-kpi-icon--dark,
+.workshop-layout .ws-kpi-icon--purple {
+  background: var(--ws-brand);
+  color: var(--ws-brand-ink);
+}
+
+.workshop-layout .ws-inline-alert {
+  color: var(--ws-dang);
+  font-size: 0.8125rem;
+  margin-bottom: 8px;
+}
+
+.workshop-layout .ws-topbar {
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  z-index: 40;
+}
+.workshop-layout .ws-topbar-right {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.workshop-layout .ws-alert-badge,
+.workshop-layout .ws-online-badge {
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.workshop-layout .ws-nav-btn {
+  text-align: start;
+}
+
+.workshop-layout:not(:has([data-acct-ui])) .btn-portal,
+.workshop-layout:not(:has([data-acct-ui])) .btn-portal-outline,
+.workshop-layout .ws-page-header-actions .btn-portal,
+.workshop-layout .ws-page-header-actions .btn-portal-outline,
+.workshop-layout .ws-btn-refresh {
+  box-sizing: border-box;
+  min-height: var(--ws-ctl-h);
+  height: auto;
+  align-items: center;
+}
+
+.workshop-layout .btn-portal {
+  color: var(--ws-brand-ink);
+  background: var(--ws-brand);
+}
+.workshop-layout .btn-portal:hover:not(:disabled) {
+  background: var(--ws-brand-hover);
+}
+.workshop-layout .btn-portal:active:not(:disabled) {
+  background: var(--ws-brand-pressed);
+}
+.workshop-layout .btn-portal-outline {
+  background: var(--ws-surface);
+  color: var(--ws-heading);
+  border: 1px solid var(--ws-border);
+}
+.workshop-layout .btn-text,
+.workshop-layout button.ws-card__link {
+  background: none;
+  border: 0;
+  color: var(--ws-info);
+  cursor: pointer;
+  font: inherit;
+}
+.workshop-layout .btn-destructive,
+.workshop-layout .ws-btn-reject,
+.workshop-layout .btn-portal-danger {
+  background: var(--ws-dang-wash);
+  color: var(--ws-dang);
+  border: 1px solid var(--ws-dang);
+}
+
+.workshop-layout .ws-table th,
+.workshop-layout .mc-table th,
+.workshop-layout .purchases-view .table-th {
+  text-align: start;
+}
+.workshop-layout .ws-cell-stack {
+  align-items: flex-start;
+}
+
+.workshop-layout .ws-reports-filters,
+.workshop-layout .ws-logs-filters,
+.workshop-layout .ws-report-tab-toolbar,
+.workshop-layout .mc-header-filter,
+.workshop-layout .ws-inv-bulk-toolbar {
+  overflow: visible;
+}
+
+.workshop-layout .ws-reports-filters,
+.workshop-layout .ws-logs-filters {
+  align-items: flex-end;
+}
+
+.workshop-layout .ws-date-input-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.workshop-layout .ws-date-input-group input[type='datetime-local'],
+.workshop-layout .ws-date-input-group input[type='date'],
+.workshop-layout .ws-logs-input,
+.workshop-layout .ws-logs-select,
+.workshop-layout .mc-filter-select {
+  box-sizing: border-box;
+  min-height: var(--ws-ctl-h);
+  height: var(--ws-ctl-h);
+}
+
+.workshop-layout .mc-filter-icon {
+  inset-inline-start: 12px;
+  left: auto;
+  right: auto;
+}
+.workshop-layout .mc-filter-select {
+  padding-inline-start: 36px;
+  padding-inline-end: 32px;
+  background-position: right 10px center;
+}
+.workshop-layout[dir='rtl'] .mc-filter-select {
+  background-position: left 10px center;
+}
+
+.workshop-layout .ws-logs-select:focus,
+.workshop-layout .ws-logs-input:focus,
+.workshop-layout .mc-filter-select:focus,
+.workshop-layout .ws-uom-flow-unit select:focus,
+.workshop-layout .ws-uom-flow-bridge input:focus,
+.workshop-layout .wcr-input:focus,
+.workshop-layout .wcr-combo.sf-entity-combobox-anchor .pi-search-box:focus-within {
+  border-color: var(--ws-brand);
+  box-shadow: 0 0 0 3px var(--ws-brand-subtle);
+  outline: none;
+}
+
+.workshop-layout .ws-report-pagination__page:focus-visible,
+.workshop-layout .ws-report-pagination__edge:focus-visible,
+.workshop-layout .wcr-segment__btn:focus-visible,
+.workshop-layout .wcr-km__chip:focus-visible {
+  outline: var(--ws-focus);
+  outline-offset: 2px;
+}
+
+.workshop-layout .ws-employee-summary-name:hover span {
+  color: var(--ws-info);
+}
+
+.workshop-layout .mc-product-card.clickable:hover {
+  box-shadow: var(--ws-shadow);
+}
+
+.workshop-layout .ws-status-ok,
+.workshop-layout .ws-badge-success {
+  background: var(--ws-ok-wash);
+  color: var(--ws-ok);
+}
+.workshop-layout .ws-status-warn,
+.workshop-layout .ws-badge-warning {
+  background: var(--ws-warn-wash);
+  color: var(--ws-warn);
+}
+.workshop-layout .ws-status-err,
+.workshop-layout .ws-badge-error {
+  background: var(--ws-dang-wash);
+  color: var(--ws-dang);
+}
+
+.workshop-layout .ss-combo__menu,
+.workshop-layout .ms-combo__menu {
+  z-index: 10050;
+}
+
+.workshop-layout .mc-inv-search-dropdown {
+  z-index: 80;
+}
+
+@media (max-width: 900px) {
+  .workshop-layout .ws-content {
+    padding: 16px;
+  }
+  .workshop-layout .ws-topbar {
+    padding: 10px 16px;
+  }
+}
+
+.wcorp-print-sheet {
+  display: none;
+  font-family: "Noto Naskh Arabic", serif;
+  color: #0f172a;
+}
+
+.wcorp-print-sheet .heading {
+  font-family: Cairo, sans-serif;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+@media print {
+  .workshop-layout .ws-sidebar,
+  .workshop-layout .ws-topbar,
+  .workshop-layout .ws-filterbar,
+  .workshop-layout .wsd-bar {
+    display: none;
+  }
+
+  .wcorp-print-root:has(.wcorp-print-sheet) .wcorp-screen {
+    display: none !important;
+  }
+
+  .wcorp-print-sheet {
+    display: block !important;
+  }
+}
