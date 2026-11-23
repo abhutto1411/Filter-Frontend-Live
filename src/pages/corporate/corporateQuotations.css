@@ -1,0 +1,5 @@
+/* Corporate → Price quotations: where approved prices apply. */
+.corp-quote-applies { margin-top: 10px; padding: 10px 12px; border: 1px solid #DDD6FE; background: #FAF5FF; border-radius: 12px; font-size: 0.8125rem; color: #4C1D95; max-width: 900px; }
+.corp-quote-applies-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.corp-quote-applies-list span { display: inline-grid; gap: 1px; padding: 4px 10px; border-radius: 8px; background: #fff; border: 1px solid #E9D5FF; font-weight: 600; color: #3B0764; line-height: 1.25; }
+.corp-quote-applies-list small { font-weight: 500; color: #7C3AED; font-size: 0.6875rem; }
